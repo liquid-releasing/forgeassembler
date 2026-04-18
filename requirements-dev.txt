@@ -1,0 +1,7 @@
+# Development and build dependencies (not needed at runtime).
+
+# Testing
+pytest>=8.0
+
+# Linting / formatting
+ruff>=0.4
