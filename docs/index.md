@@ -3,6 +3,9 @@
 **Assemble many FunscriptForge clips into one long combined video and
 funscript bundle.**
 
+![ForgeAssembler](/media/forgeassembler_horizontal.png)
+
+
 ForgeAssembler is the third tool in the Liquid Releasing family.
 Where [FunscriptForge](https://github.com/liquid-releasing/funscriptforge)
 shapes and polishes a single clip's funscripts and

@@ -19,6 +19,17 @@ from .detect import (
     detect_file,
     detect_folder,
 )
+from .filters import (
+    bug_overlay_filter,
+    bug_prepare_filter,
+    concat_filter,
+    corner_position_expr,
+    fade_to_black_audio_acrossfade,
+    fade_to_black_xfade,
+    image_overlay_filter,
+    loudnorm_filter,
+    normalize_segment_filter,
+)
 from .joiners import REGISTRY as JOINER_REGISTRY
 from .joiners import Joiner, JoinerSpec, all_specs as joiner_specs, instantiate as instantiate_joiner
 from .project import (
@@ -62,14 +73,23 @@ __all__ = [
     "VERSION",
     "ValidationIssue",
     "about_title",
+    "bug_overlay_filter",
+    "bug_prepare_filter",
     "categorize_channels",
+    "concat_filter",
     "concat_funscripts",
+    "corner_position_expr",
     "detect_file",
     "detect_folder",
+    "fade_to_black_audio_acrossfade",
+    "fade_to_black_xfade",
+    "image_overlay_filter",
     "instantiate_joiner",
     "is_still_image",
     "joiner_specs",
+    "loudnorm_filter",
     "new_id",
+    "normalize_segment_filter",
     "read_funscript",
     "validate",
     "write_funscript",
