@@ -68,7 +68,9 @@ def test_validate_empty_project(tmp_path: Path):
     p.write_text(json.dumps({"version": "1.0", "items": []}), encoding="utf-8")
     r = run("validate", str(p))
     assert r.returncode == 1
-    assert "no items" in r.stderr.lower()
+    # Migration turns an empty v1 items list into a single empty
+    # section; validate then flags "no segments".
+    assert "no segments" in r.stderr.lower()
 
 
 def test_validate_simple_project(tmp_path: Path):
@@ -107,8 +109,8 @@ def test_forge_fails_cleanly_on_unreadable_video(tmp_path: Path):
 
 
 def test_new_project_scans_subfolders(tmp_path: Path):
-    """new-project walks subfolders, emits a segment per clip, with
-    'none' joiners between, natural-sorted."""
+    """new-project walks subfolders, emits ONE section with every
+    detected clip as a cut-joined segment, natural-sorted."""
     root = tmp_path / "pieces"
     root.mkdir()
     # Create 0, 1, 2, 10, 11 (tests natural sort: 0,1,2,10,11 not 0,1,10,11,2)
@@ -126,16 +128,14 @@ def test_new_project_scans_subfolders(tmp_path: Path):
     assert out_json.exists()
 
     data = json.loads(out_json.read_text(encoding="utf-8"))
-    items = data["items"]
-    # 5 segments + 4 joiners = 9 items
-    assert len(items) == 9
-    segments = [i for i in items if i["type"] == "segment"]
-    joiners = [i for i in items if i["type"] == "joiner"]
+    # v2.0 format: one section with all clips
+    assert data["version"] == "2.0"
+    assert len(data["sections"]) == 1
+    section = data["sections"][0]
+    assert section["leading_joiner"]["joiner_type"] == "none"
+    segments = section["segments"]
     assert len(segments) == 5
-    assert len(joiners) == 4
-    # Joiners all default to 'none'
-    assert all(j["joiner_type"] == "none" for j in joiners)
-    # Natural sort: segments should reference 0, 1, 2, 10, 11 in that order
+    # Natural sort: 0, 1, 2, 10, 11 in that order
     names_in_order = [Path(s["video"]).stem for s in segments]
     assert names_in_order == ["0", "1", "2", "10", "11"]
 
@@ -158,7 +158,8 @@ def test_new_project_skips_empty_subfolders(tmp_path: Path):
     assert r.returncode == 0
     assert "skipped 2 subfolder(s)" in r.stdout
     data = json.loads(out_json.read_text(encoding="utf-8"))
-    assert sum(1 for i in data["items"] if i["type"] == "segment") == 1
+    assert len(data["sections"]) == 1
+    assert len(data["sections"][0]["segments"]) == 1
 
 
 def test_new_project_error_when_no_clips(tmp_path: Path):

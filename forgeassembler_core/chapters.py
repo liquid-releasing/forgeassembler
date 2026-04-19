@@ -2,12 +2,12 @@
 
 """MP4 chapter markers via the ffmetadata format.
 
-Each Segment contributes exactly one chapter. The chapter name is
-`segment.bookmark` if set, otherwise the video file's stem (so a
-new-project scan of 16 folders produces 16 named chapters without any
-manual editing). A chapter's time span covers the segment plus any
-joiner time that follows — the next chapter starts at the next
-segment's start.
+Each **Section** contributes exactly one chapter (v2.0 model). The
+chapter name comes from `Section.chapter_name()` — explicit
+section.name → first segment's bookmark → prettified filename stem
+(underscores → spaces, timestamp/hash suffix stripped). A chapter's
+time span starts at the section's first segment and runs until the
+next section starts (or the project ends).
 
 Output is written as an ffmetadata text file, consumed by ffmpeg as
 `-f ffmetadata -i chapters.txt -map_metadata N`.
@@ -38,27 +38,43 @@ class Chapter:
 
 
 def build_chapters(project: "Project", layout: "Layout") -> list[Chapter]:
-    """Return one Chapter per Segment in the project, in layout order.
+    """Return one Chapter per Section in the project, in timeline order.
 
-    - Name: `segment.bookmark` if set, else `Path(segment.video).stem`
-    - Span: from `segment.start_ms` to the next segment's `start_ms`
-      (or `layout.total_duration_ms` for the last segment), so chapter
-      durations absorb any intervening joiner time.
+    A section's chapter runs from its first segment's start_ms through
+    to the next section's first segment's start_ms (or the project's
+    total duration for the last section). Any leading joiner time gets
+    absorbed into the PRECEDING chapter's tail, so chapters remain
+    contiguous and player UIs navigate directly between sections.
     """
     from .project import Segment as _Seg
-    seg_items = [li for li in layout.items if isinstance(li.item, _Seg)]
+    # Map each segment id to its start_ms so we can look up section
+    # boundaries without re-walking the layout.
+    seg_start: dict[str, int] = {}
+    for li in layout.items:
+        if isinstance(li.item, _Seg):
+            seg_start[li.item.id] = li.start_ms  # type: ignore[union-attr]
+
+    # Collect the timeline start of each non-empty section (= first
+    # segment's start_ms).
+    sec_starts: list[tuple[int, object]] = []  # (start_ms, Section)
+    for sec in project.sections:
+        if not sec.segments:
+            continue
+        first_id = sec.segments[0].id
+        if first_id in seg_start:
+            sec_starts.append((seg_start[first_id], sec))
+
     chapters: list[Chapter] = []
-    for i, li in enumerate(seg_items):
-        seg = li.item
-        # type: ignore[union-attr]
-        bookmark = (seg.bookmark or "").strip()  # type: ignore[union-attr]
-        name = bookmark or Path(seg.video).stem  # type: ignore[union-attr]
-        start = li.start_ms
-        if i + 1 < len(seg_items):
-            end = seg_items[i + 1].start_ms
+    for i, (start, sec) in enumerate(sec_starts):
+        if i + 1 < len(sec_starts):
+            end = sec_starts[i + 1][0]
         else:
             end = layout.total_duration_ms
-        chapters.append(Chapter(name=name, start_ms=start, end_ms=end))
+        chapters.append(Chapter(
+            name=sec.chapter_name(),  # type: ignore[attr-defined]
+            start_ms=start,
+            end_ms=end,
+        ))
     return chapters
 
 

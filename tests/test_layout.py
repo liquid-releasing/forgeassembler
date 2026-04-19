@@ -20,6 +20,8 @@ def test_single_segment():
 
 
 def test_two_segments_with_none_joiner():
+    """v2.0: 'none' joiners are absorbed into the section as implicit
+    cuts, so the layout sees only the two segments back-to-back."""
     p = Project(items=[
         Segment(id="s1", video="a.mp4"),
         Joiner(id="j1", joiner_type="none"),
@@ -27,7 +29,7 @@ def test_two_segments_with_none_joiner():
     ])
     layout = lay_out(p, probe=lambda _p: 1000)
     assert layout.total_duration_ms == 2000
-    assert [i.start_ms for i in layout.items] == [0, 1000, 1000]
+    assert [i.start_ms for i in layout.items] == [0, 1000]
 
 
 def test_fade_to_black_adds_duration():

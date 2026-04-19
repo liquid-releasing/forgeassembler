@@ -52,15 +52,31 @@ def test_build_chapters_uses_bookmark_when_set(tmp_path: Path):
     assert chapters[0].name == "Opening Scene"
 
 
-def test_build_chapters_falls_back_to_filename_stem(tmp_path: Path):
+def test_build_chapters_falls_back_to_prettified_stem(tmp_path: Path):
+    """Underscores turn into spaces; trailing XBVR-style uniqueness
+    suffix is stripped."""
     v = _mp4(tmp_path, "victoriaoats_07")
     p = _project(tmp_path, Segment(id="s1", video=str(v)))
     layout = lay_out(p, probe=lambda _p: 1000)
     chapters = build_chapters(p, layout)
-    assert chapters[0].name == "victoriaoats_07"
+    assert chapters[0].name == "victoriaoats 07"
 
 
-def test_build_chapters_multiple_segments_contiguous(tmp_path: Path):
+def test_build_chapters_strips_xbvr_style_suffix(tmp_path: Path):
+    v = _mp4(
+        tmp_path,
+        "VictoriaOaks_-_MilaRuby_PMV3_Gooning_Therapy_1771804425489_ahmyeutv",
+    )
+    p = _project(tmp_path, Segment(id="s1", video=str(v)))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    chapters = build_chapters(p, layout)
+    assert chapters[0].name == "VictoriaOaks - MilaRuby PMV3 Gooning Therapy"
+
+
+def test_build_chapters_one_per_section(tmp_path: Path):
+    """Clips inside a single section = one chapter. To get multiple
+    chapters, project needs multiple sections (i.e. at least one
+    non-'none' joiner)."""
     v1 = _mp4(tmp_path, "a")
     v2 = _mp4(tmp_path, "b")
     v3 = _mp4(tmp_path, "c")
@@ -68,17 +84,23 @@ def test_build_chapters_multiple_segments_contiguous(tmp_path: Path):
         tmp_path,
         Segment(id="s1", video=str(v1)),
         Segment(id="s2", video=str(v2)),
+        Joiner(id="j1", joiner_type="fade_to_black",
+               params={"duration_s": 1.0}),
         Segment(id="s3", video=str(v3)),
     )
     probe_map = {str(v1): 1000, str(v2): 2000, str(v3): 3000}
     layout = lay_out(p, probe=lambda pth: probe_map[str(pth)])
     chapters = build_chapters(p, layout)
-    # Contiguous: each chapter starts where the previous ended
-    assert chapters == [
-        Chapter(name="a", start_ms=0,    end_ms=1000),
-        Chapter(name="b", start_ms=1000, end_ms=3000),
-        Chapter(name="c", start_ms=3000, end_ms=6000),
-    ]
+    # Two sections → two chapters. Section 1 covers a + b together
+    # (through the fade bridge), section 2 starts at s3.
+    assert len(chapters) == 2
+    assert chapters[0].name == "a"
+    assert chapters[0].start_ms == 0
+    # Chapter 1 runs until s3 starts (after seg1 + seg2 + fade bridge).
+    assert chapters[0].end_ms == 4000
+    assert chapters[1].name == "c"
+    assert chapters[1].start_ms == 4000
+    assert chapters[1].end_ms == 7000
 
 
 def test_build_chapters_joiner_time_absorbed_into_preceding_chapter(tmp_path: Path):
@@ -101,8 +123,10 @@ def test_build_chapters_joiner_time_absorbed_into_preceding_chapter(tmp_path: Pa
     assert chapters[1] == Chapter(name="b", start_ms=3000, end_ms=4000)
 
 
-def test_build_chapters_includes_still_image_segments(tmp_path: Path):
-    """PNG title-card segments get their own chapter."""
+def test_build_chapters_section_with_still_and_video_collapses(tmp_path: Path):
+    """PNG still + video in the SAME section = one chapter
+    (the PNG is just the section's first clip). First-clip bookmark
+    wins as the chapter name."""
     v = _mp4(tmp_path, "clip")
     png = tmp_path / "intro.png"
     png.write_bytes(b"")
@@ -114,10 +138,11 @@ def test_build_chapters_includes_still_image_segments(tmp_path: Path):
     )
     layout = lay_out(p, probe=lambda _p: 1000)
     chapters = build_chapters(p, layout)
-    assert len(chapters) == 2
+    assert len(chapters) == 1
     assert chapters[0].name == "Intro"
     assert chapters[0].start_ms == 0
-    assert chapters[0].end_ms == 3000
+    # Covers the PNG hold (3000ms) + the video (1000ms)
+    assert chapters[0].end_ms == 4000
 
 
 def test_build_chapters_empty_project_returns_empty(tmp_path: Path):
@@ -127,13 +152,14 @@ def test_build_chapters_empty_project_returns_empty(tmp_path: Path):
 
 
 def test_build_chapters_empty_bookmark_falls_back_to_stem(tmp_path: Path):
-    v = _mp4(tmp_path, "fallback")
+    v = _mp4(tmp_path, "fallback_clip")
     p = _project(tmp_path, Segment(
         id="s1", video=str(v), bookmark="   ",  # whitespace only
     ))
     layout = lay_out(p, probe=lambda _p: 1000)
     chapters = build_chapters(p, layout)
-    assert chapters[0].name == "fallback"
+    # Prettified stem: underscore → space
+    assert chapters[0].name == "fallback clip"
 
 
 # ── write_ffmetadata ──────────────────────────────────────────────────

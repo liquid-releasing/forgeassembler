@@ -60,14 +60,15 @@ def test_project_roundtrip(tmp_path: Path):
     )
     data = p.to_dict()
     assert data["version"] == PROJECT_VERSION
-    assert len(data["items"]) == 3
+    # v2.0 migrates the flat items list into sections: the fade_to_black
+    # joiner splits them into two sections (s1 alone, then s2).
+    assert len(data["sections"]) == 2
 
     roundtripped = Project.from_dict(data)
-    assert len(roundtripped.items) == 3
-    assert isinstance(roundtripped.items[0], Segment)
-    assert isinstance(roundtripped.items[1], Joiner)
-    seg2 = roundtripped.items[2]
-    assert isinstance(seg2, Segment)
+    assert len(roundtripped.sections) == 2
+    assert roundtripped.sections[0].segments[0].id == "s1"
+    assert roundtripped.sections[1].leading_joiner.joiner_type == "fade_to_black"
+    seg2 = roundtripped.sections[1].segments[0]
     assert seg2.audio.mode == "silence"
     assert seg2.overlays[0].content == "Hello"
 
@@ -89,9 +90,12 @@ def test_output_channels_selected_order():
 
 
 def test_validate_requires_segments():
-    p = Project(items=[])
+    p = Project()
     issues = validate(p)
-    assert any(i.level == "error" and "no items" in i.message.lower() for i in issues)
+    assert any(
+        i.level == "error" and "no sections" in i.message.lower()
+        for i in issues
+    )
 
 
 def test_validate_missing_video(tmp_path: Path):
@@ -100,24 +104,41 @@ def test_validate_missing_video(tmp_path: Path):
     assert any("not found" in i.message.lower() for i in issues)
 
 
-def test_validate_joiner_must_follow_segment(tmp_path: Path):
+def test_validate_warns_on_empty_section(tmp_path: Path):
+    """An empty section is a warning (user may be about to populate it)."""
+    from forgeassembler_core.project import Section
     v1 = _make_video(tmp_path, "a")
-    p = Project(items=[
-        Joiner(id="j1", joiner_type="none"),
-        Segment(id="s1", video=str(v1)),
+    p = Project(sections=[
+        Section(id="sec1", segments=[Segment(id="s1", video=str(v1))]),
+        Section(id="sec2"),  # empty → warning
     ])
     issues = validate(p)
-    assert any("must follow a segment" in i.message for i in issues)
+    assert any(
+        i.level == "warning" and "has no segments" in i.message and i.item_id == "sec2"
+        for i in issues
+    )
 
 
-def test_validate_cannot_end_with_joiner(tmp_path: Path):
+def test_legacy_items_migrate_to_sections(tmp_path: Path):
+    """Passing `items=` on construction routes through the v1 migration.
+    Non-'none' joiners start new sections; 'none' joiners are absorbed."""
     v1 = _make_video(tmp_path, "a")
+    v2 = _make_video(tmp_path, "b")
+    v3 = _make_video(tmp_path, "c")
     p = Project(items=[
         Segment(id="s1", video=str(v1)),
-        Joiner(id="j1", joiner_type="none"),
+        Joiner(id="j1", joiner_type="none"),           # absorbed
+        Segment(id="s2", video=str(v2)),
+        Joiner(id="j2", joiner_type="fade_to_black",
+               params={"duration_s": 1.0}),             # boundary
+        Segment(id="s3", video=str(v3)),
     ])
-    issues = validate(p)
-    assert any("cannot end with a joiner" in i.message for i in issues)
+    # Two sections: s1+s2 together (cut-joined), then s3 behind a fade
+    assert len(p.sections) == 2
+    assert [s.id for s in p.sections[0].segments] == ["s1", "s2"]
+    assert p.sections[0].leading_joiner.joiner_type == "none"
+    assert [s.id for s in p.sections[1].segments] == ["s3"]
+    assert p.sections[1].leading_joiner.joiner_type == "fade_to_black"
 
 
 def test_validate_fade_needs_positive_duration(tmp_path: Path):

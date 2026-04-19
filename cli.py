@@ -29,6 +29,7 @@ from forgeassembler_core import (
     VERSION,
     Project,
     RESOLUTION_PIXELS,
+    Section,
     Segment,
     categorize_channels,
     detect_folder,
@@ -127,8 +128,12 @@ def _natural_key(path: Path) -> tuple:
 
 def cmd_new_project(args: argparse.Namespace) -> int:
     """Scan subfolders of a parent, call detect_folder on each, and
-    emit a starter project JSON with one segment per detected clip
-    and 'none' joiners between every pair.
+    emit a starter project JSON.
+
+    v2.0 layout: all detected clips land in ONE Section (cut-joined).
+    The user can split it later in the UI by picking a clip and
+    saying "Split section here" — that boundary becomes its own new
+    section with whatever transition the user chooses.
     """
     parent = Path(args.folder)
     if not parent.is_dir():
@@ -146,9 +151,8 @@ def cmd_new_project(args: argparse.Namespace) -> int:
         )
         return 2
 
-    items: list = []
+    segments: list[Segment] = []
     skipped: list[str] = []
-    clip_count = 0
     for sub in subfolders:
         try:
             clips = detect_folder(sub)
@@ -158,26 +162,21 @@ def cmd_new_project(args: argparse.Namespace) -> int:
             skipped.append(sub.name)
             continue
         for clip in clips:
-            if items:
-                items.append(ProjectJoiner(
-                    id=new_id("join"),
-                    joiner_type="none",
-                ))
-            items.append(Segment(
+            segments.append(Segment(
                 id=new_id("seg"),
                 video=str(clip.video),
             ))
-            clip_count += 1
 
-    if not items:
+    if not segments:
         print(
             f"ERROR: no clips detected in any subfolder of {parent}",
             file=sys.stderr,
         )
         return 2
 
+    section = Section(id=new_id("sec"), segments=segments)
     project = Project(
-        items=items,
+        sections=[section],
         output=Output(
             folder=args.output_folder or str(parent.parent / "out"),
             basename=args.basename or parent.parent.name or parent.name,
@@ -190,14 +189,15 @@ def cmd_new_project(args: argparse.Namespace) -> int:
     project.save(output_json)
 
     print(f"Wrote {output_json}")
-    print(f"  {clip_count} segments from {len(subfolders) - len(skipped)} "
-          f"subfolder(s); all joiners are 'none'")
+    print(f"  1 section with {len(segments)} clip(s) from "
+          f"{len(subfolders) - len(skipped)} subfolder(s); "
+          f"all clips cut together")
     if skipped:
         preview = ", ".join(skipped[:5])
         tail = "..." if len(skipped) > 5 else ""
         print(f"  skipped {len(skipped)} subfolder(s) with no video: "
               f"{preview}{tail}")
-    print(f"\nNext: edit joiners to taste, then:")
+    print(f"\nNext: split / tune sections in the UI, then:")
     print(f"  python cli.py validate {output_json}")
     print(f"  python cli.py forge {output_json}")
     return 0

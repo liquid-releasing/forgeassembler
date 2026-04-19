@@ -64,10 +64,12 @@ from .project import (
     Overlay,
     Project,
     PROJECT_VERSION,
+    Section,
     Segment,
     ValidationIssue,
     is_still_image,
     new_id,
+    prettify_filename_stem,
     validate,
 )
 
@@ -95,6 +97,7 @@ __all__ = [
     "QUALITY_CRF",
     "RESOLUTION_KEYS",
     "RESOLUTION_PIXELS",
+    "Section",
     "Segment",
     "TAGLINE",
     "VERSION",
@@ -123,6 +126,7 @@ __all__ = [
     "loudnorm_filter",
     "new_id",
     "normalize_segment_filter",
+    "prettify_filename_stem",
     "read_funscript",
     "render_heatmap",
     "validate",

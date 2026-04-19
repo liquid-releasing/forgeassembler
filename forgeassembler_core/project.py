@@ -1,16 +1,26 @@
 # Copyright (c) 2026 Liquid Releasing. Licensed under the MIT License.
 
-"""Project data model + JSON load/save/validate."""
+"""Project data model + JSON load/save/validate.
+
+v2.0 model: a Project owns a list of **Sections**; each Section has a
+**leading joiner** (how it transitions IN from the previous section,
+default "none" = hard cut) and a list of **segments** (video / still
+clips joined with straight cuts within the section). Fades /
+fade-to-black live at section boundaries only — no mid-section
+transitions. Old `items`-format projects (PROJECT_VERSION "1.0") are
+auto-migrated on load.
+"""
 
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-PROJECT_VERSION = "1.0"
+PROJECT_VERSION = "2.0"
 
 AudioMode = Literal["keep", "replace", "silence"]
 JoinerType = Literal["none", "fade_to_black"]
@@ -63,6 +73,27 @@ STILL_IMAGE_EXTENSIONS: frozenset[str] = frozenset({
 def is_still_image(path: str | Path) -> bool:
     """True if the given path names a still image (by extension)."""
     return Path(path).suffix.lower() in STILL_IMAGE_EXTENSIONS
+
+
+# Matches a trailing `_<10+digit timestamp>` optionally followed by
+# `_<alphanumeric suffix>` — the XBVR/download-tool "uniqueness" pattern
+# like `_1771804425489_ahmyeutv`.
+_FILENAME_SUFFIX_RE = re.compile(r"_\d{10,}(_[a-zA-Z0-9]+)?$")
+
+
+def prettify_filename_stem(stem: str) -> str:
+    """Turn a video-filename stem into a human-readable chapter title.
+
+    - strip trailing `_<timestamp>` or `_<timestamp>_<hash>` uniqueness suffix
+    - replace `_` with spaces
+    - collapse runs of whitespace
+
+    Example: `VictoriaOaks_-_MilaRuby_PMV3_Gooning_Therapy_1771804425489_ahmyeutv`
+    → `VictoriaOaks - MilaRuby PMV3 Gooning Therapy`.
+    """
+    cleaned = _FILENAME_SUFFIX_RE.sub("", stem)
+    cleaned = cleaned.replace("_", " ")
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 # ── Layers ────────────────────────────────────────────────────────────
@@ -427,30 +458,212 @@ class OutputChannels:
         return [k for k, v in self.to_dict().items() if v]
 
 
-# ── Project ────────────────────────────────────────────────────────────
+# ── Section ────────────────────────────────────────────────────────────
 @dataclass
+class Section:
+    """A group of clips joined by hard cuts.
+
+    Sections are separated by their **leading joiner** — the transition
+    that plays as this section starts (default "none" = hard cut). A
+    section's own segments cut straight together inside it.
+    """
+    id: str
+    leading_joiner: "Joiner" = field(default_factory=lambda: Joiner(
+        id=new_id("join"), joiner_type="none",
+    ))
+    segments: list[Segment] = field(default_factory=list)
+    name: Optional[str] = None  # override chapter title
+
+    def chapter_name(self) -> str:
+        """Return the MP4 chapter title for this section.
+
+        Priority: explicit `name` → first segment's bookmark → first
+        segment's prettified filename stem → "Section".
+        """
+        if self.name and self.name.strip():
+            return self.name.strip()
+        if self.segments:
+            first = self.segments[0]
+            if first.bookmark and first.bookmark.strip():
+                return first.bookmark.strip()
+            return prettify_filename_stem(Path(first.video).stem)
+        return "Section"
+
+    def to_dict(self) -> dict:
+        d: dict[str, Any] = {
+            "id": self.id,
+            "leading_joiner": self.leading_joiner.to_dict(),
+            "segments": [s.to_dict() for s in self.segments],
+        }
+        if self.name:
+            d["name"] = self.name
+        return d
+
+    @staticmethod
+    def from_dict(d: dict) -> "Section":
+        return Section(
+            id=d["id"],
+            leading_joiner=Joiner.from_dict(d.get("leading_joiner") or {
+                "id": new_id("join"), "joiner_type": "none",
+            }),
+            segments=[Segment.from_dict(s) for s in d.get("segments", [])],
+            name=d.get("name"),
+        )
+
+
+def _migrate_items_to_sections(items: list) -> list[Section]:
+    """Convert a flat v1.0 `[Segment | Joiner]` list into Sections.
+
+    Rules:
+      - A non-"none" joiner starts a new section with that joiner as its
+        leading joiner; any following segments belong to that section.
+      - A "none" joiner is absorbed as an implicit inter-segment cut
+        within the current section (since clips inside a section
+        already cut straight together).
+      - The first section always has a default "none" leading joiner
+        unless the project opened with a non-"none" joiner.
+    """
+    sections: list[Section] = []
+    current_segs: list[Segment] = []
+    current_leading = Joiner(id=new_id("join"), joiner_type="none")
+    for it in items:
+        if isinstance(it, Segment):
+            current_segs.append(it)
+        elif isinstance(it, Joiner):
+            if it.joiner_type == "none":
+                continue  # inter-clip cut — absorbed
+            # Flush whatever we've been building, then open a new section
+            # led by this joiner.
+            if current_segs or sections:
+                sections.append(Section(
+                    id=new_id("sec"),
+                    leading_joiner=current_leading,
+                    segments=current_segs,
+                ))
+            current_segs = []
+            current_leading = it
+    if current_segs or not sections:
+        sections.append(Section(
+            id=new_id("sec"),
+            leading_joiner=current_leading,
+            segments=current_segs,
+        ))
+    return sections
+
+
+# ── Project ────────────────────────────────────────────────────────────
 class Project:
-    items: list[Segment | Joiner] = field(default_factory=list)
-    output_channels: OutputChannels = field(default_factory=OutputChannels)
-    output: Output = field(default_factory=Output)
-    audio_beds: list[dict] = field(default_factory=list)  # Phase 2
-    version: str = PROJECT_VERSION
+    """Top-level project: list of Sections + output settings.
+
+    Accepts either `sections=[Section, ...]` (the v2.0 canonical shape)
+    or the legacy `items=[Segment | Joiner, ...]` for v1-era callers;
+    the latter is auto-migrated into Sections. Passing both is an error.
+    """
+
+    def __init__(
+        self,
+        *,
+        sections: Optional[list[Section]] = None,
+        items: Optional[list] = None,
+        output_channels: Optional[OutputChannels] = None,
+        output: Optional[Output] = None,
+        audio_beds: Optional[list[dict]] = None,
+        version: str = PROJECT_VERSION,
+    ) -> None:
+        if sections is not None and items is not None:
+            raise TypeError(
+                "Project(): pass either `sections=` or `items=`, not both",
+            )
+        if items is not None:
+            sections = _migrate_items_to_sections(items)
+        self.sections: list[Section] = list(sections) if sections else []
+        self.output_channels: OutputChannels = (
+            output_channels if output_channels is not None else OutputChannels()
+        )
+        self.output: Output = output if output is not None else Output()
+        self.audio_beds: list[dict] = (
+            list(audio_beds) if audio_beds is not None else []
+        )
+        self.version: str = version
+
+    def __repr__(self) -> str:
+        return (
+            f"Project(sections={len(self.sections)}, "
+            f"output={self.output!r}, "
+            f"output_channels={self.output_channels!r}, "
+            f"version={self.version!r})"
+        )
 
     # ── Manipulation helpers ──────────────────────────────────────
+    def add_section(self, section: Section) -> None:
+        self.sections.append(section)
+
+    def remove_section(self, section_id: str) -> None:
+        self.sections = [s for s in self.sections if s.id != section_id]
+
     def add_segment(self, segment: Segment) -> None:
-        self.items.append(segment)
+        """Append a segment to the last section (create one if needed).
+
+        Kept for compatibility with the v1 flat add-flow and for the
+        common "just keep adding clips" UX. The resulting section uses
+        the default "none" leading joiner.
+        """
+        if not self.sections:
+            self.sections.append(Section(id=new_id("sec")))
+        self.sections[-1].segments.append(segment)
 
     def add_joiner(self, joiner: Joiner) -> None:
-        self.items.append(joiner)
+        """Open a new section led by `joiner`; subsequent
+        `add_segment` calls land in it. Kept for v1 compat."""
+        self.sections.append(Section(
+            id=new_id("sec"),
+            leading_joiner=joiner,
+            segments=[],
+        ))
 
     def remove(self, item_id: str) -> None:
-        self.items = [i for i in self.items if i.id != item_id]
+        """Remove a segment, joiner, or section by id.
+
+        Segments: removed from whichever section owns them; empty
+        sections are NOT auto-deleted (they hold the leading joiner).
+        Joiners: if `item_id` matches a section's leading joiner, the
+        section's leading joiner is reset to a fresh "none" cut.
+        Sections: removed whole.
+        """
+        # Direct section match
+        if any(s.id == item_id for s in self.sections):
+            self.remove_section(item_id)
+            return
+        for sec in self.sections:
+            if sec.leading_joiner.id == item_id:
+                sec.leading_joiner = Joiner(
+                    id=new_id("join"), joiner_type="none",
+                )
+                return
+            sec.segments = [s for s in sec.segments if s.id != item_id]
+
+    # ── Flattened legacy view (layout / concat code walks this) ──
+    @property
+    def items(self) -> list:
+        """Flattened `[Joiner?, Segment, Segment, ..., Joiner?, ...]`
+        view for downstream code that still walks a linear timeline.
+        A section's "none" leading joiner is suppressed (it's implicit)."""
+        out: list = []
+        for sec in self.sections:
+            if sec.leading_joiner.joiner_type != "none":
+                out.append(sec.leading_joiner)
+            out.extend(sec.segments)
+        return out
 
     def segments(self) -> list[Segment]:
-        return [i for i in self.items if isinstance(i, Segment)]
+        return [s for sec in self.sections for s in sec.segments]
 
     def joiners(self) -> list[Joiner]:
-        return [i for i in self.items if isinstance(i, Joiner)]
+        """Every non-'none' leading joiner in the project, in order."""
+        return [
+            sec.leading_joiner for sec in self.sections
+            if sec.leading_joiner.joiner_type != "none"
+        ]
 
     # ── Serialization ─────────────────────────────────────────────
     def to_dict(self) -> dict:
@@ -458,26 +671,31 @@ class Project:
             "version": self.version,
             "output": self.output.to_dict(),
             "output_channels": self.output_channels.to_dict(),
-            "items": [i.to_dict() for i in self.items],
+            "sections": [s.to_dict() for s in self.sections],
             "audio_beds": list(self.audio_beds),
         }
 
     @staticmethod
     def from_dict(d: dict) -> "Project":
-        items: list[Segment | Joiner] = []
-        for raw in d.get("items", []):
-            if raw.get("type") == "segment":
-                items.append(Segment.from_dict(raw))
-            elif raw.get("type") == "joiner":
-                items.append(Joiner.from_dict(raw))
-            else:
-                raise ValueError(f"Unknown item type: {raw.get('type')}")
+        if "sections" in d:
+            sections = [Section.from_dict(s) for s in d["sections"]]
+        else:
+            # v1.0 format: flat `items` list — migrate.
+            legacy: list = []
+            for raw in d.get("items", []):
+                if raw.get("type") == "segment":
+                    legacy.append(Segment.from_dict(raw))
+                elif raw.get("type") == "joiner":
+                    legacy.append(Joiner.from_dict(raw))
+                else:
+                    raise ValueError(f"Unknown item type: {raw.get('type')}")
+            sections = _migrate_items_to_sections(legacy)
         return Project(
-            items=items,
+            sections=sections,
             output_channels=OutputChannels.from_dict(d.get("output_channels")),
             output=Output.from_dict(d.get("output")),
             audio_beds=list(d.get("audio_beds", [])),
-            version=d.get("version", PROJECT_VERSION),
+            version=PROJECT_VERSION,  # always write as current
         )
 
     # ── Disk I/O ──────────────────────────────────────────────────
@@ -506,26 +724,27 @@ class ValidationIssue:
 def validate(project: Project) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
 
-    if not project.items:
-        issues.append(ValidationIssue("error", "Project has no items."))
+    if not project.sections:
+        issues.append(ValidationIssue("error", "Project has no sections."))
         return issues
 
-    if not any(isinstance(i, Segment) for i in project.items):
+    all_segments = project.segments()
+    if not all_segments:
         issues.append(ValidationIssue("error", "Project has no segments."))
 
-    # Joiners must sit between two segments
-    last_kind = None
-    for item in project.items:
-        kind = "segment" if isinstance(item, Segment) else "joiner"
-        if kind == "joiner" and last_kind != "segment":
+    # Every non-empty section is fine; a section may be empty only if the
+    # user deliberately parked a leading joiner before populating it.
+    for sec in project.sections:
+        if not sec.segments:
             issues.append(ValidationIssue(
-                "error",
-                "Joiner must follow a segment.",
-                item_id=item.id,
+                "warning",
+                f"Section {sec.id} has no segments.",
+                item_id=sec.id,
             ))
-        last_kind = kind
-    if last_kind == "joiner":
-        issues.append(ValidationIssue("error", "Project cannot end with a joiner."))
+
+    # Freeze the flat timeline once so `previous_last_frame` lookups below
+    # don't rebuild the list on every segment.
+    flat_items = project.items
 
     # File existence for segments
     for seg in project.segments():
@@ -601,12 +820,12 @@ def validate(project: Project) -> list[ValidationIssue]:
                     "still-image segments (PNG).",
                     item_id=seg.id,
                 ))
-            # Must have a preceding Segment in items order
+            # Must have a preceding Segment in the flat timeline order
             seg_index = next(
-                (i for i, it in enumerate(project.items) if it is seg), -1,
+                (i for i, it in enumerate(flat_items) if it is seg), -1,
             )
             prev_segment_exists = any(
-                isinstance(it, Segment) for it in project.items[:seg_index]
+                isinstance(it, Segment) for it in flat_items[:seg_index]
             )
             if not prev_segment_exists:
                 issues.append(ValidationIssue(
