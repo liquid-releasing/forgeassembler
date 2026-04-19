@@ -39,6 +39,50 @@ _APP_DIR = Path(__file__).parent.resolve()
 _MEDIA = _APP_DIR / "media"
 
 
+# ── Cached duration probing for sidebar estimate ──────────────────────
+@st.cache_data(show_spinner=False)
+def _probe_video_ms(path: str, mtime: float, _ffmpeg_exe: str) -> int:
+    """Cached wrapper around probe_duration_ms. `mtime` participates in
+    the cache key so the entry invalidates when the file is rewritten."""
+    from forgeassembler_core.probe import probe_duration_ms
+    return probe_duration_ms(path, _ffmpeg_exe)
+
+
+def _estimate_total_duration_ms(proj: Project) -> int | None:
+    """Sum the durations of every item in the project. Returns None if
+    ffmpeg isn't available; individual unreadable videos are skipped
+    with a zero contribution."""
+    from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
+    from forgeassembler_core.joiners import instantiate as _instantiate_joiner
+
+    try:
+        ffmpeg_exe = _resolve_ffmpeg_exe()
+    except RuntimeError:
+        return None
+
+    total = 0
+    for item in proj.items:
+        if isinstance(item, Segment):
+            if item.is_still():
+                total += int((item.still_duration_s or 0) * 1000)
+                continue
+            p = Path(item.video)
+            if not p.exists():
+                continue
+            try:
+                total += _probe_video_ms(str(p), p.stat().st_mtime, ffmpeg_exe)
+            except Exception:  # noqa: BLE001
+                continue
+        elif isinstance(item, ProjectJoiner):
+            try:
+                total += _instantiate_joiner(
+                    item.joiner_type, item.params,
+                ).duration_ms()
+            except Exception:  # noqa: BLE001
+                continue
+    return total
+
+
 # ── Page setup ────────────────────────────────────────────────────────
 st.set_page_config(
     page_title=f"{APP_NAME} {VERSION}",
@@ -202,10 +246,18 @@ with st.sidebar:
                     project.remove(item.id)
                     st.rerun()
 
-    # Summary stats (live, without ffprobe — will be real in later phase)
+    # Summary stats (live, with cached ffmpeg-duration probe).
     st.subheader("Summary")
     st.write(f"Segments: **{len(segs)}**  ·  Joiners: **{len(joins)}**")
-    st.caption("Duration stats populate once ffprobe integration lands.")
+
+    total_ms = _estimate_total_duration_ms(project)
+    if total_ms is not None and total_ms > 0:
+        total_s = total_ms / 1000
+        mins, secs = divmod(int(total_s), 60)
+        st.write(f"Total output: **{mins}m {secs}s**")
+        st.caption("Encoding typically 1–2× realtime on modern hardware.")
+    elif segs:
+        st.caption("Add videos and title cards to estimate duration.")
 
     # Footer
     st.divider()
