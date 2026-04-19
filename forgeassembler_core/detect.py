@@ -34,6 +34,7 @@ AUDIO_ESTIM_SUFFIXES = {".stereostim.wav", ".legacy.wav", ".prostate.stereostim.
 __all__ = [
     "DetectedClip",
     "detect_folder",
+    "detect_folder_tree",
     "detect_file",
     "funscripts_for_stem",
 ]
@@ -131,6 +132,45 @@ def detect_folder(folder_path: str | Path) -> list[DetectedClip]:
         if not f.is_file() or f.suffix.lower() not in VIDEO_EXTS:
             continue
         clips.append(detect_file(f))
+    return clips
+
+
+def _natural_key(p: Path) -> tuple:
+    """Sort `0, 1, 2, 10, 11` instead of lexicographic `0, 1, 10, 11, 2`."""
+    try:
+        return (0, int(p.name))
+    except ValueError:
+        return (1, p.name.lower())
+
+
+def detect_folder_tree(folder_path: str | Path) -> list[DetectedClip]:
+    """Return clips found in a folder OR — if the immediate folder holds
+    no videos — in its numbered/named subfolders.
+
+    Matches the convention used by `cli.py new-project`: a parent
+    directory like `.forge/` with `.forge/0/0.mp4`, `.forge/1/1.mp4`,
+    ... collapses into a flat clip list in natural order. Subfolders
+    without videos are silently skipped. Recurses one level only; deeper
+    trees need an explicit choice per level.
+    """
+    folder = Path(folder_path).resolve()
+    if not folder.is_dir():
+        raise NotADirectoryError(folder)
+
+    direct = detect_folder(folder)
+    if direct:
+        return direct
+
+    clips: list[DetectedClip] = []
+    subs = sorted(
+        (p for p in folder.iterdir() if p.is_dir()),
+        key=_natural_key,
+    )
+    for sub in subs:
+        try:
+            clips.extend(detect_folder(sub))
+        except NotADirectoryError:
+            continue
     return clips
 
 

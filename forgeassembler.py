@@ -104,26 +104,31 @@ class _BridgeHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urllib.parse.urlparse(self.path)
         params = urllib.parse.parse_qs(parsed.query)
-        initial = params.get("initial", [""])[0] or None
+        initial = params.get("initial", [""])[0]
 
         windows = webview.windows
         if not windows:
             self._reply(503, "")
             return
 
+        # Only supply `directory` to pywebview when we have a real path;
+        # passing None raises `_path_exists` deep inside pywebview.
+        kwargs: dict = {}
+        if initial:
+            kwargs["directory"] = initial
+
         if parsed.path == "/pick-folder":
             result = windows[0].create_file_dialog(
                 webview.FOLDER_DIALOG,
-                directory=initial,
+                **kwargs,
             )
         elif parsed.path == "/pick-file":
-            # Optional filters: ?filter=Video%20files%20(*.mp4;*.mov)
             filters_raw = params.get("filter", [])
-            file_types = tuple(filters_raw) if filters_raw else ()
+            if filters_raw:
+                kwargs["file_types"] = tuple(filters_raw)
             result = windows[0].create_file_dialog(
                 webview.OPEN_DIALOG,
-                directory=initial,
-                file_types=file_types,
+                **kwargs,
             )
         else:
             self._reply(404, "not found")

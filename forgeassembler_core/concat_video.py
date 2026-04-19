@@ -175,6 +175,7 @@ def build_ffmpeg_command(
     frame_rate_override: Optional[int] = None,
     frame_cache: Optional[dict[str, str]] = None,
     chapters_path: Optional[str] = None,
+    segments_with_audio: Optional[set[str]] = None,
 ) -> FfmpegCommand:
     """Return an `FfmpegCommand` describing the video forge for this project.
 
@@ -190,6 +191,12 @@ def build_ffmpeg_command(
     `chapters_path` is an optional path to a pre-written ffmetadata
     file; when supplied, it's added as an input and `-map_metadata` is
     pointed at it so the output MP4 carries chapter markers.
+
+    `segments_with_audio` is an optional set of Segment.ids known to
+    contain an audio stream. When supplied, any segment NOT in the set
+    with `audio.mode == 'keep'` silently falls back to silence so the
+    filtergraph doesn't reference a missing `[N:a]` stream. Default
+    (None) = assume every segment has audio (back-compat for tests).
     """
     frame_cache = frame_cache or {}
     out = project.output
@@ -370,10 +377,23 @@ def build_ffmpeg_command(
                 f"anullsrc=d={dur_s:g}:r=48000:cl=stereo[{a_base}]",
             )
         elif seg.audio.mode == "keep":
-            filter_parts.append(
-                f"[{vidx}:a]aresample=48000,aformat=channel_layouts=stereo"
-                f"[{a_base}]",
+            # If the caller told us this clip has no audio stream (or
+            # we're conservative: the set was supplied and this segment
+            # isn't in it), synthesize silence so `[N:a]` isn't
+            # referenced against a stream ffmpeg can't find.
+            has_audio = (
+                segments_with_audio is None
+                or seg.id in segments_with_audio
             )
+            if has_audio:
+                filter_parts.append(
+                    f"[{vidx}:a]aresample=48000,aformat=channel_layouts=stereo"
+                    f"[{a_base}]",
+                )
+            else:
+                filter_parts.append(
+                    f"anullsrc=d={dur_s:g}:r=48000:cl=stereo[{a_base}]",
+                )
         else:
             raise ValueError(f"Unknown audio mode: {seg.audio.mode!r}")
 
@@ -634,6 +654,25 @@ def forge_video(
     try:
         frame_cache = _build_frame_cache(project, exe, temp_dir)
 
+        # Probe each non-still segment for an audio stream. Segments
+        # without one (phone captures, silent loops, animation renders)
+        # would otherwise fail the filtergraph with
+        # "Stream specifier ':a' matches no streams".
+        from .probe import probe_has_audio_stream
+        segments_with_audio: set[str] = set()
+        for seg in project.segments():
+            if seg.is_still():
+                continue
+            if seg.audio.mode != "keep":
+                continue  # replace/silence don't reference [N:a]
+            try:
+                if probe_has_audio_stream(seg.video, exe):
+                    segments_with_audio.add(seg.id)
+            except Exception:  # noqa: BLE001
+                # Conservative: if probing fails, treat as no-audio so
+                # we emit silence instead of breaking the encode.
+                pass
+
         # Write chapters to a temp ffmetadata file, to be passed to ffmpeg.
         from .chapters import build_chapters, write_ffmetadata
         chapters = build_chapters(project, layout)
@@ -650,6 +689,7 @@ def forge_video(
             frame_rate_override=frame_rate_override,
             frame_cache=frame_cache,
             chapters_path=chapters_path,
+            segments_with_audio=segments_with_audio,
         )
 
         out_path = Path(cmd.output_path)
@@ -665,14 +705,22 @@ def forge_video(
             errors="replace",
         )
         assert proc.stdout is not None
+        # Keep a tail of the last N lines so any non-zero exit can
+        # surface ffmpeg's own error text in the raised exception.
+        # ffmpeg prints most of its complaints right before it dies.
+        from collections import deque
+        tail: deque[str] = deque(maxlen=60)
         for line in proc.stdout:
+            stripped = line.rstrip()
+            tail.append(stripped)
             if log_callback:
-                log_callback(line.rstrip())
+                log_callback(stripped)
         proc.wait()
         if proc.returncode != 0:
+            snippet = "\n".join(tail) if tail else "(no stderr captured)"
             raise RuntimeError(
-                f"ffmpeg exited with code {proc.returncode} "
-                f"(see log for details).",
+                f"ffmpeg exited with code {proc.returncode}.\n"
+                f"Last {len(tail)} line(s) of ffmpeg output:\n{snippet}",
             )
         return out_path
     finally:

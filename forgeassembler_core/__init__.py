@@ -30,6 +30,7 @@ from .detect import (
     categorize_channels,
     detect_file,
     detect_folder,
+    detect_folder_tree,
 )
 from .filters import (
     bug_overlay_filter,
@@ -114,6 +115,7 @@ __all__ = [
     "corner_position_expr",
     "detect_file",
     "detect_folder",
+    "detect_folder_tree",
     "fade_to_black_audio_acrossfade",
     "fade_to_black_xfade",
     "forge_funscripts",

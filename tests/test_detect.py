@@ -13,6 +13,7 @@ from forgeassembler_core.detect import (
     categorize_channels,
     detect_file,
     detect_folder,
+    detect_folder_tree,
     funscripts_for_stem,
 )
 
@@ -111,3 +112,41 @@ def test_detect_folder_missing(tmp_path: Path):
     bogus = tmp_path / "does-not-exist"
     with pytest.raises(NotADirectoryError):
         detect_folder(bogus)
+
+
+# ── detect_folder_tree (subfolder recursion) ──────────────────────────
+def test_detect_folder_tree_returns_direct_when_present(tmp_path: Path):
+    """Prefer direct videos over descending into subfolders."""
+    _touch(tmp_path / "top.mp4")
+    (tmp_path / "sub").mkdir()
+    _touch(tmp_path / "sub" / "nested.mp4")
+    clips = detect_folder_tree(tmp_path)
+    assert [c.video.name for c in clips] == ["top.mp4"]
+
+
+def test_detect_folder_tree_recurses_when_parent_empty(tmp_path: Path):
+    """Matches the new-project CLI's `.forge/0/0.mp4` convention —
+    videos live one level down from a parent that has none directly."""
+    # Create 0/, 1/, 2/, 10/, 11/ each with a video
+    for idx in ("0", "1", "2", "10", "11"):
+        sub = tmp_path / idx
+        sub.mkdir()
+        _touch(sub / f"{idx}.mp4")
+    clips = detect_folder_tree(tmp_path)
+    # Natural sort: 0, 1, 2, 10, 11 (not lexicographic 0, 1, 10, 11, 2)
+    assert [c.video.stem for c in clips] == ["0", "1", "2", "10", "11"]
+
+
+def test_detect_folder_tree_skips_empty_subfolders(tmp_path: Path):
+    (tmp_path / "0").mkdir()
+    _touch(tmp_path / "0" / "0.mp4")
+    (tmp_path / "1").mkdir()  # empty — should be skipped silently
+    (tmp_path / "2").mkdir()
+    _touch(tmp_path / "2" / "later.mp4")
+    clips = detect_folder_tree(tmp_path)
+    assert [c.video.name for c in clips] == ["0.mp4", "later.mp4"]
+
+
+def test_detect_folder_tree_missing_raises(tmp_path: Path):
+    with pytest.raises(NotADirectoryError):
+        detect_folder_tree(tmp_path / "nope")

@@ -305,6 +305,32 @@ def test_audio_mode_keep_uses_input_audio(tmp_path: Path):
     assert "[0:a]aresample=48000" in cmd.filter_complex
 
 
+def test_audio_mode_keep_falls_back_to_silence_when_no_audio_stream(
+    tmp_path: Path,
+):
+    """Phone captures / silent animations may have no audio stream at
+    all. When the caller signals that via `segments_with_audio` (empty
+    set → this clip has no audio), the pipeline should emit anullsrc
+    instead of referencing a missing `[N:a]` stream."""
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)), normalize_audio=False)
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout, segments_with_audio=set())
+    assert "anullsrc=d=2:r=48000:cl=stereo[a_base0]" in cmd.filter_complex
+    assert "[0:a]aresample" not in cmd.filter_complex
+
+
+def test_audio_mode_keep_default_assumes_audio_present(tmp_path: Path):
+    """Back-compat: when `segments_with_audio` is None, we assume every
+    keep-mode segment has audio (tests that predate the audio probe
+    still pass without wiring)."""
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)), normalize_audio=False)
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)  # default segments_with_audio=None
+    assert "[0:a]aresample=48000" in cmd.filter_complex
+
+
 def test_audio_mode_replace_adds_audio_input(tmp_path: Path):
     v = _mp4(tmp_path, "a")
     mp3 = tmp_path / "voice.mp3"

@@ -74,3 +74,20 @@ def probe_frame_rate_fps(path: str | Path, ffmpeg_exe: str) -> float:
         f"Could not determine frame rate of {path!r}.\n"
         f"ffmpeg stderr:\n{stderr}",
     )
+
+
+def probe_has_audio_stream(path: str | Path, ffmpeg_exe: str) -> bool:
+    """Return True iff `path` declares at least one `Audio:` stream.
+
+    Cheap helper so callers can pre-detect audio-less sources (phone
+    captures, silent loops, animation renders) and swap 'keep' audio
+    mode for silence. Returns False if the probe can't read the file —
+    the safe default for the downstream filtergraph.
+    """
+    try:
+        stderr = _run_probe(path, ffmpeg_exe)
+    except OSError:
+        return False
+    # "Stream #N:M... Audio: codec ..." — only the Audio: anchor is
+    # needed; Data/Video lines never have that substring.
+    return any("Audio:" in line for line in stderr.splitlines())
