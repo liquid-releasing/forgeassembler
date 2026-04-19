@@ -112,11 +112,19 @@ def cmd_forge(args: argparse.Namespace) -> int:
     if not path.is_file():
         print(f"ERROR: project file not found: {path}", file=sys.stderr)
         return 2
+    if args.no_video and args.no_funscripts:
+        print("ERROR: --no-video and --no-funscripts cannot both be set.",
+              file=sys.stderr)
+        return 1
     project = Project.load(path)
     if args.output:
-        project.output_folder = args.output
+        project.output.folder = args.output
     if args.basename:
-        project.output_basename = args.basename
+        project.output.basename = args.basename
+    if args.no_video:
+        project.output.produce_video = False
+    if args.no_funscripts:
+        project.output.produce_funscripts = False
     issues = validate(project)
     errors = [i for i in issues if i.level == "error"]
     if errors:
@@ -127,9 +135,22 @@ def cmd_forge(args: argparse.Namespace) -> int:
 
     segs = project.segments()
     joins = project.joiners()
+    out = project.output
     print(f"[dry-run] Project OK — {len(segs)} segments, {len(joins)} joiners.")
-    print(f"[dry-run] Output folder: {project.output_folder or '(not set)'}")
-    print(f"[dry-run] Output basename: {project.output_basename}")
+    print(f"[dry-run] Output folder: {out.folder or '(not set)'}")
+    print(f"[dry-run] Output basename: {out.basename}")
+    print(f"[dry-run] Resolution: {out.resolution}")
+    produce = []
+    if out.produce_video:
+        produce.append("video")
+    if out.produce_funscripts:
+        produce.append("funscripts")
+    print(f"[dry-run] Producing: {', '.join(produce)}")
+    if out.normalize_audio and out.produce_video:
+        print("[dry-run] Audio loudness normalize: on")
+    if out.bug:
+        print(f"[dry-run] Bug overlay: {out.bug.file} ({out.bug.corner}, "
+              f"opacity {out.bug.opacity})")
     print(f"[dry-run] Channels selected: {', '.join(project.output_channels.selected()) or '(none)'}")
     print("[dry-run] Video forging is not implemented yet — run in the UI or wait for v0.0.1.")
     return 0
@@ -144,6 +165,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_forge.add_argument("project", help="path to project JSON")
     p_forge.add_argument("--output", help="override output folder")
     p_forge.add_argument("--basename", help="override output basename")
+    p_forge.add_argument("--no-video", action="store_true",
+                         help="skip the video pipeline (funscripts only)")
+    p_forge.add_argument("--no-funscripts", action="store_true",
+                         help="skip the funscript pipeline (video only)")
     p_forge.set_defaults(func=cmd_forge)
 
     p_detect = sub.add_parser("detect", help="show what auto-detects in a folder")

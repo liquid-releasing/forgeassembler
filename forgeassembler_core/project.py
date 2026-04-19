@@ -15,6 +15,37 @@ PROJECT_VERSION = "1.0"
 AudioMode = Literal["keep", "replace", "silence"]
 JoinerType = Literal["none", "fade_to_black"]
 OverlayType = Literal["image", "text"]
+BugCorner = Literal["tl", "tr", "bl", "br"]
+
+# Output resolutions the forge pipeline accepts. "source" defers to
+# ffprobe on the first segment at forge time.
+RESOLUTION_KEYS: tuple[str, ...] = (
+    "1080p", "1440p", "4k",
+    "uw_1080p", "uw_1440p",
+    "4_3_hd", "3_4_hd", "9_16_hd",
+    "source",
+)
+
+RESOLUTION_PIXELS: dict[str, Optional[tuple[int, int]]] = {
+    "1080p": (1920, 1080),
+    "1440p": (2560, 1440),
+    "4k": (3840, 2160),
+    "uw_1080p": (2560, 1080),
+    "uw_1440p": (3440, 1440),
+    "4_3_hd": (1440, 1080),
+    "3_4_hd": (1080, 1440),
+    "9_16_hd": (1080, 1920),
+    "source": None,
+}
+
+STILL_IMAGE_EXTENSIONS: frozenset[str] = frozenset({
+    ".png", ".jpg", ".jpeg", ".webp",
+})
+
+
+def is_still_image(path: str | Path) -> bool:
+    """True if the given path names a still image (by extension)."""
+    return Path(path).suffix.lower() in STILL_IMAGE_EXTENSIONS
 
 
 # ── Layers ────────────────────────────────────────────────────────────
@@ -100,6 +131,74 @@ class Overlay:
         )
 
 
+# ── Project-level branding / bug overlay ──────────────────────────────
+@dataclass
+class BugOverlay:
+    """A PNG composited into a corner of every segment's video."""
+    file: str
+    corner: BugCorner = "br"
+    margin_px: int = 24
+    opacity: float = 1.0
+
+    def to_dict(self) -> dict:
+        return {
+            "file": self.file,
+            "corner": self.corner,
+            "margin_px": self.margin_px,
+            "opacity": self.opacity,
+        }
+
+    @staticmethod
+    def from_dict(d: dict) -> "BugOverlay":
+        return BugOverlay(
+            file=d["file"],
+            corner=d.get("corner", "br"),
+            margin_px=int(d.get("margin_px", 24)),
+            opacity=float(d.get("opacity", 1.0)),
+        )
+
+
+# ── Project-level output settings ─────────────────────────────────────
+@dataclass
+class Output:
+    """Project-level output configuration (resolution, audio, toggles, bug)."""
+    folder: Optional[str] = None
+    basename: str = "combined"
+    resolution: str = "1080p"
+    normalize_audio: bool = True
+    produce_video: bool = True
+    produce_funscripts: bool = True
+    bug: Optional[BugOverlay] = None
+
+    def to_dict(self) -> dict:
+        d: dict[str, Any] = {
+            "folder": self.folder,
+            "basename": self.basename,
+            "resolution": self.resolution,
+            "normalize_audio": self.normalize_audio,
+            "produce_video": self.produce_video,
+            "produce_funscripts": self.produce_funscripts,
+        }
+        if self.bug is not None:
+            d["bug"] = self.bug.to_dict()
+        return d
+
+    @staticmethod
+    def from_dict(d: dict | None) -> "Output":
+        if not d:
+            return Output()
+        bug_dict = d.get("bug")
+        return Output(
+            folder=d.get("folder"),
+            basename=d.get("basename", "combined"),
+            resolution=d.get("resolution", "1080p"),
+            normalize_audio=bool(d.get("normalize_audio", True)),
+            produce_video=bool(d.get("produce_video", True)),
+            produce_funscripts=bool(d.get("produce_funscripts", True)),
+            bug=BugOverlay.from_dict(bug_dict) if bug_dict else None,
+        )
+
+
 # ── Items ─────────────────────────────────────────────────────────────
 @dataclass
 class Segment:
@@ -110,9 +209,14 @@ class Segment:
     funscripts_source: Literal["auto_detect", "explicit", "none"] = "auto_detect"
     funscripts_folder: Optional[str] = None
     explicit_funscripts: dict[str, str] = field(default_factory=dict)
+    still_duration_s: Optional[float] = None  # required when video is a PNG
+    color_temperature_k: Optional[int] = None  # 4000..10000 when set
     bookmark: Optional[str] = None  # Phase 2
     trim_start: Optional[str] = None  # Phase 2, HH:MM:SS.mmm
     trim_end: Optional[str] = None  # Phase 2
+
+    def is_still(self) -> bool:
+        return is_still_image(self.video)
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {
@@ -129,6 +233,10 @@ class Segment:
             d["funscripts"]["files"] = self.explicit_funscripts
         elif self.funscripts_source == "auto_detect" and self.funscripts_folder:
             d["funscripts"]["folder"] = self.funscripts_folder
+        if self.still_duration_s is not None:
+            d["still_duration_s"] = self.still_duration_s
+        if self.color_temperature_k is not None:
+            d["color_temperature_k"] = self.color_temperature_k
         if self.bookmark:
             d["bookmark"] = self.bookmark
         if self.trim_start:
@@ -148,6 +256,8 @@ class Segment:
             funscripts_source=fs.get("source", "auto_detect"),
             funscripts_folder=fs.get("folder"),
             explicit_funscripts=fs.get("files", {}),
+            still_duration_s=d.get("still_duration_s"),
+            color_temperature_k=d.get("color_temperature_k"),
             bookmark=d.get("bookmark"),
             trim_start=d.get("trim_start"),
             trim_end=d.get("trim_end"),
@@ -223,8 +333,7 @@ class OutputChannels:
 class Project:
     items: list[Segment | Joiner] = field(default_factory=list)
     output_channels: OutputChannels = field(default_factory=OutputChannels)
-    output_folder: Optional[str] = None
-    output_basename: str = "combined"
+    output: Output = field(default_factory=Output)
     audio_beds: list[dict] = field(default_factory=list)  # Phase 2
     version: str = PROJECT_VERSION
 
@@ -248,10 +357,7 @@ class Project:
     def to_dict(self) -> dict:
         return {
             "version": self.version,
-            "output": {
-                "folder": self.output_folder,
-                "basename": self.output_basename,
-            },
+            "output": self.output.to_dict(),
             "output_channels": self.output_channels.to_dict(),
             "items": [i.to_dict() for i in self.items],
             "audio_beds": list(self.audio_beds),
@@ -259,7 +365,6 @@ class Project:
 
     @staticmethod
     def from_dict(d: dict) -> "Project":
-        out = d.get("output") or {}
         items: list[Segment | Joiner] = []
         for raw in d.get("items", []):
             if raw.get("type") == "segment":
@@ -271,8 +376,7 @@ class Project:
         return Project(
             items=items,
             output_channels=OutputChannels.from_dict(d.get("output_channels")),
-            output_folder=out.get("folder"),
-            output_basename=out.get("basename", "combined"),
+            output=Output.from_dict(d.get("output")),
             audio_beds=list(d.get("audio_beds", [])),
             version=d.get("version", PROJECT_VERSION),
         )
@@ -359,6 +463,36 @@ def validate(project: Project) -> list[ValidationIssue]:
                     item_id=seg.id,
                 ))
 
+        # Still image / duration coupling
+        if seg.is_still():
+            if seg.still_duration_s is None:
+                issues.append(ValidationIssue(
+                    "error",
+                    "Segment video is a still image; still_duration_s is required.",
+                    item_id=seg.id,
+                ))
+            elif seg.still_duration_s <= 0:
+                issues.append(ValidationIssue(
+                    "error",
+                    "still_duration_s must be positive.",
+                    item_id=seg.id,
+                ))
+        elif seg.still_duration_s is not None:
+            issues.append(ValidationIssue(
+                "warning",
+                "still_duration_s is set but the video is not a still image; it will be ignored.",
+                item_id=seg.id,
+            ))
+
+        # Color temperature bounds
+        if seg.color_temperature_k is not None:
+            if not (4000 <= seg.color_temperature_k <= 10000):
+                issues.append(ValidationIssue(
+                    "error",
+                    "color_temperature_k must be between 4000 and 10000.",
+                    item_id=seg.id,
+                ))
+
     # Joiner params
     for j in project.joiners():
         if j.joiner_type == "fade_to_black":
@@ -376,11 +510,46 @@ def validate(project: Project) -> list[ValidationIssue]:
                     item_id=j.id,
                 ))
 
-    if not project.output_folder:
+    # Output settings
+    out = project.output
+    if not out.folder:
         issues.append(ValidationIssue(
             "warning",
             "output.folder is not set; CLI forge will require --output.",
         ))
+    if out.resolution not in RESOLUTION_KEYS:
+        issues.append(ValidationIssue(
+            "error",
+            f"output.resolution '{out.resolution}' is not one of "
+            f"{', '.join(RESOLUTION_KEYS)}.",
+        ))
+    if not out.produce_video and not out.produce_funscripts:
+        issues.append(ValidationIssue(
+            "error",
+            "At least one of produce_video / produce_funscripts must be true.",
+        ))
+    if out.bug is not None:
+        bug = out.bug
+        if not Path(bug.file).exists():
+            issues.append(ValidationIssue(
+                "warning",
+                f"Bug overlay file not found: {bug.file}",
+            ))
+        if bug.corner not in ("tl", "tr", "bl", "br"):
+            issues.append(ValidationIssue(
+                "error",
+                f"bug.corner '{bug.corner}' must be one of tl, tr, bl, br.",
+            ))
+        if not (0.0 <= bug.opacity <= 1.0):
+            issues.append(ValidationIssue(
+                "error",
+                "bug.opacity must be between 0.0 and 1.0.",
+            ))
+        if bug.margin_px < 0:
+            issues.append(ValidationIssue(
+                "error",
+                "bug.margin_px must be non-negative.",
+            ))
 
     return issues
 

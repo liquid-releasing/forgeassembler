@@ -13,10 +13,14 @@ import streamlit as st
 from forgeassembler_core import (
     ABOUT_MARKDOWN,
     APP_NAME,
+    BugOverlay,
     Joiner as CoreJoiner,
+    Output,
     OutputChannels,
     Project,
     ProjectJoiner,
+    RESOLUTION_KEYS,
+    RESOLUTION_PIXELS,
     Segment,
     TAGLINE,
     VERSION,
@@ -46,7 +50,7 @@ st.set_page_config(
 def _initial_project() -> Project:
     home = Path.home()
     default_out = home / "Videos" / "forgeassembler"
-    return Project(output_folder=str(default_out))
+    return Project(output=Output(folder=str(default_out)))
 
 
 if "project" not in st.session_state:
@@ -83,8 +87,8 @@ with st.sidebar:
             except Exception as exc:  # noqa: BLE001
                 st.error(f"Could not load project: {exc}")
 
-        if project.items and project.output_folder:
-            save_path = Path(project.output_folder) / f"{project.output_basename}.forgeproject.json"
+        if project.items and project.output.folder:
+            save_path = Path(project.output.folder) / f"{project.output.basename}.forgeproject.json"
             if st.button("Save project JSON", use_container_width=True):
                 try:
                     project.save(save_path)
@@ -96,13 +100,87 @@ with st.sidebar:
             st.session_state["project"] = _initial_project()
             st.rerun()
 
-    # Output channels
+    # Produce what?
+    with st.expander("Produce", expanded=True):
+        out = project.output
+        out.produce_video = st.checkbox("Video (MP4)", value=out.produce_video)
+        out.produce_funscripts = st.checkbox("Funscripts", value=out.produce_funscripts)
+        if not out.produce_video and not out.produce_funscripts:
+            st.error("At least one of Video or Funscripts must be on.")
+        st.caption("Chapter markers are always written when video is on.")
+
+    # Output resolution + audio normalize + bug
+    with st.expander("Output settings", expanded=False):
+        out = project.output
+        res_index = (
+            list(RESOLUTION_KEYS).index(out.resolution)
+            if out.resolution in RESOLUTION_KEYS else 0
+        )
+        def _res_label(key: str) -> str:
+            px = RESOLUTION_PIXELS.get(key)
+            return f"{key} ({px[0]}×{px[1]})" if px else f"{key} (first segment)"
+        out.resolution = st.selectbox(
+            "Resolution",
+            options=list(RESOLUTION_KEYS),
+            index=res_index,
+            format_func=_res_label,
+            disabled=not out.produce_video,
+        )
+        out.normalize_audio = st.checkbox(
+            "Normalize audio loudness (−16 LUFS)",
+            value=out.normalize_audio,
+            disabled=not out.produce_video,
+        )
+        # Bug overlay (project-level)
+        bug_on = st.checkbox(
+            "Corner bug overlay",
+            value=out.bug is not None,
+            disabled=not out.produce_video,
+        )
+        if bug_on and out.bug is None:
+            out.bug = BugOverlay(file="")
+        elif not bug_on:
+            out.bug = None
+        if out.bug is not None:
+            out.bug.file = st.text_input(
+                "Bug PNG path",
+                value=out.bug.file,
+                placeholder=r"C:\brand\logo_bug.png",
+            )
+            out.bug.corner = st.selectbox(
+                "Corner",
+                options=["tl", "tr", "bl", "br"],
+                index=["tl", "tr", "bl", "br"].index(out.bug.corner),
+                format_func=lambda k: {
+                    "tl": "Top-left", "tr": "Top-right",
+                    "bl": "Bottom-left", "br": "Bottom-right",
+                }[k],
+            )
+            out.bug.opacity = st.slider(
+                "Opacity", 0.0, 1.0, float(out.bug.opacity), 0.05,
+            )
+            out.bug.margin_px = int(st.number_input(
+                "Margin (px)", min_value=0, max_value=500, value=int(out.bug.margin_px),
+            ))
+
+    # Output channels (funscripts)
     with st.expander("Output channels", expanded=True):
         oc = project.output_channels
-        oc.main = st.checkbox("Main (2D)", value=oc.main)
-        oc.multi_axis = st.checkbox("Multi-axis (pitch/roll/surge/sway/twist)", value=oc.multi_axis)
-        oc.three_phase_estim = st.checkbox("3-phase estim (alpha + beta)", value=oc.three_phase_estim)
-        oc.prostate = st.checkbox("Prostate channels", value=oc.prostate)
+        fs_on = project.output.produce_funscripts
+        if not fs_on:
+            st.caption("Funscripts production is off; channels are disabled.")
+        oc.main = st.checkbox("Main (2D)", value=oc.main, disabled=not fs_on)
+        oc.multi_axis = st.checkbox(
+            "Multi-axis (pitch/roll/surge/sway/twist)",
+            value=oc.multi_axis, disabled=not fs_on,
+        )
+        oc.three_phase_estim = st.checkbox(
+            "3-phase estim (alpha + beta)",
+            value=oc.three_phase_estim, disabled=not fs_on,
+        )
+        oc.prostate = st.checkbox(
+            "Prostate channels", value=oc.prostate, disabled=not fs_on,
+        )
         st.caption("Phase 2: audio estim, pulse frequency, 4-phase.")
 
     # Project list
@@ -217,11 +295,11 @@ with tab_build:
 
     st.divider()
     st.subheader("Output")
-    project.output_folder = st.text_input(
-        "Output folder", value=project.output_folder or "", placeholder=r"C:\out"
+    project.output.folder = st.text_input(
+        "Output folder", value=project.output.folder or "", placeholder=r"C:\out"
     )
-    project.output_basename = st.text_input(
-        "Output basename", value=project.output_basename or "combined"
+    project.output.basename = st.text_input(
+        "Output basename", value=project.output.basename or "combined"
     )
 
     st.divider()
