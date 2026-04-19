@@ -115,6 +115,46 @@ def _detect_channels_cached(folder: str, stem: str, mtime_hint: float) -> list[s
     return sorted(funscripts_for_stem(Path(folder), stem).keys())
 
 
+def _segment_duration_ms(seg: Segment, ffmpeg_exe: str | None) -> int | None:
+    """Best-effort duration for a single segment — ffmpeg probe for
+    videos (cached), declared still_duration for PNGs. Returns None if
+    ffmpeg isn't available or the file can't be probed."""
+    if seg.is_still():
+        return int((seg.still_duration_s or 0) * 1000)
+    if ffmpeg_exe is None:
+        return None
+    p = Path(seg.video)
+    if not p.exists():
+        return None
+    try:
+        return _probe_video_ms(str(p), p.stat().st_mtime, ffmpeg_exe)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _section_duration_ms(sec: Section, ffmpeg_exe: str | None) -> int:
+    """Sum of clip durations within a section (ignores the leading
+    joiner; section duration is only the clips inside it)."""
+    total = 0
+    for seg in sec.segments:
+        d = _segment_duration_ms(seg, ffmpeg_exe)
+        if d is not None:
+            total += d
+    return total
+
+
+def _fmt_duration(ms: int) -> str:
+    """Return a compact mm:ss label (or h:mm:ss for long durations)."""
+    if ms <= 0:
+        return "0:00"
+    total_s = int(round(ms / 1000))
+    h, rem = divmod(total_s, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
 def _estimate_total_duration_ms(proj: Project) -> int | None:
     from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
     from forgeassembler_core.joiners import instantiate as _instantiate_joiner
@@ -127,16 +167,9 @@ def _estimate_total_duration_ms(proj: Project) -> int | None:
     total = 0
     for item in proj.items:
         if isinstance(item, Segment):
-            if item.is_still():
-                total += int((item.still_duration_s or 0) * 1000)
-                continue
-            p = Path(item.video)
-            if not p.exists():
-                continue
-            try:
-                total += _probe_video_ms(str(p), p.stat().st_mtime, ffmpeg_exe)
-            except Exception:  # noqa: BLE001
-                continue
+            d = _segment_duration_ms(item, ffmpeg_exe)
+            if d is not None:
+                total += d
         elif isinstance(item, ProjectJoiner):
             try:
                 total += _instantiate_joiner(
@@ -496,6 +529,15 @@ with tab_build:
             "Empty project — add a folder or file below to get started.",
         )
 
+    # Resolve ffmpeg once up-front for per-clip / per-section probes.
+    # Cached probe helper silently skips when the exe isn't available.
+    _ffmpeg_exe_for_ui: str | None
+    try:
+        from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
+        _ffmpeg_exe_for_ui = _resolve_ffmpeg_exe()
+    except (ImportError, RuntimeError):
+        _ffmpeg_exe_for_ui = None
+
     # ── Existing sections, each rendered as a bordered card ───────
     for sec_idx, sec in enumerate(project.sections):
         with st.container(border=True):
@@ -553,9 +595,14 @@ with tab_build:
                     project.remove_section(sec.id)
                     st.rerun()
 
+            sec_dur_ms = _section_duration_ms(sec, _ffmpeg_exe_for_ui)
+            sec_dur_label = (
+                f" · **{_fmt_duration(sec_dur_ms)}**"
+                if sec_dur_ms > 0 else ""
+            )
             st.markdown(
                 f"**Section {sec_idx + 1}** · "
-                f"{len(sec.segments)} clip(s) · chapter: "
+                f"{len(sec.segments)} clip(s){sec_dur_label} · chapter: "
                 f"_{sec.chapter_name()}_",
             )
 
@@ -576,11 +623,24 @@ with tab_build:
 
                     with cols[1]:
                         st.markdown(f"**{vpath.name}**")
+                        # Duration line first — lets users size audio
+                        # overlays and title cards without leaving the UI.
+                        dur_ms = _segment_duration_ms(seg, _ffmpeg_exe_for_ui)
                         if seg.is_still():
-                            st.caption(
-                                f"Still image · "
-                                f"{seg.still_duration_s or 0:g}s hold",
+                            dur_caption = (
+                                f"Still image · {seg.still_duration_s or 0:g}s hold"
                             )
+                        elif dur_ms is not None and dur_ms > 0:
+                            dur_caption = (
+                                f"Duration: {_fmt_duration(dur_ms)} "
+                                f"({dur_ms / 1000:.1f}s)"
+                            )
+                        else:
+                            dur_caption = "Duration: (not probed)"
+                        st.caption(dur_caption)
+
+                        if seg.is_still():
+                            pass  # already covered in duration caption
                         else:
                             # Detected funscript channels next to the clip
                             folder = vpath.parent
