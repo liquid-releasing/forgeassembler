@@ -13,6 +13,7 @@ from forgeassembler_core.project import (
     AudioLayer,
     BugOverlay,
     Joiner,
+    Metadata,
     Output,
     OutputChannels,
     Overlay,
@@ -425,6 +426,69 @@ def test_validate_previous_last_frame_happy_path(tmp_path: Path):
     assert not any(
         "previous_last_frame" in e.message for e in errors
     )
+
+
+# ── Metadata ──────────────────────────────────────────────────────────
+def test_metadata_defaults_all_none():
+    md = Metadata()
+    assert md.title is None
+    assert md.artist is None
+    assert md.date is None
+    assert md.genre is None
+    assert md.comment is None
+    assert md.copyright is None
+    assert md.non_empty_items() == []
+
+
+def test_metadata_to_dict_omits_empty_fields():
+    md = Metadata(title="Hello", artist="Liquid Releasing")
+    d = md.to_dict()
+    assert d == {"title": "Hello", "artist": "Liquid Releasing"}
+    # None/empty values don't appear
+    assert "date" not in d
+    assert "comment" not in d
+
+
+def test_metadata_roundtrip():
+    md = Metadata(
+        title="Wild Ride",
+        artist="Liquid Releasing",
+        date="2026-04-19",
+        genre="Haptic",
+        comment="v1.2 final cut",
+        copyright="© 2026 Liquid Releasing",
+    )
+    md2 = Metadata.from_dict(md.to_dict())
+    assert md2 == md
+
+
+def test_metadata_non_empty_items_in_declared_order():
+    md = Metadata(title="T", artist="A", genre="G")
+    items = md.non_empty_items()
+    # Preserves the authored order: title, artist, date, genre, comment, copyright
+    assert items == [("title", "T"), ("artist", "A"), ("genre", "G")]
+
+
+def test_output_metadata_roundtrip():
+    o = Output(
+        folder="/tmp/out",
+        metadata=Metadata(title="My Video", artist="LR"),
+    )
+    o2 = Output.from_dict(o.to_dict())
+    assert o2.metadata.title == "My Video"
+    assert o2.metadata.artist == "LR"
+    assert o2.metadata.date is None
+
+
+def test_output_without_metadata_roundtrip():
+    """An Output with only empty metadata should not serialize the
+    metadata key (keeps existing JSON files clean)."""
+    o = Output(folder="/tmp/out")
+    d = o.to_dict()
+    assert "metadata" not in d
+    # And round-trips back to defaults
+    o2 = Output.from_dict(d)
+    assert o2.metadata == Metadata()
 
 
 # ── Full roundtrip with new fields ────────────────────────────────────

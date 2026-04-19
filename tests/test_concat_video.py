@@ -23,6 +23,7 @@ from forgeassembler_core.project import (
     AudioLayer,
     BugOverlay,
     Joiner,
+    Metadata,
     Output,
     OutputChannels,
     Project,
@@ -460,6 +461,75 @@ def test_output_args_include_h264_and_aac(tmp_path: Path):
     assert "libx264" in cmd.output_args
     assert "aac" in cmd.output_args
     assert "yuv420p" in cmd.output_args
+
+
+# ── Metadata ──────────────────────────────────────────────────────────
+def test_output_always_tags_encoder(tmp_path: Path):
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    # `encoder` is auto-set even without user metadata
+    encoder_idx = cmd.output_args.index("-metadata") if "-metadata" in cmd.output_args else -1
+    assert encoder_idx != -1
+    # Find any arg that starts with 'encoder='
+    assert any(
+        a.startswith("encoder=ForgeAssembler") for a in cmd.output_args
+    )
+
+
+def test_output_emits_user_metadata(tmp_path: Path):
+    v = _mp4(tmp_path, "a")
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(v)),
+        metadata=Metadata(
+            title="Wild Ride", artist="Liquid Releasing",
+            date="2026", genre="Haptic",
+        ),
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    args = cmd.output_args
+    assert "title=Wild Ride" in args
+    assert "artist=Liquid Releasing" in args
+    assert "date=2026" in args
+    assert "genre=Haptic" in args
+
+
+def test_output_metadata_omits_empty(tmp_path: Path):
+    v = _mp4(tmp_path, "a")
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(v)),
+        metadata=Metadata(title="Only A Title"),
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    # Should not emit metadata for fields that were left None
+    assert not any(a.startswith("artist=") for a in cmd.output_args)
+    assert not any(a.startswith("date=") for a in cmd.output_args)
+    assert any(a == "title=Only A Title" for a in cmd.output_args)
+
+
+def test_output_metadata_to_argv_preserves_pairs(tmp_path: Path):
+    """Ensure the rendered argv has `-metadata key=value` structure."""
+    v = _mp4(tmp_path, "a")
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(v)),
+        metadata=Metadata(title="T"),
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    argv = cmd.to_argv("ffmpeg")
+    # Find the title pair
+    for i, a in enumerate(argv):
+        if a == "-metadata" and i + 1 < len(argv) and argv[i + 1] == "title=T":
+            return  # success
+    raise AssertionError(
+        f"Did not find -metadata title=T pair in argv: {argv}",
+    )
 
 
 # ── fade_to_black colour parameter ────────────────────────────────────

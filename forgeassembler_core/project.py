@@ -161,6 +161,59 @@ class BugOverlay:
 
 # ── Project-level output settings ─────────────────────────────────────
 @dataclass
+class Metadata:
+    """MP4 container metadata embedded in the forged output.
+
+    These travel with the file. Players surface them in different
+    places — VLC briefly overlays `title` on playback, File Explorer
+    lists them in Properties, Plex/Jellyfin read them for library
+    cards, YouTube reads `title` as the upload title.
+    """
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    date: Optional[str] = None   # e.g. "2026-04-19" or "2026"
+    genre: Optional[str] = None
+    comment: Optional[str] = None
+    copyright: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        # Only serialize non-empty fields so JSON stays clean.
+        d: dict[str, Any] = {}
+        for key in ("title", "artist", "date", "genre", "comment", "copyright"):
+            value = getattr(self, key)
+            if value:
+                d[key] = value
+        return d
+
+    @staticmethod
+    def from_dict(d: dict | None) -> "Metadata":
+        if not d:
+            return Metadata()
+        return Metadata(
+            title=d.get("title"),
+            artist=d.get("artist"),
+            date=d.get("date"),
+            genre=d.get("genre"),
+            comment=d.get("comment"),
+            copyright=d.get("copyright"),
+        )
+
+    def non_empty_items(self) -> list[tuple[str, str]]:
+        """Return (key, value) pairs for every non-empty field, suitable
+        for rendering as ffmpeg `-metadata key=value` pairs."""
+        return [
+            (k, v) for k, v in (
+                ("title", self.title),
+                ("artist", self.artist),
+                ("date", self.date),
+                ("genre", self.genre),
+                ("comment", self.comment),
+                ("copyright", self.copyright),
+            ) if v
+        ]
+
+
+@dataclass
 class Output:
     """Project-level output configuration (resolution, audio, toggles, bug)."""
     folder: Optional[str] = None
@@ -170,6 +223,7 @@ class Output:
     produce_video: bool = True
     produce_funscripts: bool = True
     bug: Optional[BugOverlay] = None
+    metadata: Metadata = field(default_factory=Metadata)
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {
@@ -182,6 +236,9 @@ class Output:
         }
         if self.bug is not None:
             d["bug"] = self.bug.to_dict()
+        md = self.metadata.to_dict()
+        if md:
+            d["metadata"] = md
         return d
 
     @staticmethod
@@ -197,6 +254,7 @@ class Output:
             produce_video=bool(d.get("produce_video", True)),
             produce_funscripts=bool(d.get("produce_funscripts", True)),
             bug=BugOverlay.from_dict(bug_dict) if bug_dict else None,
+            metadata=Metadata.from_dict(d.get("metadata")),
         )
 
 

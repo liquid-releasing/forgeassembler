@@ -437,6 +437,13 @@ def build_ffmpeg_command(
         "-ar", "48000",
     ]
 
+    # Container metadata. User-set fields first; ForgeAssembler signs
+    # the output with its version as the encoder tag.
+    from .about import APP_NAME, VERSION
+    for key, value in out.metadata.non_empty_items():
+        output_args.extend(["-metadata", f"{key}={value}"])
+    output_args.extend(["-metadata", f"encoder={APP_NAME} {VERSION}"])
+
     return FfmpegCommand(
         inputs=inputs,
         filter_complex=filter_complex,

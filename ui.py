@@ -208,6 +208,35 @@ with st.sidebar:
                 "Margin (px)", min_value=0, max_value=500, value=int(out.bug.margin_px),
             ))
 
+    # MP4 container metadata (title, artist, date, …).
+    with st.expander("Metadata", expanded=False):
+        md = project.output.metadata
+        st.caption(
+            "Embedded in the MP4 container. VLC briefly overlays `title` "
+            "on playback; File Explorer / Plex / YouTube read these too."
+        )
+        md.title = st.text_input("Title", value=md.title or "") or None
+        md.artist = st.text_input(
+            "Artist / Author", value=md.artist or "",
+        ) or None
+        md.date = st.text_input(
+            "Date",
+            value=md.date or "",
+            help="e.g. '2026-04-19' or '2026'",
+        ) or None
+        md.genre = st.text_input("Genre", value=md.genre or "") or None
+        md.comment = st.text_area(
+            "Comment / description",
+            value=md.comment or "",
+            height=68,
+            help="Free-form. A good home for version notes like 'v1.2 final cut'.",
+        ) or None
+        md.copyright = st.text_input(
+            "Copyright",
+            value=md.copyright or "",
+            placeholder="© 2026 Liquid Releasing",
+        ) or None
+
     # Output channels (funscripts)
     with st.expander("Output channels", expanded=True):
         oc = project.output_channels

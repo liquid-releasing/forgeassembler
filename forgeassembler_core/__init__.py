@@ -44,6 +44,7 @@ from .project import (
     AudioLayer,
     BugOverlay,
     Joiner as ProjectJoiner,  # alias to avoid clash with joiners.Joiner
+    Metadata,
     Output,
     OutputChannels,
     Overlay,
@@ -68,6 +69,7 @@ __all__ = [
     "JOINER_REGISTRY",
     "Joiner",
     "JoinerSpec",
+    "Metadata",
     "Output",
     "OutputChannels",
     "Overlay",
