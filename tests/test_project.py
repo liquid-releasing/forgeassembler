@@ -347,6 +347,86 @@ def test_validate_bug_missing_file_warns(tmp_path: Path):
     )
 
 
+# ── Segment background ────────────────────────────────────────────────
+def test_segment_background_default_is_black(tmp_path: Path):
+    seg = Segment(id="s1", video=str(tmp_path / "a.mp4"))
+    assert seg.background == "black"
+
+
+def test_segment_background_previous_last_frame_roundtrip(tmp_path: Path):
+    png = tmp_path / "card.png"
+    png.write_bytes(b"")
+    seg = Segment(
+        id="s1", video=str(png),
+        still_duration_s=2.0,
+        background="previous_last_frame",
+    )
+    d = seg.to_dict()
+    assert d["background"] == "previous_last_frame"
+    seg2 = Segment.from_dict(d)
+    assert seg2.background == "previous_last_frame"
+
+
+def test_segment_background_black_omitted_from_dict(tmp_path: Path):
+    """Default 'black' doesn't appear in serialized output to keep
+    existing JSON files clean."""
+    seg = Segment(id="s1", video=str(tmp_path / "a.mp4"))
+    assert "background" not in seg.to_dict()
+
+
+def test_validate_previous_last_frame_requires_still(tmp_path: Path):
+    v1 = _make_video(tmp_path, "a")
+    v2 = _make_video(tmp_path, "b")
+    p = Project(items=[
+        Segment(id="s1", video=str(v1)),
+        Segment(id="s2", video=str(v2), background="previous_last_frame"),
+    ])
+    issues = validate(p)
+    assert any(
+        "background=previous_last_frame is only supported for "
+        "still-image segments" in i.message and i.level == "error"
+        for i in issues
+    )
+
+
+def test_validate_previous_last_frame_requires_preceding_segment(tmp_path: Path):
+    png = tmp_path / "card.png"
+    png.write_bytes(b"")
+    p = Project(items=[
+        Segment(
+            id="s1", video=str(png),
+            still_duration_s=2.0,
+            background="previous_last_frame",
+        ),
+    ])
+    issues = validate(p)
+    assert any(
+        "requires a preceding segment" in i.message and i.level == "error"
+        for i in issues
+    )
+
+
+def test_validate_previous_last_frame_happy_path(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    png = tmp_path / "card.png"
+    png.write_bytes(b"")
+    p = Project(
+        items=[
+            Segment(id="s1", video=str(v)),
+            Segment(
+                id="s2", video=str(png),
+                still_duration_s=2.0,
+                background="previous_last_frame",
+            ),
+        ],
+        output=Output(folder=str(tmp_path / "out")),
+    )
+    errors = [i for i in validate(p) if i.level == "error"]
+    assert not any(
+        "previous_last_frame" in e.message for e in errors
+    )
+
+
 # ── Full roundtrip with new fields ────────────────────────────────────
 def test_project_full_roundtrip_with_new_fields(tmp_path: Path):
     v = _make_video(tmp_path, "a")

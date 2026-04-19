@@ -166,40 +166,38 @@ transparent letter-shaped holes.
 ## Step 9 — Use it in ForgeAssembler
 
 A cutout title card works best **over a second layer of something**,
-since the letters are transparent holes. You have two good options in
-Phase 1.
+since the letters are transparent holes. ForgeAssembler composites it
+for you natively — you don't need to flatten the PNG against a reveal
+image yourself.
 
-### Option A — Over a solid color or frozen frame (simplest)
+### Via the UI
 
-Use the cutout PNG as the base video of a segment. The "transparency"
-will read as **black** in the forged output, because ForgeAssembler
-scales the PNG onto a black canvas. This gives you a straight black
-card with crisp letter holes — which, on a black video background,
-looks identical to plain black.
+1. Launch ForgeAssembler.
+2. Add the segment you want the cutout to appear *over* first (e.g. the
+   preceding video clip).
+3. On the **Build** tab, use **"Add a title card (PNG still)"**:
+   - **PNG file** — the cutout PNG you just exported.
+   - **Hold seconds** — how long the cutout should stay on screen
+     (e.g. `2.5`).
+   - **Background** — select **"Previous segment's last frame"**.
+4. ForgeAssembler extracts the last frame of your preceding clip,
+   composites the cutout PNG over it, and holds the result for the
+   duration you picked. The transparent letter-holes reveal the frozen
+   frame underneath.
+5. Optionally add audio — a replacement MP3/WAV sting, or silence.
+6. Forge.
 
-That's usually *not* what you want with a cutout card. Use option B.
+### Via project JSON
 
-### Option B — Over a held frame or reveal clip (recommended)
-
-The reveal effect needs **something behind the cutout letters**. In
-Phase 1, you build this by:
-
-1. Taking a screenshot of the frame you want revealed (e.g. the last
-   frame of the previous clip, a stylized branded still, or a solid
-   color).
-2. Composing the cutout card **on top of that image in your image
-   tool** (Photoshop, Affinity, or even Figma itself) — paste the
-   cutout PNG over the reveal image and flatten to a single PNG.
-3. Using that flattened PNG as the title card segment in ForgeAssembler.
-
-The ForgeAssembler project JSON for either option looks the same:
+A cutout-over-held-frame segment looks like this:
 
 ```json
 {
   "id": "seg-reveal-1",
   "type": "segment",
-  "video": "C:/Users/bruce/Videos/title_cards/wildride_reveal_1080p.png",
+  "video": "C:/Users/bruce/Videos/title_cards/wildride_1080p.png",
   "still_duration_s": 2.5,
+  "background": "previous_last_frame",
   "audio": {
     "mode": "replace",
     "file": "C:/Users/bruce/Videos/title_cards/sting.mp3"
@@ -207,12 +205,18 @@ The ForgeAssembler project JSON for either option looks the same:
 }
 ```
 
-### Phase 2 promise
+The segment immediately before this one in the project's `items` list
+supplies the frame that gets frozen behind the cutout letters.
 
-In Phase 2, ForgeAssembler adds a **"last frame of the previous
-segment as background"** primitive — at that point a cutout PNG
-becomes a first-class overlay you can drop onto a held frame without
-flattening it yourself. For now, flatten in Figma.
+### Why not just use a black background?
+
+If you set `"background": "black"` (or leave it off — that's the
+default), the transparent letters render as black against black and
+you won't see the cutout at all. That mode is intended for the
+white-on-transparent workflow covered in the
+[companion guide](getting_started_white_on_transparent.md), where the
+visible pixels *are* the text. For the scope-reveal effect of this
+guide, always pair the cutout with `previous_last_frame`.
 
 ---
 
@@ -239,5 +243,6 @@ flattening it yourself. For now, flatten in Figma.
 - **Letters look jagged.** Figma's boolean at export is clean — if the
   PNG itself looks jagged, your viewer is displaying it at less than
   100% zoom. In the video output, it will be smooth.
-- **Cutout shows black in the forged video, not a reveal.** You need
-  something behind the cutout card (see Step 9, Option B).
+- **Cutout shows black in the forged video, not a reveal.** You left
+  the **Background** set to "Black" (or omitted it). Re-add the
+  segment with **Background: Previous segment's last frame** (Step 9).

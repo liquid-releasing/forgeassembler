@@ -87,7 +87,9 @@ def test_validate_simple_project(tmp_path: Path):
     assert r.returncode == 0
 
 
-def test_forge_dry_run_reports_counts(tmp_path: Path):
+def test_forge_fails_cleanly_on_unreadable_video(tmp_path: Path):
+    """A zero-byte 'video' can't be probed — forge should exit non-zero
+    with an error, not crash."""
     vid = tmp_path / "a.mp4"
     vid.write_bytes(b"")
     p = tmp_path / "p.forgeproject.json"
@@ -100,5 +102,22 @@ def test_forge_dry_run_reports_counts(tmp_path: Path):
         encoding="utf-8",
     )
     r = run("forge", str(p))
-    assert r.returncode == 0
-    assert "1 segments" in r.stdout
+    assert r.returncode != 0
+    assert "ERROR" in r.stderr
+
+
+def test_forge_rejects_no_video_and_no_funscripts_together(tmp_path: Path):
+    vid = tmp_path / "a.mp4"
+    vid.write_bytes(b"")
+    p = tmp_path / "p.forgeproject.json"
+    p.write_text(
+        json.dumps({
+            "version": "1.0",
+            "items": [{"id": "s1", "type": "segment", "video": str(vid)}],
+            "output": {"folder": str(tmp_path / "out")},
+        }),
+        encoding="utf-8",
+    )
+    r = run("forge", str(p), "--no-video", "--no-funscripts")
+    assert r.returncode != 0
+    assert "cannot both be set" in r.stderr

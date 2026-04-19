@@ -16,6 +16,7 @@ AudioMode = Literal["keep", "replace", "silence"]
 JoinerType = Literal["none", "fade_to_black"]
 OverlayType = Literal["image", "text"]
 BugCorner = Literal["tl", "tr", "bl", "br"]
+SegmentBackground = Literal["black", "previous_last_frame"]
 
 # Output resolutions the forge pipeline accepts. "source" defers to
 # ffprobe on the first segment at forge time.
@@ -211,6 +212,7 @@ class Segment:
     explicit_funscripts: dict[str, str] = field(default_factory=dict)
     still_duration_s: Optional[float] = None  # required when video is a PNG
     color_temperature_k: Optional[int] = None  # 4000..10000 when set
+    background: SegmentBackground = "black"  # only meaningful for stills
     bookmark: Optional[str] = None  # Phase 2
     trim_start: Optional[str] = None  # Phase 2, HH:MM:SS.mmm
     trim_end: Optional[str] = None  # Phase 2
@@ -237,6 +239,8 @@ class Segment:
             d["still_duration_s"] = self.still_duration_s
         if self.color_temperature_k is not None:
             d["color_temperature_k"] = self.color_temperature_k
+        if self.background != "black":
+            d["background"] = self.background
         if self.bookmark:
             d["bookmark"] = self.bookmark
         if self.trim_start:
@@ -258,6 +262,7 @@ class Segment:
             explicit_funscripts=fs.get("files", {}),
             still_duration_s=d.get("still_duration_s"),
             color_temperature_k=d.get("color_temperature_k"),
+            background=d.get("background", "black"),
             bookmark=d.get("bookmark"),
             trim_start=d.get("trim_start"),
             trim_end=d.get("trim_end"),
@@ -490,6 +495,30 @@ def validate(project: Project) -> list[ValidationIssue]:
                 issues.append(ValidationIssue(
                     "error",
                     "color_temperature_k must be between 4000 and 10000.",
+                    item_id=seg.id,
+                ))
+
+        # Background = previous_last_frame rules
+        if seg.background == "previous_last_frame":
+            if not seg.is_still():
+                issues.append(ValidationIssue(
+                    "error",
+                    "background=previous_last_frame is only supported for "
+                    "still-image segments (PNG).",
+                    item_id=seg.id,
+                ))
+            # Must have a preceding Segment in items order
+            seg_index = next(
+                (i for i, it in enumerate(project.items) if it is seg), -1,
+            )
+            prev_segment_exists = any(
+                isinstance(it, Segment) for it in project.items[:seg_index]
+            )
+            if not prev_segment_exists:
+                issues.append(ValidationIssue(
+                    "error",
+                    "background=previous_last_frame requires a preceding "
+                    "segment in the project.",
                     item_id=seg.id,
                 ))
 

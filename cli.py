@@ -28,11 +28,16 @@ from forgeassembler_core import (
     APP_NAME,
     VERSION,
     Project,
+    RESOLUTION_PIXELS,
     categorize_channels,
     detect_folder,
+    forge_video,
     joiner_specs,
     validate,
 )
+from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
+from forgeassembler_core.layout import lay_out
+from forgeassembler_core.probe import probe_duration_ms
 
 
 def cmd_version(_args: argparse.Namespace) -> int:
@@ -106,8 +111,6 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_forge(args: argparse.Namespace) -> int:
-    # Phase 1 scaffold — actual ffmpeg forge is not implemented yet.
-    # We validate the project, then report what WOULD happen.
     path = Path(args.project)
     if not path.is_file():
         print(f"ERROR: project file not found: {path}", file=sys.stderr)
@@ -133,26 +136,70 @@ def cmd_forge(args: argparse.Namespace) -> int:
             print(f"ERROR{loc}: {e.message}", file=sys.stderr)
         return 1
 
-    segs = project.segments()
-    joins = project.joiners()
     out = project.output
-    print(f"[dry-run] Project OK — {len(segs)} segments, {len(joins)} joiners.")
-    print(f"[dry-run] Output folder: {out.folder or '(not set)'}")
-    print(f"[dry-run] Output basename: {out.basename}")
-    print(f"[dry-run] Resolution: {out.resolution}")
-    produce = []
+
+    # Resolve ffmpeg + build layout (probes duration via ffmpeg for real
+    # videos; stills use their declared still_duration_s).
+    try:
+        ffmpeg_exe = _resolve_ffmpeg_exe()
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 3
+
+    def _probe(p: Path) -> int:
+        return probe_duration_ms(p, ffmpeg_exe)
+
+    try:
+        layout = lay_out(project, probe=_probe)
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    # Resolve "source" resolution by probing the first video segment.
+    resolution_override = None
+    if out.produce_video and out.resolution == "source":
+        first_video_seg = next(
+            (s for s in project.segments() if not s.is_still()),
+            None,
+        )
+        if first_video_seg is None:
+            print(
+                "ERROR: output.resolution='source' but project has no "
+                "video segments to probe.",
+                file=sys.stderr,
+            )
+            return 1
+        # Probe first segment for actual pixel dims via ffmpeg -i output.
+        # For simplicity in v1 we default to 1080p here; the proper
+        # ffprobe-based resolution detection lands alongside a later feature.
+        print(
+            "WARNING: output.resolution='source' probing not yet "
+            "implemented; falling back to 1920x1080.",
+            file=sys.stderr,
+        )
+        resolution_override = (1920, 1080)
+
     if out.produce_video:
-        produce.append("video")
+        print(f"Forging video at {out.resolution} → {out.folder}/{out.basename}.mp4")
+        try:
+            output = forge_video(
+                project, layout,
+                ffmpeg_exe=ffmpeg_exe,
+                resolution_override=resolution_override,
+                log_callback=lambda line: print(line, file=sys.stderr),
+            )
+            print(f"Wrote {output}")
+        except RuntimeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 3
+
     if out.produce_funscripts:
-        produce.append("funscripts")
-    print(f"[dry-run] Producing: {', '.join(produce)}")
-    if out.normalize_audio and out.produce_video:
-        print("[dry-run] Audio loudness normalize: on")
-    if out.bug:
-        print(f"[dry-run] Bug overlay: {out.bug.file} ({out.bug.corner}, "
-              f"opacity {out.bug.opacity})")
-    print(f"[dry-run] Channels selected: {', '.join(project.output_channels.selected()) or '(none)'}")
-    print("[dry-run] Video forging is not implemented yet — run in the UI or wait for v0.0.1.")
+        print(
+            "NOTE: funscript production is not yet wired into the CLI; "
+            "expected in the next commit.",
+            file=sys.stderr,
+        )
+
     return 0
 
 

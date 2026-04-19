@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -158,8 +159,16 @@ def build_ffmpeg_command(
     layout: Layout,
     output_path: Optional[str] = None,
     resolution_override: Optional[tuple[int, int]] = None,
+    frame_cache: Optional[dict[str, str]] = None,
 ) -> FfmpegCommand:
-    """Return an `FfmpegCommand` describing the video forge for this project."""
+    """Return an `FfmpegCommand` describing the video forge for this project.
+
+    `frame_cache` maps a Segment.id to the filesystem path of its
+    pre-extracted previous-last-frame PNG (required for any segment with
+    `background='previous_last_frame'`). `forge_video` populates this via
+    a pre-pass; tests can pass a synthetic dict.
+    """
+    frame_cache = frame_cache or {}
     out = project.output
     if not out.produce_video:
         raise ValueError(
@@ -191,7 +200,8 @@ def build_ffmpeg_command(
 
     # ── Stage A: declare inputs (segment video + optional replacement audio).
     inputs: list[FfmpegInput] = []
-    seg_vi: dict[str, int] = {}
+    seg_vi: dict[str, int] = {}   # main / foreground PNG video input index
+    seg_bgi: dict[str, int] = {}  # previous-frame background input index
     seg_ai: dict[str, int] = {}
     for li in segment_layouts:
         seg = li.item
@@ -200,6 +210,20 @@ def build_ffmpeg_command(
         pre = ["-loop", "1", "-t", f"{dur_s:g}"] if seg.is_still() else []
         seg_vi[seg.id] = len(inputs)
         inputs.append(FfmpegInput(path=seg.video, pre_args=pre))
+        # previous_last_frame segments add a second looped PNG input — the
+        # extracted frame from the preceding segment.
+        if seg.is_still() and seg.background == "previous_last_frame":
+            frame_path = frame_cache.get(seg.id)
+            if frame_path is None:
+                raise ValueError(
+                    f"segment {seg.id}: background=previous_last_frame "
+                    "requires frame_cache to contain an extracted-frame path.",
+                )
+            seg_bgi[seg.id] = len(inputs)
+            inputs.append(FfmpegInput(
+                path=frame_path,
+                pre_args=["-loop", "1", "-t", f"{dur_s:g}"],
+            ))
         if seg.audio.mode == "replace":
             if not seg.audio.file:
                 raise ValueError(
@@ -219,15 +243,47 @@ def build_ffmpeg_command(
         vidx = seg_vi[seg.id]
         head_s, tail_s = seg_fades[seg.id]
 
-        # Video: scale+pad+colortemp, then optional fades.
-        v_norm = f"v_norm{i}"
-        filter_parts.append(normalize_segment_filter(
-            in_label=f"{vidx}:v",
-            out_label=v_norm,
-            width=width,
-            height=height,
-            color_temperature_k=seg.color_temperature_k,
-        ))
+        # Video: either single-input normalize, or two-input composite
+        # (previous_last_frame: background + foreground PNG).
+        if seg.is_still() and seg.background == "previous_last_frame":
+            bg_idx = seg_bgi[seg.id]
+            v_bg = f"v_bg{i}"
+            # Normalize the extracted frame to canonical WxH. No color
+            # temperature applied here — it's applied after composite.
+            filter_parts.append(normalize_segment_filter(
+                in_label=f"{bg_idx}:v",
+                out_label=v_bg,
+                width=width,
+                height=height,
+            ))
+            # Composite the design PNG (vidx) onto the background,
+            # centered, preserving its alpha via format=auto.
+            v_composed = f"v_composed{i}"
+            filter_parts.append(
+                f"[{v_bg}][{vidx}:v]"
+                f"overlay=x=(W-w)/2:y=(H-h)/2:format=auto"
+                f"[{v_composed}]",
+            )
+            if seg.color_temperature_k is not None:
+                v_norm = f"v_norm{i}"
+                filter_parts.append(
+                    f"[{v_composed}]"
+                    f"colortemperature=temperature={seg.color_temperature_k}"
+                    f"[{v_norm}]",
+                )
+            else:
+                v_norm = v_composed
+        else:
+            # Single-input normalize (default path).
+            v_norm = f"v_norm{i}"
+            filter_parts.append(normalize_segment_filter(
+                in_label=f"{vidx}:v",
+                out_label=v_norm,
+                width=width,
+                height=height,
+                color_temperature_k=seg.color_temperature_k,
+            ))
+
         v_label = v_norm
         v_fade_chain = _fade_filter_chain(head_s, tail_s, dur_s)
         if v_fade_chain:
@@ -370,6 +426,76 @@ def _resolve_ffmpeg_exe() -> str:
     )
 
 
+def _find_preceding_segment(items: list, index: int) -> Optional[Segment]:
+    """Return the last Segment appearing before `index` in `items`, or None."""
+    for j in range(index - 1, -1, -1):
+        candidate = items[j]
+        if isinstance(candidate, Segment):
+            return candidate
+    return None
+
+
+def _extract_last_frame(
+    video_path: str, output_png: str, ffmpeg_exe: str,
+) -> None:
+    """Extract the last frame of a video to a PNG via ffmpeg.
+
+    Uses `-sseof -0.5` to seek half a second from the end, then grabs a
+    single frame. Fast and reliable for normal H.264 content.
+    """
+    result = subprocess.run(
+        [
+            ffmpeg_exe,
+            "-hide_banner",
+            "-loglevel", "error",
+            "-sseof", "-0.5",
+            "-i", str(video_path),
+            "-update", "1",
+            "-frames:v", "1",
+            "-y",
+            str(output_png),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg could not extract last frame of {video_path!r}: "
+            f"{result.stderr}",
+        )
+
+
+def _build_frame_cache(
+    project: Project, ffmpeg_exe: str, temp_dir: Path,
+) -> dict[str, str]:
+    """Extract the previous-segment last frame for every
+    `previous_last_frame` segment. Returns a dict of Segment.id ->
+    PNG path. If the preceding segment is itself a still image, we
+    copy the PNG rather than re-encoding via ffmpeg.
+    """
+    cache: dict[str, str] = {}
+    for idx, item in enumerate(project.items):
+        if not isinstance(item, Segment):
+            continue
+        if item.background != "previous_last_frame":
+            continue
+        prev = _find_preceding_segment(project.items, idx)
+        if prev is None:
+            raise ValueError(
+                f"segment {item.id}: background=previous_last_frame has no "
+                "preceding segment to extract from.",
+            )
+        out_png = temp_dir / f"{item.id}__prev_frame.png"
+        if prev.is_still():
+            shutil.copyfile(prev.video, out_png)
+        else:
+            _extract_last_frame(prev.video, str(out_png), ffmpeg_exe)
+        cache[item.id] = str(out_png)
+    return cache
+
+
 def forge_video(
     project: Project,
     layout: Layout,
@@ -380,35 +506,47 @@ def forge_video(
 ) -> Path:
     """Run ffmpeg to produce the output MP4. Returns the output path.
 
+    Handles the `previous_last_frame` pre-pass: before the main forge,
+    the last frame of each relevant preceding segment is extracted to
+    a temp directory, which is cleaned up on exit.
+
     Raises `RuntimeError` if ffmpeg exits non-zero.
     """
-    cmd = build_ffmpeg_command(
-        project, layout,
-        output_path=output_path,
-        resolution_override=resolution_override,
-    )
-
     exe = ffmpeg_exe or _resolve_ffmpeg_exe()
-    out_path = Path(cmd.output_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    argv = cmd.to_argv(exe)
-    proc = subprocess.Popen(
-        argv,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        if log_callback:
-            log_callback(line.rstrip())
-    proc.wait()
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"ffmpeg exited with code {proc.returncode} "
-            f"(see log for details).",
+    temp_dir = Path(tempfile.mkdtemp(prefix="forgeassembler_"))
+    try:
+        frame_cache = _build_frame_cache(project, exe, temp_dir)
+
+        cmd = build_ffmpeg_command(
+            project, layout,
+            output_path=output_path,
+            resolution_override=resolution_override,
+            frame_cache=frame_cache,
         )
-    return out_path
+
+        out_path = Path(cmd.output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        argv = cmd.to_argv(exe)
+        proc = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if log_callback:
+                log_callback(line.rstrip())
+        proc.wait()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"ffmpeg exited with code {proc.returncode} "
+                f"(see log for details).",
+            )
+        return out_path
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)

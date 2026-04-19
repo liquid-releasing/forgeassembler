@@ -457,3 +457,109 @@ def test_output_args_include_h264_and_aac(tmp_path: Path):
     assert "libx264" in cmd.output_args
     assert "aac" in cmd.output_args
     assert "yuv420p" in cmd.output_args
+
+
+# ── previous_last_frame background ────────────────────────────────────
+def _title_project(tmp_path: Path) -> tuple[Project, str, str]:
+    """Build a Project with a video segment followed by a PNG title
+    segment that uses background=previous_last_frame. Returns
+    (project, video_path, png_path) so tests can refer to input paths."""
+    v = _mp4(tmp_path, "clip")
+    png = _png(tmp_path, "title")
+    p = _project(
+        tmp_path,
+        Segment(id="s_video", video=str(v)),
+        Segment(
+            id="s_title", video=str(png),
+            still_duration_s=2.0,
+            background="previous_last_frame",
+        ),
+        normalize_audio=False,
+    )
+    return p, str(v), str(png)
+
+
+def test_previous_last_frame_without_cache_raises(tmp_path: Path):
+    p, _v, _png = _title_project(tmp_path)
+    layout = lay_out(p, probe=lambda _p: 1000)
+    with pytest.raises(ValueError, match="frame_cache"):
+        build_ffmpeg_command(p, layout)
+
+
+def test_previous_last_frame_adds_background_input(tmp_path: Path):
+    p, _v, png = _title_project(tmp_path)
+    layout = lay_out(p, probe=lambda _p: 1000)
+    extracted = str(tmp_path / "extracted.png")
+    cmd = build_ffmpeg_command(
+        p, layout, frame_cache={"s_title": extracted},
+    )
+    # Inputs: seg 0 video, seg 1 PNG (foreground), extracted frame (background)
+    paths = [inp.path for inp in cmd.inputs]
+    assert str(tmp_path / "clip.mp4") in paths
+    assert png in paths
+    assert extracted in paths
+
+
+def test_previous_last_frame_emits_overlay_composite(tmp_path: Path):
+    p, _v, _png = _title_project(tmp_path)
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(
+        p, layout, frame_cache={"s_title": "/tmp/extracted.png"},
+    )
+    fc = cmd.filter_complex
+    # Background normalized to canonical size
+    assert "v_bg1" in fc
+    # Composite: bg + fg → v_composed
+    assert "v_composed1" in fc
+    # The composite uses overlay with center positioning
+    assert "overlay=x=(W-w)/2:y=(H-h)/2:format=auto" in fc
+
+
+def test_previous_last_frame_color_temperature_applies_after_composite(
+    tmp_path: Path,
+):
+    v = _mp4(tmp_path, "clip")
+    png = _png(tmp_path, "title")
+    p = _project(
+        tmp_path,
+        Segment(id="s_video", video=str(v)),
+        Segment(
+            id="s_title", video=str(png),
+            still_duration_s=1.5,
+            background="previous_last_frame",
+            color_temperature_k=5500,
+        ),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(
+        p, layout, frame_cache={"s_title": "/tmp/frame.png"},
+    )
+    fc = cmd.filter_complex
+    # Color temperature applied to the composed output, not to the bg input
+    assert "[v_composed1]colortemperature=temperature=5500" in fc
+
+
+def test_previous_last_frame_preserves_other_segment_path(tmp_path: Path):
+    """The preceding real video segment should still normalize via
+    the single-input path, not the composite path."""
+    p, _v, _png = _title_project(tmp_path)
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(
+        p, layout, frame_cache={"s_title": "/tmp/frame.png"},
+    )
+    # seg 0 uses v_norm0 directly from its input (no v_bg0 or v_composed0)
+    assert "v_bg0" not in cmd.filter_complex
+    assert "v_composed0" not in cmd.filter_complex
+
+
+def test_previous_last_frame_audio_is_silence(tmp_path: Path):
+    """PNG title segment's audio remains silence (stills always)."""
+    p, _v, _png = _title_project(tmp_path)
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(
+        p, layout, frame_cache={"s_title": "/tmp/frame.png"},
+    )
+    # Two audio base labels: a_base0 (keep from seg 0 real video),
+    # a_base1 (silence for still)
+    assert "anullsrc=d=2:r=48000:cl=stereo[a_base1]" in cmd.filter_complex

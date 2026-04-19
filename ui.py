@@ -27,6 +27,7 @@ from forgeassembler_core import (
     categorize_channels,
     detect_file,
     detect_folder,
+    forge_video,
     instantiate_joiner,
     joiner_specs,
     new_id,
@@ -260,6 +261,52 @@ with tab_build:
             st.error(f"Could not add: {exc}")
         st.rerun()
 
+    st.markdown("**Add a title card (PNG still)**")
+    with st.form("add_title_card", clear_on_submit=True):
+        title_path = st.text_input(
+            "PNG file",
+            placeholder=r"C:\path\to\title_card.png",
+            key="title_card_path",
+        )
+        col_a, col_b = st.columns(2)
+        with col_a:
+            title_duration = st.number_input(
+                "Hold seconds", min_value=0.1, max_value=60.0,
+                value=3.0, step=0.1,
+            )
+        with col_b:
+            title_background = st.selectbox(
+                "Background",
+                options=["black", "previous_last_frame"],
+                format_func=lambda k: {
+                    "black": "Black",
+                    "previous_last_frame": "Previous segment's last frame",
+                }[k],
+                index=0,
+                help=(
+                    "'Previous segment's last frame' freezes the frame "
+                    "your previous clip ended on and composites this PNG "
+                    "over it. Design the PNG with transparency."
+                ),
+            )
+        add_title = st.form_submit_button("Add title card")
+
+    if add_title and title_path:
+        tp = Path(title_path)
+        if not tp.is_file():
+            st.error(f"PNG not found: {tp}")
+        elif tp.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+            st.error(f"Not a supported still-image extension: {tp.suffix}")
+        else:
+            project.add_segment(Segment(
+                id=new_id("seg"),
+                video=str(tp),
+                still_duration_s=float(title_duration),
+                background=title_background,
+            ))
+            st.toast("Title card added.")
+            st.rerun()
+
     st.divider()
     st.subheader("Joiner for the next slot")
     # Picks the joiner inserted between the LAST segment and the next one added.
@@ -314,13 +361,74 @@ with tab_build:
     for e in errors:
         st.error(e.message)
 
-    st.button(
-        "🔨 Forge",
+    can_forge = (not errors) and bool(project.items) and (
+        project.output.produce_video or project.output.produce_funscripts
+    )
+    if st.button(
+        "Forge",
         type="primary",
         use_container_width=True,
-        disabled=bool(errors) or not project.items,
-        help="Video forging is not implemented yet in this alpha.",
-    )
+        disabled=not can_forge,
+    ):
+        from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
+        from forgeassembler_core.layout import lay_out
+        from forgeassembler_core.probe import probe_duration_ms
+
+        with st.status("Forging…", expanded=True) as status:
+            try:
+                ffmpeg_exe = _resolve_ffmpeg_exe()
+                status.write(f"ffmpeg: {ffmpeg_exe}")
+
+                layout = lay_out(
+                    project,
+                    probe=lambda p: probe_duration_ms(p, ffmpeg_exe),
+                )
+                status.write(
+                    f"Layout: {len(layout.segments())} segments, "
+                    f"total {layout.total_duration_ms / 1000:.1f}s",
+                )
+
+                resolution_override = None
+                if (
+                    project.output.produce_video
+                    and project.output.resolution == "source"
+                ):
+                    status.write(
+                        "Note: 'source' resolution not yet auto-probed; "
+                        "falling back to 1920x1080.",
+                    )
+                    resolution_override = (1920, 1080)
+
+                # Stream ffmpeg output into the status expander in chunks.
+                log_buf: list[str] = []
+                def _log(line: str) -> None:
+                    log_buf.append(line)
+                    if len(log_buf) % 20 == 0:
+                        status.write(line)
+
+                if project.output.produce_video:
+                    out_path = forge_video(
+                        project, layout,
+                        ffmpeg_exe=ffmpeg_exe,
+                        resolution_override=resolution_override,
+                        log_callback=_log,
+                    )
+                    status.update(label=f"Forged {out_path.name}",
+                                  state="complete")
+                    st.success(f"Wrote {out_path}")
+                else:
+                    status.update(label="Nothing to forge (video off, "
+                                  "funscripts not yet wired).",
+                                  state="complete")
+
+                if project.output.produce_funscripts:
+                    st.info(
+                        "Funscript production is not yet wired into the "
+                        "UI; expected in the next commit.",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                status.update(label="Forge failed", state="error")
+                st.error(str(exc))
 
 
 # ── Tab 2: Joiners ────────────────────────────────────────────────────
