@@ -32,6 +32,7 @@ from forgeassembler_core import (
     Segment,
     categorize_channels,
     detect_folder,
+    forge_funscripts,
     forge_video,
     joiner_specs,
     new_id,
@@ -305,11 +306,21 @@ def cmd_forge(args: argparse.Namespace) -> int:
             return 3
 
     if out.produce_funscripts:
-        print(
-            "NOTE: funscript production is not yet wired into the CLI; "
-            "expected in the next commit.",
-            file=sys.stderr,
-        )
+        try:
+            written = forge_funscripts(project, layout)
+        except Exception as e:  # noqa: BLE001
+            print(f"ERROR: funscript forge failed: {e}", file=sys.stderr)
+            return 3
+        if written:
+            print(f"Wrote {len(written)} funscript file(s):")
+            for path in written:
+                print(f"  {path}")
+        else:
+            print(
+                "No funscripts written (no selected channel had any "
+                "actions across the project).",
+                file=sys.stderr,
+            )
 
     return 0
 

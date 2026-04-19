@@ -28,6 +28,7 @@ from forgeassembler_core import (
     categorize_channels,
     detect_file,
     detect_folder,
+    forge_funscripts,
     forge_video,
     instantiate_joiner,
     joiner_specs,
@@ -585,10 +586,22 @@ with tab_build:
                                   state="complete")
 
                 if project.output.produce_funscripts:
-                    st.info(
-                        "Funscript production is not yet wired into the "
-                        "UI; expected in the next commit.",
-                    )
+                    status.write("Assembling funscripts…")
+                    try:
+                        written = forge_funscripts(project, layout)
+                    except Exception as fexc:  # noqa: BLE001
+                        st.error(f"Funscript forge failed: {fexc}")
+                    else:
+                        if written:
+                            st.success(
+                                f"Wrote {len(written)} funscript file(s): "
+                                + ", ".join(p.name for p in written),
+                            )
+                        else:
+                            st.info(
+                                "No funscripts written — no selected "
+                                "channel had any actions across the project.",
+                            )
             except Exception as exc:  # noqa: BLE001
                 progress_bar.empty()
                 status.update(label="Forge failed", state="error")

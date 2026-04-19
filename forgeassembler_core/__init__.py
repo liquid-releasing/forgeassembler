@@ -10,6 +10,7 @@ from .about import (
 from .concat_funscript import (
     FunscriptPart,
     concat_funscripts,
+    forge_funscripts,
     read_funscript,
     write_funscript,
 )
@@ -98,6 +99,7 @@ __all__ = [
     "detect_folder",
     "fade_to_black_audio_acrossfade",
     "fade_to_black_xfade",
+    "forge_funscripts",
     "forge_video",
     "image_overlay_filter",
     "instantiate_joiner",
