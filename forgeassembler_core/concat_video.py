@@ -140,6 +140,40 @@ def _neighbor_joiners(
     )
 
 
+def _section_time_windows(project: Project, layout: Layout) -> list[tuple]:
+    """Return `[(Section, start_ms, end_ms), ...]` — one row per
+    non-empty section, in order.
+
+    A section's window starts at its first segment's `start_ms` in the
+    layout and runs to the next section's first segment's `start_ms`
+    (so the window absorbs any trailing transition joiner time). The
+    last section runs to `layout.total_duration_ms`. Sections whose
+    segments don't appear in the layout (shouldn't happen in practice)
+    are skipped silently.
+    """
+    seg_start: dict[str, int] = {}
+    for li in layout.items:
+        if isinstance(li.item, Segment):
+            seg_start[li.item.id] = li.start_ms
+    sec_starts: list[tuple] = []  # [(start_ms, Section)]
+    for sec in project.sections:
+        if not sec.segments:
+            continue
+        first_id = sec.segments[0].id
+        if first_id in seg_start:
+            sec_starts.append((seg_start[first_id], sec))
+
+    out: list[tuple] = []
+    for i, (start, sec) in enumerate(sec_starts):
+        end = (
+            sec_starts[i + 1][0]
+            if i + 1 < len(sec_starts)
+            else layout.total_duration_ms
+        )
+        out.append((sec, start, end))
+    return out
+
+
 def _fade_filter_chain(
     head_fade_s: float, tail_fade_s: float, duration_s: float,
 ) -> list[str]:
@@ -442,6 +476,46 @@ def build_ffmpeg_command(
     else:
         final_v, final_a = "vconcat", "aconcat"
         filter_parts.append(concat_filter(concat_pairs, final_v, final_a))
+
+    # ── Stage D.5: section-level image overlays.
+    # Each overlay is timed relative to its section's start in the
+    # final timeline, then applied on top of the concat'd video before
+    # the project-level bug lands on top of everything.
+    section_overlay_count = 0
+    for sec, sec_start_ms, sec_end_ms in _section_time_windows(project, layout):
+        for ov in sec.overlays:
+            if ov.kind != "image":
+                continue  # audio overlays land in the audio pipeline (future)
+            abs_start_s = (sec_start_ms / 1000.0) + float(ov.start_s)
+            # duration_s == 0 means "play to end of section".
+            sec_end_s = sec_end_ms / 1000.0
+            if ov.duration_s and ov.duration_s > 0:
+                abs_end_s = min(abs_start_s + float(ov.duration_s), sec_end_s)
+            else:
+                abs_end_s = sec_end_s
+            effective_dur = max(0.0, abs_end_s - abs_start_s)
+            if effective_dur <= 0:
+                continue
+
+            ov_input_idx = len(inputs)
+            inputs.append(FfmpegInput(
+                path=ov.file,
+                pre_args=["-loop", "1", "-t", f"{effective_dur:g}"],
+            ))
+            out_label = f"v_secov{section_overlay_count}"
+            filter_parts.append(image_overlay_filter(
+                in_video_label=final_v,
+                in_image_label=f"{ov_input_idx}:v",
+                out_label=out_label,
+                position=ov.position,
+                start_s=abs_start_s,
+                end_s=abs_end_s,
+                opacity=ov.opacity,
+                fade_in_s=ov.fade_in_s,
+                fade_out_s=ov.fade_out_s,
+            ))
+            final_v = out_label
+            section_overlay_count += 1
 
     # ── Stage E: project-level bug overlay.
     if out.bug is not None:

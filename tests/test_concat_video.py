@@ -27,6 +27,8 @@ from forgeassembler_core.project import (
     Output,
     OutputChannels,
     Project,
+    Section,
+    SectionOverlay,
     Segment,
 )
 
@@ -964,3 +966,149 @@ def test_previous_last_frame_audio_is_silence(tmp_path: Path):
     # Two audio base labels: a_base0 (keep from seg 0 real video),
     # a_base1 (silence for still)
     assert "anullsrc=d=2:r=48000:cl=stereo[a_base1]" in cmd.filter_complex
+
+
+# ── Section-level image overlays (Phase B) ────────────────────────────
+def _section_project(tmp_path: Path) -> tuple[Project, Path, Path]:
+    """Build a 2-section project and return (project, v1_path, v2_path).
+
+    v1 is in section 1, v2 is in section 2. Each section has one clip
+    so test code can attach overlays and inspect the rendered filters.
+    """
+    v1 = _mp4(tmp_path, "a")
+    v2 = _mp4(tmp_path, "b")
+    project = Project(
+        sections=[
+            Section(id="sec1", segments=[Segment(id="s1", video=str(v1))]),
+            Section(id="sec2", segments=[Segment(id="s2", video=str(v2))]),
+        ],
+        output=Output(
+            folder=str(tmp_path / "out"),
+            frame_rate="30",
+            normalize_audio=False,
+        ),
+    )
+    return project, v1, v2
+
+
+def test_section_image_overlay_adds_input(tmp_path: Path):
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p.sections[1].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo),
+        start_s=0.5, duration_s=1.0, position="br", opacity=0.9,
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+
+    # Extra input registered for the overlay PNG, looped to its own
+    # effective duration.
+    matches = [
+        inp for inp in cmd.inputs
+        if inp.path == str(logo) and "-loop" in inp.pre_args
+    ]
+    assert matches, "overlay PNG should be registered as a looped input"
+
+
+def test_section_image_overlay_uses_section_absolute_times(tmp_path: Path):
+    """Overlay start_s is relative to the SECTION; in the final graph
+    it translates to an absolute timeline time (section_start +
+    start_s). Section 1 covers 0-2s; Section 2 covers 2-4s. An overlay
+    with start_s=0.5s on section 2 should render enable='between(t,2.5,...'."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p.sections[1].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo),
+        start_s=0.5, duration_s=1.0, position="center",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    assert "enable='between(t,2.5,3.5)'" in fc
+
+
+def test_section_image_overlay_default_duration_runs_to_section_end(tmp_path: Path):
+    """duration_s == 0 means 'to the end of the section' — this lets
+    users say 'show this logo for the whole section' without typing
+    the math."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo),
+        start_s=0.0, duration_s=0.0,  # full section
+    ))
+    layout = lay_out(p, probe=lambda _p: 3000)
+    cmd = build_ffmpeg_command(p, layout)
+    # Section 1 covers 0-3s; overlay should enable over that range.
+    assert "enable='between(t,0,3)'" in cmd.filter_complex
+
+
+def test_section_image_overlay_position_shortcuts(tmp_path: Path):
+    """Short codes tl/tr/bl/br map to the same corner expressions as
+    the bug overlay uses."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo), position="br",
+    ))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    # Bottom-right places overlay at (W-w, H-h)
+    assert "overlay=x=W-w:y=H-h" in cmd.filter_complex
+
+
+def test_multiple_section_overlays_stack_in_order(tmp_path: Path):
+    """First declared = bottom layer; last declared = top. Chain of
+    v_secov0 → v_secov1 should be visible in the filter graph."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    a = tmp_path / "a.png"; a.write_bytes(b"")
+    b = tmp_path / "b.png"; b.write_bytes(b"")
+    p.sections[0].overlays.extend([
+        SectionOverlay(id="ov1", kind="image", file=str(a)),
+        SectionOverlay(id="ov2", kind="image", file=str(b)),
+    ])
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    assert "v_secov0" in fc
+    assert "v_secov1" in fc
+    # Second overlay composites onto the first (chain)
+    assert "[v_secov0]" in fc
+
+
+def test_audio_overlay_kind_ignored_in_phase_b(tmp_path: Path):
+    """Phase B wires image overlays only. An audio overlay shouldn't
+    register a video input or an overlay filter; audio mixing ships in
+    a later phase."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    mp3 = tmp_path / "bed.mp3"
+    mp3.write_bytes(b"")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="audio", file=str(mp3), mix_pct=50,
+    ))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert not any(inp.path == str(mp3) for inp in cmd.inputs)
+    assert "v_secov" not in cmd.filter_complex
+
+
+def test_section_overlay_applies_before_bug(tmp_path: Path):
+    """Bug overlay must composite ON TOP of section overlays (branding
+    stays visible). Section overlay's output label feeds into the bug
+    overlay, not the other way around."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"; logo.write_bytes(b"")
+    bug = tmp_path / "bug.png"; bug.write_bytes(b"")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo),
+    ))
+    p.output.bug = BugOverlay(file=str(bug), corner="br")
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert cmd.map_video == "[v_bugged]"
+    # The bug stage references the last section-overlay label as its input
+    assert "[v_secov0][bug_rgba]" in cmd.filter_complex

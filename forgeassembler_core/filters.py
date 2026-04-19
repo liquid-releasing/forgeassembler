@@ -171,7 +171,9 @@ def loudnorm_filter(
     )
 
 
-# ── Image overlay (per-segment) ───────────────────────────────────────
+# ── Image overlay (per-segment / per-section) ────────────────────────
+# Long names used by the per-clip Overlay dataclass; short aliases
+# (tl/tr/bl/br) match the SectionOverlay and BugCorner conventions.
 _POSITION_EXPRS: dict[str, tuple[str, str]] = {
     "center": ("(W-w)/2", "(H-h)/2"),
     "top-left": ("0", "0"),
@@ -180,6 +182,10 @@ _POSITION_EXPRS: dict[str, tuple[str, str]] = {
     "bottom-right": ("W-w", "H-h"),
     "top-center": ("(W-w)/2", "0"),
     "bottom-center": ("(W-w)/2", "H-h"),
+    "tl": ("0", "0"),
+    "tr": ("W-w", "0"),
+    "bl": ("0", "H-h"),
+    "br": ("W-w", "H-h"),
 }
 
 
