@@ -660,16 +660,44 @@ def test_image_overlay_roundtrip(tmp_path: Path):
         id="ov1", kind="image", file=str(img),
         start_s=2.0, duration_s=5.0,
         fade_in_s=0.5, fade_out_s=0.5,
-        position="br", opacity=0.8,
+        position="br", opacity=0.8, scale_pct=50,
     )
     d = ov.to_dict()
     assert d["kind"] == "image"
     assert d["position"] == "br"
+    assert d["scale_pct"] == 50
     # Audio-only field not emitted for image overlays
     assert "mix_pct" not in d
     ov2 = SectionOverlay.from_dict(d)
     assert ov2.position == "br"
     assert ov2.opacity == 0.8
+    assert ov2.scale_pct == 50
+
+
+def test_image_overlay_scale_default_is_100():
+    ov = SectionOverlay(id="ov1", kind="image", file="x.png")
+    assert ov.scale_pct == 100
+
+
+def test_validate_overlay_bad_scale_pct(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    img = tmp_path / "x.png"
+    img.write_bytes(b"")
+    sec = Section(
+        id="sec1",
+        segments=[Segment(id="s1", video=str(v))],
+        overlays=[SectionOverlay(
+            id="ov1", kind="image", file=str(img), scale_pct=500,
+        )],
+    )
+    p = Project(
+        sections=[sec], output=Output(folder=str(tmp_path / "out")),
+    )
+    issues = validate(p)
+    assert any(
+        i.level == "error" and "scale_pct must be between" in i.message
+        for i in issues
+    )
 
 
 def test_audio_overlay_roundtrip(tmp_path: Path):

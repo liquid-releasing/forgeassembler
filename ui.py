@@ -720,7 +720,11 @@ with tab_build:
                         )
                     with ocols[3]:
                         if ov.kind == "image":
-                            st.caption(f"pos: {ov.position}")
+                            scale_label = (
+                                "" if ov.scale_pct == 100
+                                else f" · {ov.scale_pct}%"
+                            )
+                            st.caption(f"pos: {ov.position}{scale_label}")
                         else:
                             st.caption(f"mix: {ov.mix_pct}%")
                     with ocols[4]:
@@ -865,7 +869,7 @@ with tab_build:
                 key="ov_fade_out",
             )
 
-        pos_cols = st.columns([3, 2, 2])
+        pos_cols = st.columns([2, 2, 2, 2])
         with pos_cols[0]:
             ov_position = st.selectbox(
                 "Position (image only)",
@@ -887,6 +891,13 @@ with tab_build:
                 key="ov_opacity",
             )
         with pos_cols[2]:
+            ov_scale_pct = int(st.slider(
+                "Scale % (image only)",
+                min_value=10, max_value=200, value=100, step=5,
+                key="ov_scale_pct",
+                help="100 = native size. 50 = half. 200 = double.",
+            ))
+        with pos_cols[3]:
             add_overlay_click = st.button(
                 "Add overlay",
                 type="primary",
@@ -924,6 +935,7 @@ with tab_build:
                         fade_out_s=float(ov_fade_out),
                         position=ov_position,  # type: ignore[arg-type]
                         opacity=float(ov_opacity),
+                        scale_pct=ov_scale_pct,
                     ))
                     label = (
                         "Image overlay"

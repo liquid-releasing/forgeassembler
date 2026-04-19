@@ -494,6 +494,9 @@ class SectionOverlay:
     # Image-only
     position: OverlayPosition = "center"
     opacity: float = 1.0
+    # scale_pct: render the image at this percentage of its native
+    # size. 100 = native; 50 = half. Image-only.
+    scale_pct: int = 100
     # Audio-only: 0 = no overlay (clip audio dominates), 100 = overlay only.
     mix_pct: int = 50
 
@@ -510,6 +513,7 @@ class SectionOverlay:
         if self.kind == "image":
             d["position"] = self.position
             d["opacity"] = self.opacity
+            d["scale_pct"] = self.scale_pct
         elif self.kind == "audio":
             d["mix_pct"] = self.mix_pct
         return d
@@ -526,6 +530,7 @@ class SectionOverlay:
             fade_out_s=float(d.get("fade_out_s", 0.0)),
             position=d.get("position", "center"),
             opacity=float(d.get("opacity", 1.0)),
+            scale_pct=int(d.get("scale_pct", 100)),
             mix_pct=int(d.get("mix_pct", 50)),
         )
 
@@ -869,6 +874,13 @@ def validate(project: Project) -> list[ValidationIssue]:
                     issues.append(ValidationIssue(
                         "error",
                         f"Overlay {ov.id} opacity must be between 0.0 and 1.0.",
+                        item_id=sec.id,
+                    ))
+                if not (1 <= ov.scale_pct <= 400):
+                    issues.append(ValidationIssue(
+                        "error",
+                        f"Overlay {ov.id} scale_pct must be between "
+                        "1 and 400.",
                         item_id=sec.id,
                     ))
             elif ov.kind == "audio":

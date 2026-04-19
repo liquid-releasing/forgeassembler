@@ -1096,6 +1096,39 @@ def test_audio_overlay_kind_ignored_in_phase_b(tmp_path: Path):
     assert "v_secov" not in cmd.filter_complex
 
 
+def test_section_overlay_scale_emits_scale_filter(tmp_path: Path):
+    """scale_pct != 100 should inject a `scale=iw*ratio:ih*ratio` node
+    before the overlay composite — lets the user shrink/grow the
+    logo at the same place they pick its position."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo),
+        scale_pct=50, position="bl",
+    ))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    # Ratio 0.5 renders as "scale=iw*0.5:ih*0.5" in the graph
+    assert "scale=iw*0.5:ih*0.5" in fc
+    # Scaled label feeds into the overlay, not the raw input
+    assert "v_secov0_scaled" in fc
+
+
+def test_section_overlay_scale_100_skips_scale_filter(tmp_path: Path):
+    """Native size = no extra scale node (keeps the graph minimal)."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo), scale_pct=100,
+    ))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "v_secov0_scaled" not in cmd.filter_complex
+
+
 def test_section_overlay_applies_before_bug(tmp_path: Path):
     """Bug overlay must composite ON TOP of section overlays (branding
     stays visible). Section overlay's output label feeds into the bug

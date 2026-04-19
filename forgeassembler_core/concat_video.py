@@ -502,10 +502,27 @@ def build_ffmpeg_command(
                 path=ov.file,
                 pre_args=["-loop", "1", "-t", f"{effective_dur:g}"],
             ))
+            # Pre-scale the image at scale_pct before feeding it into
+            # the overlay helper. 100 = native; anything else gets a
+            # separate filter node so the overlay can reference the
+            # scaled label.
+            image_label = f"{ov_input_idx}:v"
+            if int(ov.scale_pct) != 100:
+                scaled_label = f"v_secov{section_overlay_count}_scaled"
+                # scale=iw*p:ih*p scales both dims by the ratio; setsar=1
+                # keeps square pixels after rescaling.
+                ratio = ov.scale_pct / 100.0
+                filter_parts.append(
+                    f"[{image_label}]"
+                    f"scale=iw*{ratio:g}:ih*{ratio:g},setsar=1"
+                    f"[{scaled_label}]",
+                )
+                image_label = scaled_label
+
             out_label = f"v_secov{section_overlay_count}"
             filter_parts.append(image_overlay_filter(
                 in_video_label=final_v,
-                in_image_label=f"{ov_input_idx}:v",
+                in_image_label=image_label,
                 out_label=out_label,
                 position=ov.position,
                 start_s=abs_start_s,
