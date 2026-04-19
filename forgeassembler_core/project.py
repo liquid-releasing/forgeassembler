@@ -30,6 +30,13 @@ SegmentBackground = Literal["black", "previous_last_frame"]
 Quality = Literal["high", "medium", "low"]
 FrameRate = Literal["source", "24", "30", "60"]
 
+# Section-level overlay positions. "center" plus the four corners
+# match the `BugCorner` set with a center option.
+OverlayPosition = Literal["center", "tl", "tr", "bl", "br"]
+SectionOverlayKind = Literal["image", "audio"]
+
+OVERLAY_POSITIONS: tuple[str, ...] = ("center", "tl", "tr", "bl", "br")
+
 # Keys for the Frame rate dropdown. "source" probes the first video
 # segment at forge time (via ffmpeg stderr) and mirrors its fps; this
 # avoids the `drop=N` frame-drop artefact you get when forcing a 60fps
@@ -458,6 +465,71 @@ class OutputChannels:
         return [k for k, v in self.to_dict().items() if v]
 
 
+# ── Section-level overlay ─────────────────────────────────────────────
+@dataclass
+class SectionOverlay:
+    """An image or audio file laid over a Section's timeline.
+
+    Times are measured from the section's start (not the clip's or the
+    project's), so an overlay can span clip boundaries inside a section
+    without the author doing time math. Multiple overlays on one
+    section stack in declaration order: first = bottom, last = top for
+    images; all mixed together for audio.
+
+    Common fields apply to both kinds:
+      * file — path to the image (PNG/JPG/WEBP) or audio (mp3/wav/m4a)
+      * start_s, duration_s — time window relative to the section's start
+      * fade_in_s, fade_out_s — subtle transition on each end
+
+    Image-only fields: position, opacity.
+    Audio-only fields:  mix_pct (0-100; overlay's share of the mix).
+    """
+    id: str
+    kind: SectionOverlayKind  # "image" | "audio"
+    file: str
+    start_s: float = 0.0
+    duration_s: float = 0.0  # 0 = play to end of section
+    fade_in_s: float = 0.0
+    fade_out_s: float = 0.0
+    # Image-only
+    position: OverlayPosition = "center"
+    opacity: float = 1.0
+    # Audio-only: 0 = no overlay (clip audio dominates), 100 = overlay only.
+    mix_pct: int = 50
+
+    def to_dict(self) -> dict:
+        d: dict[str, Any] = {
+            "id": self.id,
+            "kind": self.kind,
+            "file": self.file,
+            "start_s": self.start_s,
+            "duration_s": self.duration_s,
+            "fade_in_s": self.fade_in_s,
+            "fade_out_s": self.fade_out_s,
+        }
+        if self.kind == "image":
+            d["position"] = self.position
+            d["opacity"] = self.opacity
+        elif self.kind == "audio":
+            d["mix_pct"] = self.mix_pct
+        return d
+
+    @staticmethod
+    def from_dict(d: dict) -> "SectionOverlay":
+        return SectionOverlay(
+            id=d["id"],
+            kind=d["kind"],
+            file=d["file"],
+            start_s=float(d.get("start_s", 0.0)),
+            duration_s=float(d.get("duration_s", 0.0)),
+            fade_in_s=float(d.get("fade_in_s", 0.0)),
+            fade_out_s=float(d.get("fade_out_s", 0.0)),
+            position=d.get("position", "center"),
+            opacity=float(d.get("opacity", 1.0)),
+            mix_pct=int(d.get("mix_pct", 50)),
+        )
+
+
 # ── Section ────────────────────────────────────────────────────────────
 @dataclass
 class Section:
@@ -472,6 +544,7 @@ class Section:
         id=new_id("join"), joiner_type="none",
     ))
     segments: list[Segment] = field(default_factory=list)
+    overlays: list[SectionOverlay] = field(default_factory=list)
     name: Optional[str] = None  # override chapter title
 
     def chapter_name(self) -> str:
@@ -497,6 +570,8 @@ class Section:
         }
         if self.name:
             d["name"] = self.name
+        if self.overlays:
+            d["overlays"] = [o.to_dict() for o in self.overlays]
         return d
 
     @staticmethod
@@ -507,6 +582,9 @@ class Section:
                 "id": new_id("join"), "joiner_type": "none",
             }),
             segments=[Segment.from_dict(s) for s in d.get("segments", [])],
+            overlays=[
+                SectionOverlay.from_dict(o) for o in d.get("overlays", [])
+            ],
             name=d.get("name"),
         )
 
@@ -741,6 +819,65 @@ def validate(project: Project) -> list[ValidationIssue]:
                 f"Section {sec.id} has no segments.",
                 item_id=sec.id,
             ))
+        for ov in sec.overlays:
+            if ov.kind not in ("image", "audio"):
+                issues.append(ValidationIssue(
+                    "error",
+                    f"Overlay {ov.id} has unknown kind '{ov.kind}'.",
+                    item_id=sec.id,
+                ))
+            if not ov.file:
+                issues.append(ValidationIssue(
+                    "error",
+                    f"Overlay {ov.id} has no file.",
+                    item_id=sec.id,
+                ))
+            elif not Path(ov.file).exists():
+                issues.append(ValidationIssue(
+                    "warning",
+                    f"Overlay file not found: {ov.file}",
+                    item_id=sec.id,
+                ))
+            if ov.start_s < 0:
+                issues.append(ValidationIssue(
+                    "error",
+                    f"Overlay {ov.id} start_s must be non-negative.",
+                    item_id=sec.id,
+                ))
+            if ov.duration_s < 0:
+                issues.append(ValidationIssue(
+                    "error",
+                    f"Overlay {ov.id} duration_s must be non-negative "
+                    "(use 0 for 'play to end of section').",
+                    item_id=sec.id,
+                ))
+            if ov.fade_in_s < 0 or ov.fade_out_s < 0:
+                issues.append(ValidationIssue(
+                    "error",
+                    f"Overlay {ov.id} fade durations must be non-negative.",
+                    item_id=sec.id,
+                ))
+            if ov.kind == "image":
+                if ov.position not in OVERLAY_POSITIONS:
+                    issues.append(ValidationIssue(
+                        "error",
+                        f"Overlay {ov.id} position '{ov.position}' is not "
+                        f"one of {', '.join(OVERLAY_POSITIONS)}.",
+                        item_id=sec.id,
+                    ))
+                if not (0.0 <= ov.opacity <= 1.0):
+                    issues.append(ValidationIssue(
+                        "error",
+                        f"Overlay {ov.id} opacity must be between 0.0 and 1.0.",
+                        item_id=sec.id,
+                    ))
+            elif ov.kind == "audio":
+                if not (0 <= ov.mix_pct <= 100):
+                    issues.append(ValidationIssue(
+                        "error",
+                        f"Overlay {ov.id} mix_pct must be between 0 and 100.",
+                        item_id=sec.id,
+                    ))
 
     # Freeze the flat timeline once so `previous_last_frame` lookups below
     # don't rebuild the list on every segment.

@@ -22,6 +22,8 @@ from forgeassembler_core.project import (
     PROJECT_VERSION,
     QUALITY_CRF,
     RESOLUTION_KEYS,
+    Section,
+    SectionOverlay,
     Segment,
     is_still_image,
     new_id,
@@ -643,3 +645,182 @@ def test_project_full_roundtrip_with_new_fields(tmp_path: Path):
     assert s1.still_duration_s == 2.0
     assert isinstance(s2, Segment)
     assert s2.color_temperature_k == 5200
+
+
+# ── SectionOverlay (Phase A data model) ───────────────────────────────
+def test_section_overlays_default_empty():
+    sec = Section(id="sec1")
+    assert sec.overlays == []
+
+
+def test_image_overlay_roundtrip(tmp_path: Path):
+    img = tmp_path / "logo.png"
+    img.write_bytes(b"")
+    ov = SectionOverlay(
+        id="ov1", kind="image", file=str(img),
+        start_s=2.0, duration_s=5.0,
+        fade_in_s=0.5, fade_out_s=0.5,
+        position="br", opacity=0.8,
+    )
+    d = ov.to_dict()
+    assert d["kind"] == "image"
+    assert d["position"] == "br"
+    # Audio-only field not emitted for image overlays
+    assert "mix_pct" not in d
+    ov2 = SectionOverlay.from_dict(d)
+    assert ov2.position == "br"
+    assert ov2.opacity == 0.8
+
+
+def test_audio_overlay_roundtrip(tmp_path: Path):
+    snd = tmp_path / "bed.mp3"
+    snd.write_bytes(b"")
+    ov = SectionOverlay(
+        id="ov2", kind="audio", file=str(snd),
+        start_s=0.0, duration_s=10.0,
+        fade_in_s=1.0, fade_out_s=2.0,
+        mix_pct=35,
+    )
+    d = ov.to_dict()
+    assert d["kind"] == "audio"
+    assert d["mix_pct"] == 35
+    # Image-only fields not emitted for audio overlays
+    assert "position" not in d
+    assert "opacity" not in d
+    ov2 = SectionOverlay.from_dict(d)
+    assert ov2.mix_pct == 35
+
+
+def test_section_overlays_project_roundtrip(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    img = tmp_path / "bug.png"
+    img.write_bytes(b"")
+    sec = Section(
+        id="sec1",
+        segments=[Segment(id="s1", video=str(v))],
+        overlays=[SectionOverlay(
+            id="ov1", kind="image", file=str(img),
+            start_s=1.0, duration_s=3.0, position="tl",
+        )],
+    )
+    p = Project(sections=[sec])
+    path = tmp_path / "p.json"
+    p.save(path)
+    loaded = Project.load(path)
+    assert len(loaded.sections[0].overlays) == 1
+    assert loaded.sections[0].overlays[0].kind == "image"
+    assert loaded.sections[0].overlays[0].position == "tl"
+
+
+def test_section_overlays_omitted_when_empty(tmp_path: Path):
+    """Sections with no overlays shouldn't write an `overlays` key —
+    keeps JSON clean for the common no-overlay case."""
+    v = _make_video(tmp_path, "a")
+    sec = Section(id="sec1", segments=[Segment(id="s1", video=str(v))])
+    d = sec.to_dict()
+    assert "overlays" not in d
+
+
+def test_validate_overlay_missing_file_warns(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    sec = Section(
+        id="sec1",
+        segments=[Segment(id="s1", video=str(v))],
+        overlays=[SectionOverlay(
+            id="ov1", kind="image",
+            file=str(tmp_path / "nope.png"),
+        )],
+    )
+    p = Project(
+        sections=[sec],
+        output=Output(folder=str(tmp_path / "out")),
+    )
+    issues = validate(p)
+    assert any(
+        i.level == "warning" and "Overlay file not found" in i.message
+        for i in issues
+    )
+
+
+def test_validate_overlay_bad_position(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    img = tmp_path / "x.png"
+    img.write_bytes(b"")
+    sec = Section(
+        id="sec1",
+        segments=[Segment(id="s1", video=str(v))],
+        overlays=[SectionOverlay(
+            id="ov1", kind="image", file=str(img),
+            position="middle",  # type: ignore[arg-type]
+        )],
+    )
+    p = Project(
+        sections=[sec], output=Output(folder=str(tmp_path / "out")),
+    )
+    issues = validate(p)
+    assert any(
+        i.level == "error" and "position 'middle'" in i.message
+        for i in issues
+    )
+
+
+def test_validate_overlay_bad_opacity(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    img = tmp_path / "x.png"
+    img.write_bytes(b"")
+    sec = Section(
+        id="sec1",
+        segments=[Segment(id="s1", video=str(v))],
+        overlays=[SectionOverlay(
+            id="ov1", kind="image", file=str(img), opacity=1.5,
+        )],
+    )
+    p = Project(
+        sections=[sec], output=Output(folder=str(tmp_path / "out")),
+    )
+    issues = validate(p)
+    assert any(
+        i.level == "error" and "opacity must be between" in i.message
+        for i in issues
+    )
+
+
+def test_validate_overlay_bad_mix_pct(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    snd = tmp_path / "x.mp3"
+    snd.write_bytes(b"")
+    sec = Section(
+        id="sec1",
+        segments=[Segment(id="s1", video=str(v))],
+        overlays=[SectionOverlay(
+            id="ov1", kind="audio", file=str(snd), mix_pct=150,
+        )],
+    )
+    p = Project(
+        sections=[sec], output=Output(folder=str(tmp_path / "out")),
+    )
+    issues = validate(p)
+    assert any(
+        i.level == "error" and "mix_pct must be between" in i.message
+        for i in issues
+    )
+
+
+def test_validate_overlay_negative_times(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    img = tmp_path / "x.png"
+    img.write_bytes(b"")
+    sec = Section(
+        id="sec1",
+        segments=[Segment(id="s1", video=str(v))],
+        overlays=[SectionOverlay(
+            id="ov1", kind="image", file=str(img),
+            start_s=-1.0, duration_s=-2.0,
+        )],
+    )
+    p = Project(
+        sections=[sec], output=Output(folder=str(tmp_path / "out")),
+    )
+    issues = validate(p)
+    assert any("start_s must be non-negative" in i.message for i in issues)
+    assert any("duration_s must be non-negative" in i.message for i in issues)

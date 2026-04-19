@@ -53,6 +53,7 @@ from .joiners import REGISTRY as JOINER_REGISTRY
 from .joiners import Joiner, JoinerSpec, all_specs as joiner_specs, instantiate as instantiate_joiner
 from .project import (
     FRAME_RATE_KEYS,
+    OVERLAY_POSITIONS,
     QUALITY_CRF,
     RESOLUTION_KEYS,
     RESOLUTION_PIXELS,
@@ -66,6 +67,7 @@ from .project import (
     Project,
     PROJECT_VERSION,
     Section,
+    SectionOverlay,
     Segment,
     ValidationIssue,
     is_still_image,
@@ -96,9 +98,11 @@ __all__ = [
     "Project",
     "ProjectJoiner",
     "QUALITY_CRF",
+    "OVERLAY_POSITIONS",
     "RESOLUTION_KEYS",
     "RESOLUTION_PIXELS",
     "Section",
+    "SectionOverlay",
     "Segment",
     "TAGLINE",
     "VERSION",
