@@ -370,22 +370,33 @@ with tab_build:
         use_container_width=True,
         disabled=not can_forge,
     ):
+        import re as _re
+
         from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
         from forgeassembler_core.layout import lay_out
         from forgeassembler_core.probe import probe_duration_ms
 
-        with st.status("Forging…", expanded=True) as status:
+        # Live progress strip under the Forge button. Populated from
+        # ffmpeg's stderr as the forge runs.
+        progress_bar = st.progress(0.0, text="Preparing…")
+
+        _TIME_RE = _re.compile(r"time=(\d+):(\d+):([\d.]+)")
+        _SPEED_RE = _re.compile(r"speed=\s*([\d.]+)x")
+
+        with st.status("Forging…", expanded=False) as status:
             try:
                 ffmpeg_exe = _resolve_ffmpeg_exe()
                 status.write(f"ffmpeg: {ffmpeg_exe}")
 
+                progress_bar.progress(0.0, text="Probing segments…")
                 layout = lay_out(
                     project,
                     probe=lambda p: probe_duration_ms(p, ffmpeg_exe),
                 )
+                total_ms = max(1, layout.total_duration_ms)
                 status.write(
                     f"Layout: {len(layout.segments())} segments, "
-                    f"total {layout.total_duration_ms / 1000:.1f}s",
+                    f"total {total_ms / 1000:.1f}s",
                 )
 
                 resolution_override = None
@@ -399,24 +410,39 @@ with tab_build:
                     )
                     resolution_override = (1920, 1080)
 
-                # Stream ffmpeg output into the status expander in chunks.
-                log_buf: list[str] = []
                 def _log(line: str) -> None:
-                    log_buf.append(line)
-                    if len(log_buf) % 20 == 0:
+                    # Update the progress bar when ffmpeg prints a
+                    # `time=HH:MM:SS.ss` marker.
+                    m = _TIME_RE.search(line)
+                    if m:
+                        h, mm, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+                        current_ms = int((h * 3600 + mm * 60 + s) * 1000)
+                        frac = min(1.0, current_ms / total_ms)
+                        label = f"Encoding… {frac:.0%}  ({current_ms / 1000:.1f}s / {total_ms / 1000:.1f}s)"
+                        sm = _SPEED_RE.search(line)
+                        if sm:
+                            label += f"   {sm.group(1)}× realtime"
+                        progress_bar.progress(frac, text=label)
+                    # Also stash every ~20th line into the status detail
+                    # so the expander has a tail for debugging.
+                    _log.count = getattr(_log, "count", 0) + 1  # type: ignore[attr-defined]
+                    if _log.count % 20 == 0:  # type: ignore[attr-defined]
                         status.write(line)
 
                 if project.output.produce_video:
+                    progress_bar.progress(0.0, text="Encoding… 0%")
                     out_path = forge_video(
                         project, layout,
                         ffmpeg_exe=ffmpeg_exe,
                         resolution_override=resolution_override,
                         log_callback=_log,
                     )
+                    progress_bar.progress(1.0, text=f"Done — {out_path.name}")
                     status.update(label=f"Forged {out_path.name}",
                                   state="complete")
                     st.success(f"Wrote {out_path}")
                 else:
+                    progress_bar.empty()
                     status.update(label="Nothing to forge (video off, "
                                   "funscripts not yet wired).",
                                   state="complete")
@@ -427,6 +453,7 @@ with tab_build:
                         "UI; expected in the next commit.",
                     )
             except Exception as exc:  # noqa: BLE001
+                progress_bar.empty()
                 status.update(label="Forge failed", state="error")
                 st.error(str(exc))
 
