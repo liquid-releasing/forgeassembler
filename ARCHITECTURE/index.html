@@ -1,0 +1,1598 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Assemble many FunscriptForge clips into one long combined video and funscript bundle.">
+      
+      
+      
+        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/ARCHITECTURE/">
+      
+      
+        <link rel="prev" href="../guide/title-cards/scifi_cockpit_example/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Architecture - ForgeAssembler</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#forgeassembler-architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="ForgeAssembler" class="md-header__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ForgeAssembler
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="deep-purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="deep-purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/liquid-releasing/forgeassembler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    liquid-releasing/forgeassembler
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../FEATURES/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Features
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide/title-cards/" class="md-tabs__link">
+          
+  
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="ForgeAssembler" class="md-nav__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ForgeAssembler
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/liquid-releasing/forgeassembler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    liquid-releasing/forgeassembler
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../FEATURES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Title Cards
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Title Cards
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/title-cards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/title-cards/getting_started_white_on_transparent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    White on Transparent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/title-cards/getting_started_black_cutout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Black Cutout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/title-cards/scifi_cockpit_example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sci-Fi Cockpit Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#positioning-in-the-liquid-releasing-family" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Positioning in the Liquid Releasing family
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-vocabulary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core vocabulary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project file format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#processing-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ffmpeg-filter-complex-approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ffmpeg filter-complex approach
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#funscript-concatenation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Funscript concatenation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#codebase-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Codebase layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing strategy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase map
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-v001-alpha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 (v0.0.1-alpha)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3+
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#positioning-in-the-liquid-releasing-family" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Positioning in the Liquid Releasing family
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-vocabulary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core vocabulary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project file format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#processing-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ffmpeg-filter-complex-approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ffmpeg filter-complex approach
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#funscript-concatenation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Funscript concatenation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#codebase-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Codebase layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing strategy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase map
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-v001-alpha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 (v0.0.1-alpha)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3+
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="forgeassembler-architecture">ForgeAssembler — Architecture<a class="headerlink" href="#forgeassembler-architecture" title="Permanent link">&para;</a></h1>
+<p>This document captures the data model, processing pipeline, and design
+decisions behind ForgeAssembler. It is the source of truth for engineers
+and Claude agents working on the code. User-facing product docs live in
+<a href="../FEATURES/">FEATURES.md</a>.</p>
+<h2 id="positioning-in-the-liquid-releasing-family">Positioning in the Liquid Releasing family<a class="headerlink" href="#positioning-in-the-liquid-releasing-family" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>FunscriptForge</strong></td>
+<td>Shape and polish a <em>single</em> raw funscript into a finished, device-safe script with transforms, multi-axis channels, estim channels, and audio WAVs.</td>
+</tr>
+<tr>
+<td><strong>ForgeYT</strong></td>
+<td>Download one YouTube audio file onto disk, no account or cloud.</td>
+</tr>
+<tr>
+<td><strong>ForgeAssembler</strong></td>
+<td>Concatenate many finished FunscriptForge outputs into a single long video + funscript bundle. Not an editor — a linear assembler.</td>
+</tr>
+</tbody>
+</table>
+<p>FunscriptForge handles per-clip artistry. ForgeAssembler handles sequencing,
+transitions, and delivery of the combined long-form output. Most users of
+ForgeAssembler are also users of FunscriptForge.</p>
+<h2 id="core-vocabulary">Core vocabulary<a class="headerlink" href="#core-vocabulary" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Segment</strong> — a top-level item in the project list. Roughly "a paragraph
+  in the final video". Has layers running in parallel:
+  video, audio, image overlays. The video layer may be a clip or a
+  still PNG (title cards are just segments whose video is a PNG).</li>
+<li><strong>Layer</strong> — a track within a segment: video, audio, image overlay.
+  Each layer has optional start/end and fade timings.</li>
+<li><strong>Joiner</strong> — a transition between two segments. V1 types: <code>none</code> (hard
+  cut), <code>fade_to_black</code> (duration configurable). Phase 2 adds richer
+  joiner types (crossfade, dissolve, etc.) as additional subclasses —
+  <strong>not</strong> via a template DSL.</li>
+<li><strong>Title card</strong> — <em>not a distinct type</em>. It's a segment whose <code>video</code>
+  is a PNG, rendered for a configured duration. No text rendering in
+  ForgeAssembler itself; user supplies the designed image.</li>
+<li><strong>Bug</strong> — a project-level PNG overlaid in a corner of every segment
+  (opacity + margin configurable). Classic "network logo in the
+  corner" branding.</li>
+<li><strong>Output resolution</strong> — the canonical size every segment is scaled to
+  before concat. Values (stored as the JSON key string):</li>
+<li>16:9: <code>1080p</code> (1920×1080), <code>1440p</code> (2560×1440), <code>4k</code> (3840×2160)</li>
+<li>21:9: <code>uw_1080p</code> (2560×1080), <code>uw_1440p</code> (3440×1440)</li>
+<li>4:3: <code>4_3_hd</code> (1440×1080)</li>
+<li>3:4 / 9:16 portrait: <code>3_4_hd</code> (1080×1440), <code>9_16_hd</code> (1080×1920)</li>
+<li><code>source</code> — copy the first segment's resolution</li>
+</ul>
+<p>In v1 the scale mode is always <strong>pad</strong> (letterbox/pillarbox). A
+  <code>source</code> value delays resolution until ffprobe of the first segment
+  at forge time. A Phase 2 <code>crop</code> fill mode will add <code>output.fill_mode</code>
+  to the schema.
+- <strong>Normalize audio</strong> — project-level toggle that applies ffmpeg's
+  <code>loudnorm</code> filter (−16 LUFS) to the final audio track.
+- <strong>Color temperature</strong> — optional per-segment override in Kelvin
+  (4000–10000). Implemented via ffmpeg's <code>colortemperature</code> filter. A
+  "generate preview frame" action renders one frame with the current
+  value so the user can tune visually.
+- <strong>Audio bed</strong> — a project-level audio track that spans time across
+  segments. Reserved in the v1 schema (<code>"audio_beds": []</code>), implemented
+  in Phase 2. For MVP, users pre-split bed audio into per-segment files.
+- <strong>Output channels</strong> — the set of funscript variants included in the
+  combined output (main, multi-axis, 3-phase estim, prostate, audio
+  estim, pulse frequency). User-selected at project level.
+- <strong>Bookmark</strong> — per-segment text that becomes a chapter marker in the
+  combined video and in the combined funscript (Phase 2).
+- <strong>Trim range</strong> — per-segment start/end times in <code>HH:MM:SS.mmm</code> format
+  that slice the incoming media before concatenation (Phase 2).</p>
+<h2 id="project-file-format">Project file format<a class="headerlink" href="#project-file-format" title="Permanent link">&para;</a></h2>
+<p>ForgeAssembler projects are JSON. Users can hand-edit them and reload.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;output&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">&quot;folder&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/out/&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">&quot;basename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;combined&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">&quot;resolution&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1080p&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">&quot;normalize_audio&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">&quot;produce_video&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">&quot;produce_funscripts&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">&quot;bug&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">      </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/demo/branding/lr_bug.png&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">      </span><span class="nt">&quot;corner&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bottom-right&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">      </span><span class="nt">&quot;margin_px&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">      </span><span class="nt">&quot;opacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">  </span><span class="nt">&quot;output_channels&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="nt">&quot;main&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="nt">&quot;multi_axis&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="nt">&quot;three_phase_estim&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="nt">&quot;four_phase_estim&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="nt">&quot;prostate&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="nt">&quot;audio_estim&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="nt">&quot;pulse_frequency&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">  </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;seg-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;segment&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">      </span><span class="nt">&quot;video&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/demo/intro/steel_pour.mp4&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">      </span><span class="nt">&quot;audio&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">        </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;replace&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">        </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/demo/intro/beat_part_1.mp3&quot;</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">      </span><span class="p">},</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">      </span><span class="nt">&quot;overlays&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">        </span><span class="p">{</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">          </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;image&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="w">          </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/demo/intro/lr_logo.png&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">          </span><span class="nt">&quot;position&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;center&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">          </span><span class="nt">&quot;start_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">          </span><span class="nt">&quot;end_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">3.0</span><span class="p">,</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="w">          </span><span class="nt">&quot;fade_in_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="w">          </span><span class="nt">&quot;fade_out_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="w">          </span><span class="nt">&quot;opacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="w">      </span><span class="p">],</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="w">      </span><span class="nt">&quot;funscripts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="w">        </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;auto_detect&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="w">        </span><span class="nt">&quot;folder&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="w">      </span><span class="p">}</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;join-1-2&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;joiner&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="w">      </span><span class="nt">&quot;joiner_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;none&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="w">      </span><span class="nt">&quot;params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a><span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;seg-2&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;segment&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a><span class="w">      </span><span class="nt">&quot;video&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/demo/title2/victoria_oats_wild_ride.png&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a><span class="w">      </span><span class="nt">&quot;still_duration_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">4.5</span><span class="p">,</span>
+<a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a><span class="w">      </span><span class="nt">&quot;audio&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a><span class="w">        </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;replace&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a><span class="w">        </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/demo/intro/beat_part_2.mp3&quot;</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a><span class="w">      </span><span class="p">}</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a><span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;join-2-3&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;joiner&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a><span class="w">      </span><span class="nt">&quot;joiner_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fade_to_black&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a><span class="w">      </span><span class="nt">&quot;params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;duration_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.0</span><span class="p">}</span>
+<a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a><span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;seg-3&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;segment&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77" href="#__codelineno-0-77"></a><span class="w">      </span><span class="nt">&quot;video&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/demo/main/demo.mp4&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78" href="#__codelineno-0-78"></a><span class="w">      </span><span class="nt">&quot;audio&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;replace&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/demo/main/voiceover.mp3&quot;</span><span class="p">},</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79" href="#__codelineno-0-79"></a><span class="w">      </span><span class="nt">&quot;color_temperature_k&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">6200</span><span class="p">,</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80" href="#__codelineno-0-80"></a><span class="w">      </span><span class="nt">&quot;funscripts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;auto_detect&quot;</span><span class="p">}</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81" href="#__codelineno-0-81"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82" href="#__codelineno-0-82"></a><span class="w">  </span><span class="p">],</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83" href="#__codelineno-0-83"></a><span class="w">  </span><span class="nt">&quot;audio_beds&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84" href="#__codelineno-0-84"></a><span class="p">}</span>
+</code></pre></div>
+<p>Notes:</p>
+<ul>
+<li>Every item has an <code>id</code>. IDs are stable so Phase 2 can reference
+  segments from another item.</li>
+<li><code>output.resolution</code> is one of <code>1080p</code>, <code>1440p</code>, <code>4k</code>, <code>uw_1080p</code>,
+  <code>uw_1440p</code>, <code>4_3_hd</code>, <code>3_4_hd</code>, <code>9_16_hd</code>, or <code>source</code>. Defaults to
+  <code>1080p</code>. See the vocabulary list above for pixel dimensions.</li>
+<li><code>output.normalize_audio</code> is a boolean. When true, the combined audio
+  runs through ffmpeg <code>loudnorm</code> targeting −16 LUFS (single-pass).</li>
+<li><code>output.produce_video</code> and <code>output.produce_funscripts</code> are booleans
+  (default both <code>true</code>). <strong>At least one must be true</strong> — validator
+  rejects both-false. When <code>produce_video</code> is false the ffmpeg pipeline
+  is skipped entirely; when <code>produce_funscripts</code> is false the funscript
+  concat + heatmap previews are skipped. Chapter markers are written
+  whenever <code>produce_video</code> is true, regardless of <code>produce_funscripts</code>.</li>
+<li><code>output.bug</code> is optional. When present, the PNG is composited into
+  every segment's video layer at the specified corner/margin/opacity.
+  Per-segment override (e.g. hide bug on the outro) is Phase 2.</li>
+<li><code>output_channels</code> is a project-level dictionary of booleans. Missing
+  channel files in any segment trigger a prompt at forge time.</li>
+<li><code>audio_beds</code> is reserved; v1 ignores it.</li>
+<li>Segments may have <code>funscripts</code> omitted entirely — those are pure
+  video/audio segments (intro, title cards, outro) with no haptic track.</li>
+<li>A segment whose <code>video</code> points at a PNG (extension check) is a
+  <strong>title card</strong>: looped for <code>still_duration_s</code> seconds. No typography
+  is rendered by ForgeAssembler; the PNG is authored externally.</li>
+<li><code>color_temperature_k</code> is optional per-segment (4000–10000 Kelvin).
+  When set, applies ffmpeg <code>colortemperature</code> filter to that segment.</li>
+<li><code>overlays[].type</code> is <code>image</code> in v1. Text overlays are deferred to a
+  future phase that bundles an open-licensed font; until then, bake
+  text into PNG overlays upstream.</li>
+</ul>
+<h2 id="processing-pipeline">Processing pipeline<a class="headerlink" href="#processing-pipeline" title="Permanent link">&para;</a></h2>
+<p>At forge time:</p>
+<ol>
+<li><strong>Validate project JSON</strong> against schema (including:
+   <code>output.produce_video</code> OR <code>output.produce_funscripts</code> must be true).
+   Hard errors abort; warnings surface in the UI.</li>
+<li><strong>Resolve each segment</strong>: locate the video file, auto-detect
+   associated funscripts in the segment's folder (main, multi-axis,
+   estim channels). Probe duration via ffprobe. Funscript resolution
+   is skipped when <code>produce_funscripts</code> is false.</li>
+<li><strong>Build layout</strong>: compute the running start time of each segment and
+   joiner. Joiners insert a gap of known duration between segments.</li>
+<li><strong>Concatenate videos</strong> <em>(skipped when <code>output.produce_video</code> is false)</em>:
+   emit an ffmpeg <code>filter_complex</code> graph that
+   (a) normalizes every segment's video to the project's canonical
+   <code>output.resolution</code> via <code>scale</code> + <code>pad</code> + <code>setsar=1</code>, (b) applies
+   the per-segment <code>colortemperature</code> filter if set, (c) composites
+   image overlays for each segment, (d) inserts joiner transitions
+   (e.g. <code>xfade</code> for fade-to-black), (e) overlays the project-level
+   <code>bug</code> PNG onto every segment via <code>overlay</code>, and (f) concats
+   everything to a single mp4.</li>
+<li><strong>Concatenate audio</strong> <em>(skipped when <code>output.produce_video</code> is false)</em>:
+   per segment, select original / replaced / silence. Concat in
+   lockstep with video. If <code>output.normalize_audio</code> is true, run the
+   final audio track through <code>loudnorm=I=-16:TP=-1.5:LRA=11</code>.
+   Phase 2 mixes audio beds on top.</li>
+<li><strong>Concatenate funscripts</strong> <em>(skipped when <code>output.produce_funscripts</code>
+   is false)</em>: for each selected output channel, load each segment's
+   funscript for that channel, shift all <code>at</code> timestamps by the
+   segment's running start, and concat. Actions that fall in joiner
+   gaps are dropped (v1: hold last position; Phase 2: synthesize via
+   a FunscriptForge transform).</li>
+<li><strong>Write chapter markers</strong>: one chapter per segment. Always written
+   to the MP4 when video is produced (via ffmpeg <code>-metadata</code> chapters)
+   and to each output funscript's <code>chapters</code> array when funscripts are
+   produced. Chapter markers cost nothing and help every player.</li>
+<li><strong>Write project JSON</strong> alongside output for reproducibility.</li>
+<li><strong>Generate heatmap + beatmap preview</strong> PNGs per channel <em>(skipped
+   when <code>output.produce_funscripts</code> is false)</em>.</li>
+</ol>
+<h2 id="ffmpeg-filter-complex-approach">ffmpeg filter-complex approach<a class="headerlink" href="#ffmpeg-filter-complex-approach" title="Permanent link">&para;</a></h2>
+<p>Every segment is normalized to the project's canonical resolution
+(<code>scale</code> + <code>pad</code> to preserve aspect ratio) before anything else:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>     pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[v0]
+</code></pre></div>
+<p>Still images (title cards) are loaded with <code>-loop 1 -t N</code> so they
+produce a fixed-duration video stream that feeds the same pipeline.</p>
+<p>Optional per-segment color temperature:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>[v0]colortemperature=temperature=6200[v0_warm]
+</code></pre></div>
+<p>Segments then concatenate with the <code>concat</code> filter (not the demuxer,
+because we need re-encoding anyway to honour the size + temperature +
+bug pipeline):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[v0][0:a][v1][1:a]concat=n=2:v=1:a=1[vraw][aout]
+</code></pre></div>
+<p>For a fade-to-black joiner we use <code>xfade</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>[v0][v1]xfade=transition=fadeblack:duration=2:offset=X[vout]
+</code></pre></div>
+<p>For per-segment image overlays, we pre-apply before concat:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>[v0][1:v]overlay=x=(W-w)/2:y=(H-h)/2:enable=&#39;between(t,0.5,3)&#39;[v0_with_logo]
+</code></pre></div>
+<p><strong>Bug overlay</strong> (project-level, applied to every segment):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>[vraw][bug]overlay=x=W-w-24:y=H-h-24:format=auto[vbug]
+</code></pre></div>
+<p>The bug PNG is read with <code>-loop 1</code> and its opacity is applied via a
+pre-stage <code>format=rgba,colorchannelmixer=aa=0.85</code>.</p>
+<p><strong>Audio loudness normalize</strong> (project-level, applied to the final
+concatenated audio track):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[aout]loudnorm=I=-16:TP=-1.5:LRA=11[afinal]
+</code></pre></div>
+<p>Text rendering (<code>drawtext</code>) is <strong>not</strong> used in v1 — users author
+title cards and captions as PNGs upstream. When text returns in a
+later phase, it will ship with a bundled open-licensed font.</p>
+<p>Codec/FPS mismatches: by construction we re-encode everything (the
+bug + temperature + resolution normalize pipeline requires it), so
+input codec/FPS mismatches are handled transparently.</p>
+<h2 id="funscript-concatenation">Funscript concatenation<a class="headerlink" href="#funscript-concatenation" title="Permanent link">&para;</a></h2>
+<p>Funscripts are simple JSON:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">&quot;actions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;pos&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;pos&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">},</span><span class="w"> </span><span class="err">...</span><span class="p">],</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">&quot;chapters&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">...</span><span class="p">]</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">}</span>
+</code></pre></div>
+<p>Concatenation is timestamp shifting:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">concat_funscripts</span><span class="p">(</span><span class="n">parts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Funscript</span><span class="p">,</span> <span class="nb">float</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">Funscript</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">out_actions</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">offset_ms</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="k">for</span> <span class="n">fs</span><span class="p">,</span> <span class="n">duration_ms</span> <span class="ow">in</span> <span class="n">parts</span><span class="p">:</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">fs</span><span class="p">[</span><span class="s2">&quot;actions&quot;</span><span class="p">]:</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>            <span class="n">out_actions</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;at&quot;</span><span class="p">:</span> <span class="n">a</span><span class="p">[</span><span class="s2">&quot;at&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">offset_ms</span><span class="p">,</span> <span class="s2">&quot;pos&quot;</span><span class="p">:</span> <span class="n">a</span><span class="p">[</span><span class="s2">&quot;pos&quot;</span><span class="p">]})</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>        <span class="n">offset_ms</span> <span class="o">+=</span> <span class="n">duration_ms</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;actions&quot;</span><span class="p">:</span> <span class="n">out_actions</span><span class="p">}</span>
+</code></pre></div>
+<p>Multi-axis and estim variants concat the same way, once per selected
+channel. Joiner gaps in v1 have no actions inserted — the device holds
+the last position from the previous segment until the next segment
+begins.</p>
+<h2 id="codebase-layout">Codebase layout<a class="headerlink" href="#codebase-layout" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>forgeassembler/
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>├── forgeassembler.py              # PyWebView launcher (dual-mode)
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>├── ui.py                           # Streamlit UI, two tabs
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>├── cli.py                          # argparse CLI entry point
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>├── forgeassembler_core/
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>│   ├── __init__.py
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>│   ├── about.py                    # version + credits
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>│   ├── project.py                  # Project model, load/save JSON, validate
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>│   ├── detect.py                   # folder → video + funscripts
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>│   ├── layout.py                   # compute running timeline
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>│   ├── filters.py                  # per-segment filter-chain builders
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>│   │                               #   (scale/pad, colortemperature, overlays)
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>│   ├── concat_video.py             # ffmpeg filter_complex orchestration
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>│   │                               #   (incl. bug, loudnorm, xfade)
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>│   ├── concat_funscript.py         # funscript timestamp shift + concat
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>│   ├── joiners/
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>│   │   ├── __init__.py
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>│   │   ├── base.py                 # Joiner ABC
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>│   │   ├── none_joiner.py          # straight cut
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>│   │   └── fade_to_black.py        # fade/hold/fade
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>│   ├── preview.py                  # single-frame preview rendering
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>│   │                               #   (for color-temp tuning)
+<a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>│   ├── chapters.py                 # mp4 chapter markers
+<a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a>│   ├── heatmap.py                  # funscript heatmap + beatmap previews
+<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>│   └── forge.py                    # top-level forge() orchestrator
+<a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a>├── tests/                          # pytest
+<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a>│   ├── fixtures/                   # tiny test videos + funscripts
+<a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a>│   ├── test_project.py
+<a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a>│   ├── test_detect.py
+<a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a>│   ├── test_layout.py
+<a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>│   ├── test_concat_funscript.py
+<a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a>│   ├── test_filters.py             # filter-chain string builders
+<a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>│   ├── test_concat_video.py        # integration, slow
+<a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a>│   └── test_cli.py
+<a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>├── .streamlit/config.toml
+<a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>├── media/                          # icons, wordmark, LR logo
+<a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>├── ForgeAssembler.spec             # PyInstaller
+<a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a>├── requirements.txt
+<a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a>├── requirements-desktop.txt
+<a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>├── requirements-dev.txt            # pytest, ruff
+<a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>├── .github/workflows/release.yml
+<a id="__codelineno-10-42" name="__codelineno-10-42" href="#__codelineno-10-42"></a>├── README.md
+<a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a>├── LICENSE (MIT)
+<a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a>├── THIRD_PARTY_LICENSES.md
+<a id="__codelineno-10-45" name="__codelineno-10-45" href="#__codelineno-10-45"></a>└── .gitignore
+</code></pre></div>
+<h2 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h2>
+<p><code>forgeassembler</code> ships with a CLI for automation and scripted batch
+assembly. Same process entry point; Streamlit launcher only fires when
+called with no CLI args.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>forgeassembler forge &lt;project.json&gt;            # run a saved project
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>forgeassembler forge &lt;project.json&gt; --no-video          # funscripts only
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>forgeassembler forge &lt;project.json&gt; --no-funscripts     # video only
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>forgeassembler detect &lt;folder&gt;                 # preview what auto-detects
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>forgeassembler validate &lt;project.json&gt;         # schema + resolvability check
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>forgeassembler list-joiners                    # show joiner types and params
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>forgeassembler --version
+</code></pre></div>
+<p><code>--no-video</code> / <code>--no-funscripts</code> override the corresponding
+<code>output.produce_*</code> booleans in the project JSON for the duration of
+that run. Passing both is a usage error.</p>
+<p>Exit codes: 0 success, 1 validation error, 2 resolution error (file
+missing), 3 ffmpeg error.</p>
+<p>A Python script can generate project JSON from scanning a folder tree
+and pipe into <code>forgeassembler forge</code>, which is the primary automation
+story we're selling.</p>
+<h2 id="testing-strategy">Testing strategy<a class="headerlink" href="#testing-strategy" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Pure-logic unit tests</strong> (<code>test_project.py</code>, <code>test_detect.py</code>,
+  <code>test_layout.py</code>, <code>test_concat_funscript.py</code>): no ffmpeg, no real
+  files beyond tiny fixtures. Fast, run on every commit.</li>
+<li><strong>Integration tests</strong> (<code>test_concat_video.py</code>): use 1-second fixture
+  videos and ffmpeg to validate end-to-end forging. Marked slow; may
+  run only on tag pushes in CI.</li>
+<li><strong>CLI tests</strong> (<code>test_cli.py</code>): subprocess the CLI entry point, assert
+  exit codes and file outputs.</li>
+<li><strong>No UI tests in v1.</strong> The Streamlit UI is thin over the core and
+  exercised by hand + CLI coverage.</li>
+</ul>
+<h2 id="phase-map">Phase map<a class="headerlink" href="#phase-map" title="Permanent link">&para;</a></h2>
+<h3 id="phase-1-v001-alpha">Phase 1 (v0.0.1-alpha)<a class="headerlink" href="#phase-1-v001-alpha" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Two tabs: Build, Joiners</li>
+<li>Segments with video (clip or PNG still) + audio options + image overlays</li>
+<li>Title cards = segments whose <code>video</code> is a PNG with <code>still_duration_s</code></li>
+<li>Joiners: None, FadeToBlack</li>
+<li>Output resolution dropdown (16:9 1080p/1440p/4K, 21:9 ultrawide
+  1080p/1440p, 4:3 HD, 3:4 vertical HD, 9:16 vertical HD, source).
+  Always scale-and-pad in v1.</li>
+<li>Produce-what toggles (<code>produce_video</code>, <code>produce_funscripts</code> — at
+  least one must be true). Enables "funscripts-only" and "video-only"
+  fast paths.</li>
+<li>Audio loudness normalize toggle (ffmpeg <code>loudnorm</code>, −16 LUFS)</li>
+<li>Project-level bug overlay (PNG in a chosen corner)</li>
+<li>Per-segment color temperature (4000–10000 K) with preview-frame button</li>
+<li>Output channels: main, multi-axis, 3-phase estim</li>
+<li>Project JSON save/load</li>
+<li>Chapter markers (mp4 + funscript)</li>
+<li>Heatmap + beatmap preview</li>
+<li>Summary stats in sidebar</li>
+<li>Error handling: missing variant prompt, corrupt video skip</li>
+<li>CLI: <code>forge</code>, <code>detect</code>, <code>validate</code>, <code>list-joiners</code></li>
+<li>Tests: unit + CLI + 1-2 integration fixtures</li>
+</ul>
+<h3 id="phase-2">Phase 2<a class="headerlink" href="#phase-2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Timeline tab</strong> — thumbnail strip per segment with joiner markers,
+  click-to-play source clip</li>
+<li><code>output.fill_mode</code> — <code>pad</code> (v1 default) vs <code>crop</code> (new). Crop scales
+  to cover the output frame and trims excess on the short axis.</li>
+<li>Per-segment bug override (hide/replace bug on specific segments)</li>
+<li>Per-segment trim ranges (HH:MM:SS.mmm)</li>
+<li>Per-segment bookmark text</li>
+<li>Audio estim WAV concat (resample to common rate)</li>
+<li>Pulse frequency + 4-phase estim</li>
+<li>Transform-based funscript fill during joiner gaps</li>
+<li>Additional joiner types (crossfade, dissolve, etc.) as Joiner subclasses</li>
+<li>Project-level audio beds</li>
+<li>Reorder UI in the list panel</li>
+</ul>
+<h3 id="phase-3">Phase 3+<a class="headerlink" href="#phase-3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Text overlays with a bundled open-licensed font</li>
+<li>Video-on-video overlays (PIP)</li>
+<li>"Last frame of segment N" as an importable still source</li>
+<li>Batch mode from the UI (drop a folder of project.json files)</li>
+<li>Per-clip color-match assistance (reference clip + auto-align)</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../guide/title-cards/scifi_cockpit_example/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Sci-Fi Cockpit Example">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Sci-Fi Cockpit Example
+              </div>
+            </div>
+          </a>
+        
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      &copy; 2026 Liquid Releasing. Licensed under the MIT License.
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/liquid-releasing/forgeassembler" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://discord.gg/sZWCqgxY" target="_blank" rel="noopener" title="discord.gg" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
