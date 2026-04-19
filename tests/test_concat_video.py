@@ -154,8 +154,8 @@ def test_two_segments_none_joiner(tmp_path: Path):
     fc = cmd.filter_complex
     # Two segments → concat=n=2
     assert "concat=n=2:v=1:a=1" in fc
-    # No black bridge
-    assert "color=c=black" not in fc
+    # No solid-colour bridge
+    assert "color=c=0x" not in fc
 
 
 # ── Fade-to-black joiner: bridge + fades ──────────────────────────────
@@ -174,7 +174,7 @@ def test_fade_to_black_inserts_black_bridge(tmp_path: Path):
 
     fc = cmd.filter_complex
     # Solid black bridge of exactly the joiner duration
-    assert "color=c=black:s=1920x1080:d=2" in fc
+    assert "color=c=0x000000:s=1920x1080:d=2" in fc
     # Silence for the bridge audio
     assert "anullsrc=d=2:r=48000:cl=stereo" in fc
     # Concat should be n=3 (seg + bridge + seg)
@@ -317,6 +317,9 @@ def test_audio_mode_replace_adds_audio_input(tmp_path: Path):
     assert cmd.inputs[1].path == str(mp3)
     # The second input's audio, not the first segment's, is routed to the segment
     assert "[1:a]aresample=48000" in cmd.filter_complex
+    # Non-still replacement audio should also be -t truncated to the segment
+    # duration (1 second in this test).
+    assert cmd.inputs[1].pre_args == ["-t", "1"]
 
 
 def test_audio_mode_replace_missing_file_raises(tmp_path: Path):
@@ -457,6 +460,212 @@ def test_output_args_include_h264_and_aac(tmp_path: Path):
     assert "libx264" in cmd.output_args
     assert "aac" in cmd.output_args
     assert "yuv420p" in cmd.output_args
+
+
+# ── fade_to_black colour parameter ────────────────────────────────────
+def test_fade_to_black_default_color_is_black(tmp_path: Path):
+    v1 = _mp4(tmp_path, "a")
+    v2 = _mp4(tmp_path, "b")
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(v1)),
+        Joiner(id="j1", joiner_type="fade_to_black",
+               params={"duration_s": 2.0}),
+        Segment(id="s2", video=str(v2)),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "color=c=0x000000" in cmd.filter_complex
+
+
+def test_fade_to_black_accepts_custom_color(tmp_path: Path):
+    v1 = _mp4(tmp_path, "a")
+    v2 = _mp4(tmp_path, "b")
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(v1)),
+        Joiner(
+            id="j1", joiner_type="fade_to_black",
+            params={"duration_s": 2.0, "color": "#1a1a1a"},
+        ),
+        Segment(id="s2", video=str(v2)),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "color=c=0x1a1a1a" in cmd.filter_complex
+
+
+def test_fade_to_black_color_accepts_no_hash(tmp_path: Path):
+    v1 = _mp4(tmp_path, "a")
+    v2 = _mp4(tmp_path, "b")
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(v1)),
+        Joiner(
+            id="j1", joiner_type="fade_to_black",
+            params={"duration_s": 2.0, "color": "2a2a2a"},
+        ),
+        Segment(id="s2", video=str(v2)),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "color=c=0x2a2a2a" in cmd.filter_complex
+
+
+def test_fade_to_black_color_falls_back_on_invalid(tmp_path: Path):
+    v1 = _mp4(tmp_path, "a")
+    v2 = _mp4(tmp_path, "b")
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(v1)),
+        Joiner(
+            id="j1", joiner_type="fade_to_black",
+            params={"duration_s": 2.0, "color": "not a color"},
+        ),
+        Segment(id="s2", video=str(v2)),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    # Falls back to black
+    assert "color=c=0x000000" in cmd.filter_complex
+
+
+# ── Per-segment image overlays ────────────────────────────────────────
+def test_segment_overlay_registers_input_and_composites(tmp_path: Path):
+    from forgeassembler_core.project import Overlay
+
+    v = _mp4(tmp_path, "a")
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p = _project(
+        tmp_path,
+        Segment(
+            id="s1", video=str(v),
+            overlays=[Overlay(
+                type="image", file=str(logo),
+                position="bottom-left",
+                start_s=0.0,
+            )],
+        ),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    # Logo PNG registered as its own looped input with segment duration
+    assert any(inp.path == str(logo) for inp in cmd.inputs)
+    assert cmd.inputs[1].pre_args == ["-loop", "1", "-t", "2"]
+    # Overlay composite appears in the graph
+    assert "v_ov_0_0" in cmd.filter_complex
+    assert "overlay=x=0:y=H-h" in cmd.filter_complex
+
+
+def test_segment_overlay_fade_in(tmp_path: Path):
+    from forgeassembler_core.project import Overlay
+
+    v = _mp4(tmp_path, "a")
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p = _project(
+        tmp_path,
+        Segment(
+            id="s1", video=str(v),
+            overlays=[Overlay(
+                type="image", file=str(logo),
+                position="bottom-left",
+                start_s=3.0,
+                fade_in_s=5.0,
+            )],
+        ),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 10000)
+    cmd = build_ffmpeg_command(p, layout)
+    # fade-in on the overlay starts at its start_s for fade_in_s seconds
+    assert "fade=t=in:st=3:d=5:alpha=1" in cmd.filter_complex
+
+
+def test_segment_overlay_time_window(tmp_path: Path):
+    from forgeassembler_core.project import Overlay
+
+    v = _mp4(tmp_path, "a")
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p = _project(
+        tmp_path,
+        Segment(
+            id="s1", video=str(v),
+            overlays=[Overlay(
+                type="image", file=str(logo),
+                position="bottom-right",
+                start_s=1.0,
+                end_s=4.0,
+                fade_in_s=0.5,
+                fade_out_s=0.5,
+            )],
+        ),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 5000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    assert "fade=t=in:st=1:d=0.5:alpha=1" in fc
+    assert "fade=t=out:st=3.5:d=0.5:alpha=1" in fc
+    assert "enable='between(t,1,4)'" in fc
+
+
+def test_text_overlays_skipped_in_v1(tmp_path: Path):
+    """Text overlays are in the schema but deferred to a later phase;
+    they shouldn't add inputs or filters to the command."""
+    from forgeassembler_core.project import Overlay
+
+    v = _mp4(tmp_path, "a")
+    p = _project(
+        tmp_path,
+        Segment(
+            id="s1", video=str(v),
+            overlays=[Overlay(type="text", content="hello", size=48)],
+        ),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    # Only one input: the segment video itself
+    assert len(cmd.inputs) == 1
+    # No overlay composite in the graph
+    assert "v_ov_" not in cmd.filter_complex
+
+
+def test_multiple_overlays_chain_in_order(tmp_path: Path):
+    from forgeassembler_core.project import Overlay
+
+    v = _mp4(tmp_path, "a")
+    logo = tmp_path / "logo.png"; logo.write_bytes(b"")
+    caption = tmp_path / "cap.png"; caption.write_bytes(b"")
+    p = _project(
+        tmp_path,
+        Segment(
+            id="s1", video=str(v),
+            overlays=[
+                Overlay(type="image", file=str(logo),
+                        position="bottom-left"),
+                Overlay(type="image", file=str(caption),
+                        position="top-center", start_s=2.0),
+            ],
+        ),
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 5000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    # Two overlay labels are emitted in order
+    assert "v_ov_0_0" in fc
+    assert "v_ov_0_1" in fc
+    # Second overlay chains onto first
+    assert "[v_ov_0_0]" in fc or "v_ov_0_0][" in fc.replace(" ", "")
 
 
 # ── previous_last_frame background ────────────────────────────────────

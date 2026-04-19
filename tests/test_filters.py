@@ -167,8 +167,8 @@ def test_image_overlay_start_only():
 
 def test_image_overlay_partial_opacity_adds_prefix():
     s = image_overlay_filter("v", "img", "out", opacity=0.5)
-    assert "[img]format=rgba,colorchannelmixer=aa=0.5[img_op]" in s
-    assert "[v][img_op]" in s
+    assert "[img]format=rgba,colorchannelmixer=aa=0.5[img_prep]" in s
+    assert "[v][img_prep]" in s
 
 
 def test_image_overlay_rejects_unknown_position():

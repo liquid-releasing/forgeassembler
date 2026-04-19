@@ -191,12 +191,17 @@ def image_overlay_filter(
     start_s: float = 0.0,
     end_s: float | None = None,
     opacity: float = 1.0,
+    fade_in_s: float = 0.0,
+    fade_out_s: float = 0.0,
 ) -> str:
     """Composite an image onto a video stream at a named position.
 
-    If `opacity < 1.0`, the image is first re-formatted with a scaled
-    alpha channel (same technique as `bug_prepare_filter`). Time window
-    is enforced via overlay's `enable` expression.
+    The image is re-formatted with an alpha channel and preprocessed:
+    `colorchannelmixer=aa` applies `opacity`; `fade=alpha=1` at the
+    start/end of the visible window applies `fade_in_s` / `fade_out_s`
+    (both only take effect if > 0 and, for fade_out, if `end_s` is known).
+    Visibility outside [start_s, end_s] is enforced via overlay's
+    `enable` expression.
     """
     if position not in _POSITION_EXPRS:
         raise ValueError(
@@ -205,15 +210,27 @@ def image_overlay_filter(
         )
     x_expr, y_expr = _POSITION_EXPRS[position]
 
+    # Preprocess the image: alpha channel + optional opacity + fades.
+    prep_parts: list[str] = ["format=rgba"]
+    if opacity < 1.0:
+        prep_parts.append(
+            f"colorchannelmixer=aa={max(0.0, min(1.0, opacity)):g}",
+        )
+    if fade_in_s > 0:
+        prep_parts.append(
+            f"fade=t=in:st={start_s:g}:d={fade_in_s:g}:alpha=1",
+        )
+    if fade_out_s > 0 and end_s is not None:
+        fade_out_start = max(0.0, end_s - fade_out_s)
+        prep_parts.append(
+            f"fade=t=out:st={fade_out_start:g}:d={fade_out_s:g}:alpha=1",
+        )
+
     image_label = in_image_label
     prefix = ""
-    if opacity < 1.0:
-        prepared = f"{in_image_label}_op"
-        prefix = (
-            f"[{in_image_label}]format=rgba,"
-            f"colorchannelmixer=aa={max(0.0, min(1.0, opacity)):g}"
-            f"[{prepared}];"
-        )
+    if len(prep_parts) > 1:  # more than just format=rgba
+        prepared = f"{in_image_label}_prep"
+        prefix = f"[{in_image_label}]{','.join(prep_parts)}[{prepared}];"
         image_label = prepared
 
     enable = ""

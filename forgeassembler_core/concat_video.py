@@ -35,6 +35,7 @@ from .filters import (
     bug_overlay_filter,
     bug_prepare_filter,
     concat_filter,
+    image_overlay_filter,
     loudnorm_filter,
     normalize_segment_filter,
 )
@@ -203,6 +204,9 @@ def build_ffmpeg_command(
     seg_vi: dict[str, int] = {}   # main / foreground PNG video input index
     seg_bgi: dict[str, int] = {}  # previous-frame background input index
     seg_ai: dict[str, int] = {}
+    # Per-segment list of (overlay_index_into_inputs, Overlay) pairs for
+    # image overlays. Non-image overlays are skipped entirely in v1.
+    seg_overlays: dict[str, list[tuple[int, object]]] = {}
     for li in segment_layouts:
         seg = li.item
         assert isinstance(seg, Segment)
@@ -224,12 +228,30 @@ def build_ffmpeg_command(
                 path=frame_path,
                 pre_args=["-loop", "1", "-t", f"{dur_s:g}"],
             ))
+        # Image overlays on this segment (logo, lower-third, etc.).
+        # Each one becomes a looped PNG input.
+        seg_ov_entries: list[tuple[int, object]] = []
+        for ov in seg.overlays:
+            if ov.type != "image":
+                continue  # text overlays deferred to a later phase
+            if not ov.file:
+                continue
+            seg_ov_entries.append((len(inputs), ov))
+            inputs.append(FfmpegInput(
+                path=ov.file,
+                pre_args=["-loop", "1", "-t", f"{dur_s:g}"],
+            ))
+        seg_overlays[seg.id] = seg_ov_entries
         if seg.audio.mode == "replace":
             if not seg.audio.file:
                 raise ValueError(
                     f"segment {seg.id}: audio.mode=replace but audio.file missing",
                 )
-            aud_pre = ["-t", f"{dur_s:g}"] if seg.is_still() else []
+            # Always cap replacement audio at the segment's duration.
+            # Stills need -t to have any duration at all; real videos need
+            # -t so that audio longer than the video doesn't desync the
+            # concat (the audio gets truncated to match video length).
+            aud_pre = ["-t", f"{dur_s:g}"]
             seg_ai[seg.id] = len(inputs)
             inputs.append(FfmpegInput(path=seg.audio.file, pre_args=aud_pre))
 
@@ -284,12 +306,32 @@ def build_ffmpeg_command(
                 color_temperature_k=seg.color_temperature_k,
             ))
 
-        v_label = v_norm
+        # Per-segment image overlays (logos, lower-thirds, captions, …).
+        # Each overlay composites onto the current base, becoming the new
+        # base for the next overlay. Applied BEFORE the head/tail fade so
+        # overlays fade together with the segment at transitions.
+        v_after_overlays = v_norm
+        for j, (ov_idx, ov) in enumerate(seg_overlays[seg.id]):
+            v_after = f"v_ov_{i}_{j}"
+            filter_parts.append(image_overlay_filter(
+                in_video_label=v_after_overlays,
+                in_image_label=f"{ov_idx}:v",
+                out_label=v_after,
+                position=ov.position,  # type: ignore[arg-type]
+                start_s=ov.start_s,  # type: ignore[arg-type]
+                end_s=ov.end_s,  # type: ignore[arg-type]
+                opacity=ov.opacity,  # type: ignore[arg-type]
+                fade_in_s=ov.fade_in_s,  # type: ignore[arg-type]
+                fade_out_s=ov.fade_out_s,  # type: ignore[arg-type]
+            ))
+            v_after_overlays = v_after
+
+        v_label = v_after_overlays
         v_fade_chain = _fade_filter_chain(head_s, tail_s, dur_s)
         if v_fade_chain:
             v_label = f"v_seg{i}"
             filter_parts.append(
-                f"[{v_norm}]{','.join(v_fade_chain)}[{v_label}]",
+                f"[{v_after_overlays}]{','.join(v_fade_chain)}[{v_label}]",
             )
 
         # Audio: source depends on mode; stills get silence unless replaced.
@@ -333,21 +375,22 @@ def build_ffmpeg_command(
         # Joiner
         assert isinstance(item, ProjectJoiner)
         if item.joiner_type == "fade_to_black":
-            d_ms = instantiate_joiner(
-                item.joiner_type, item.params,
-            ).duration_ms()
+            joiner_inst = instantiate_joiner(item.joiner_type, item.params)
+            d_ms = joiner_inst.duration_ms()
             d_s = d_ms / 1000.0
-            v_black = f"v_black{bridge_idx}"
-            a_black = f"a_black{bridge_idx}"
+            bridge_color = joiner_inst.color()  # '#rrggbb' or '#000000'
+            v_bridge = f"v_bridge{bridge_idx}"
+            a_bridge = f"a_bridge{bridge_idx}"
             bridge_idx += 1
+            # ffmpeg `color` source takes 0xRRGGBB hex; strip the '#'.
             filter_parts.append(
-                f"color=c=black:s={width}x{height}:d={d_s:g}:r={_FRAME_RATE}"
-                f"[{v_black}]",
+                f"color=c=0x{bridge_color.lstrip('#')}:s={width}x{height}:"
+                f"d={d_s:g}:r={_FRAME_RATE}[{v_bridge}]",
             )
             filter_parts.append(
-                f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_black}]",
+                f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_bridge}]",
             )
-            concat_pairs.append((v_black, a_black))
+            concat_pairs.append((v_bridge, a_bridge))
         # "none" joiner: no bridge, concat handles it naturally.
 
     # ── Stage D: concat (skipped when there's only one pair).
