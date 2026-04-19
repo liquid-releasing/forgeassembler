@@ -774,10 +774,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#option-a-over-a-solid-color-or-frozen-frame-simplest" class="md-nav__link">
+  <a href="#via-the-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Option A — Over a solid color or frozen frame (simplest)
+        Via the UI
       
     </span>
   </a>
@@ -785,10 +785,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#option-b-over-a-held-frame-or-reveal-clip-recommended" class="md-nav__link">
+  <a href="#via-project-json" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Option B — Over a held frame or reveal clip (recommended)
+        Via project JSON
       
     </span>
   </a>
@@ -796,10 +796,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-2-promise" class="md-nav__link">
+  <a href="#why-not-just-use-a-black-background" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 2 promise
+        Why not just use a black background?
       
     </span>
   </a>
@@ -1067,10 +1067,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#option-a-over-a-solid-color-or-frozen-frame-simplest" class="md-nav__link">
+  <a href="#via-the-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Option A — Over a solid color or frozen frame (simplest)
+        Via the UI
       
     </span>
   </a>
@@ -1078,10 +1078,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#option-b-over-a-held-frame-or-reveal-clip-recommended" class="md-nav__link">
+  <a href="#via-project-json" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Option B — Over a held frame or reveal clip (recommended)
+        Via project JSON
       
     </span>
   </a>
@@ -1089,10 +1089,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-2-promise" class="md-nav__link">
+  <a href="#why-not-just-use-a-black-background" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 2 promise
+        Why not just use a black background?
       
     </span>
   </a>
@@ -1330,44 +1330,50 @@ transparent letter-shaped holes.</p>
 <hr />
 <h2 id="step-9-use-it-in-forgeassembler">Step 9 — Use it in ForgeAssembler<a class="headerlink" href="#step-9-use-it-in-forgeassembler" title="Permanent link">&para;</a></h2>
 <p>A cutout title card works best <strong>over a second layer of something</strong>,
-since the letters are transparent holes. You have two good options in
-Phase 1.</p>
-<h3 id="option-a-over-a-solid-color-or-frozen-frame-simplest">Option A — Over a solid color or frozen frame (simplest)<a class="headerlink" href="#option-a-over-a-solid-color-or-frozen-frame-simplest" title="Permanent link">&para;</a></h3>
-<p>Use the cutout PNG as the base video of a segment. The "transparency"
-will read as <strong>black</strong> in the forged output, because ForgeAssembler
-scales the PNG onto a black canvas. This gives you a straight black
-card with crisp letter holes — which, on a black video background,
-looks identical to plain black.</p>
-<p>That's usually <em>not</em> what you want with a cutout card. Use option B.</p>
-<h3 id="option-b-over-a-held-frame-or-reveal-clip-recommended">Option B — Over a held frame or reveal clip (recommended)<a class="headerlink" href="#option-b-over-a-held-frame-or-reveal-clip-recommended" title="Permanent link">&para;</a></h3>
-<p>The reveal effect needs <strong>something behind the cutout letters</strong>. In
-Phase 1, you build this by:</p>
+since the letters are transparent holes. ForgeAssembler composites it
+for you natively — you don't need to flatten the PNG against a reveal
+image yourself.</p>
+<h3 id="via-the-ui">Via the UI<a class="headerlink" href="#via-the-ui" title="Permanent link">&para;</a></h3>
 <ol>
-<li>Taking a screenshot of the frame you want revealed (e.g. the last
-   frame of the previous clip, a stylized branded still, or a solid
-   color).</li>
-<li>Composing the cutout card <strong>on top of that image in your image
-   tool</strong> (Photoshop, Affinity, or even Figma itself) — paste the
-   cutout PNG over the reveal image and flatten to a single PNG.</li>
-<li>Using that flattened PNG as the title card segment in ForgeAssembler.</li>
+<li>Launch ForgeAssembler.</li>
+<li>Add the segment you want the cutout to appear <em>over</em> first (e.g. the
+   preceding video clip).</li>
+<li>On the <strong>Build</strong> tab, use <strong>"Add a title card (PNG still)"</strong>:</li>
+<li><strong>PNG file</strong> — the cutout PNG you just exported.</li>
+<li><strong>Hold seconds</strong> — how long the cutout should stay on screen
+     (e.g. <code>2.5</code>).</li>
+<li><strong>Background</strong> — select <strong>"Previous segment's last frame"</strong>.</li>
+<li>ForgeAssembler extracts the last frame of your preceding clip,
+   composites the cutout PNG over it, and holds the result for the
+   duration you picked. The transparent letter-holes reveal the frozen
+   frame underneath.</li>
+<li>Optionally add audio — a replacement MP3/WAV sting, or silence.</li>
+<li>Forge.</li>
 </ol>
-<p>The ForgeAssembler project JSON for either option looks the same:</p>
+<h3 id="via-project-json">Via project JSON<a class="headerlink" href="#via-project-json" title="Permanent link">&para;</a></h3>
+<p>A cutout-over-held-frame segment looks like this:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;seg-reveal-1&quot;</span><span class="p">,</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;segment&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">&quot;video&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/Users/bruce/Videos/title_cards/wildride_reveal_1080p.png&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">&quot;video&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/Users/bruce/Videos/title_cards/wildride_1080p.png&quot;</span><span class="p">,</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">&quot;still_duration_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.5</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">&quot;audio&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;replace&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/Users/bruce/Videos/title_cards/sting.mp3&quot;</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">&quot;background&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;previous_last_frame&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">&quot;audio&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;replace&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C:/Users/bruce/Videos/title_cards/sting.mp3&quot;</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">}</span>
 </code></pre></div>
-<h3 id="phase-2-promise">Phase 2 promise<a class="headerlink" href="#phase-2-promise" title="Permanent link">&para;</a></h3>
-<p>In Phase 2, ForgeAssembler adds a <strong>"last frame of the previous
-segment as background"</strong> primitive — at that point a cutout PNG
-becomes a first-class overlay you can drop onto a held frame without
-flattening it yourself. For now, flatten in Figma.</p>
+<p>The segment immediately before this one in the project's <code>items</code> list
+supplies the frame that gets frozen behind the cutout letters.</p>
+<h3 id="why-not-just-use-a-black-background">Why not just use a black background?<a class="headerlink" href="#why-not-just-use-a-black-background" title="Permanent link">&para;</a></h3>
+<p>If you set <code>"background": "black"</code> (or leave it off — that's the
+default), the transparent letters render as black against black and
+you won't see the cutout at all. That mode is intended for the
+white-on-transparent workflow covered in the
+<a href="../getting_started_white_on_transparent/">companion guide</a>, where the
+visible pixels <em>are</em> the text. For the scope-reveal effect of this
+guide, always pair the cutout with <code>previous_last_frame</code>.</p>
 <hr />
 <h2 id="step-10-export-more-resolutions">Step 10 — Export more resolutions<a class="headerlink" href="#step-10-export-more-resolutions" title="Permanent link">&para;</a></h2>
 <ol>
@@ -1391,8 +1397,9 @@ flattening it yourself. For now, flatten in Figma.</p>
 <li><strong>Letters look jagged.</strong> Figma's boolean at export is clean — if the
   PNG itself looks jagged, your viewer is displaying it at less than
   100% zoom. In the video output, it will be smooth.</li>
-<li><strong>Cutout shows black in the forged video, not a reveal.</strong> You need
-  something behind the cutout card (see Step 9, Option B).</li>
+<li><strong>Cutout shows black in the forged video, not a reveal.</strong> You left
+  the <strong>Background</strong> set to "Black" (or omitted it). Re-add the
+  segment with <strong>Background: Previous segment's last frame</strong> (Step 9).</li>
 </ul>
 
 
