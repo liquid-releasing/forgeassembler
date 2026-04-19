@@ -171,6 +171,25 @@ with st.sidebar:
             format_func=_res_label,
             disabled=not out.produce_video,
         )
+        quality_labels = {
+            "high": "High — CRF 18 (~10 Mbps 1080p, archive quality)",
+            "medium": "Medium — CRF 23 (~4 Mbps 1080p, YouTube default)",
+            "low": "Low — CRF 28 (~2 Mbps 1080p, Discord / draft)",
+        }
+        q_options = list(quality_labels.keys())
+        try:
+            q_index = q_options.index(out.quality)
+        except ValueError:
+            q_index = q_options.index("medium")
+        out.quality = st.selectbox(
+            "Quality",
+            options=q_options,
+            index=q_index,
+            format_func=lambda k: quality_labels[k],
+            disabled=not out.produce_video,
+            help="Higher quality = larger file. Most distribution "
+                 "sites prefer Medium or Low to keep uploads small.",
+        )
         out.normalize_audio = st.checkbox(
             "Normalize audio loudness (−16 LUFS)",
             value=out.normalize_audio,

@@ -39,6 +39,7 @@ from .filters import (
 from .joiners import REGISTRY as JOINER_REGISTRY
 from .joiners import Joiner, JoinerSpec, all_specs as joiner_specs, instantiate as instantiate_joiner
 from .project import (
+    QUALITY_CRF,
     RESOLUTION_KEYS,
     RESOLUTION_PIXELS,
     AudioLayer,
@@ -76,6 +77,7 @@ __all__ = [
     "PROJECT_VERSION",
     "Project",
     "ProjectJoiner",
+    "QUALITY_CRF",
     "RESOLUTION_KEYS",
     "RESOLUTION_PIXELS",
     "Segment",

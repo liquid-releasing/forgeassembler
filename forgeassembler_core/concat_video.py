@@ -429,7 +429,7 @@ def build_ffmpeg_command(
     output_args = [
         "-c:v", "libx264",
         "-preset", "medium",
-        "-crf", "20",
+        "-crf", str(out.crf()),
         "-pix_fmt", "yuv420p",
         "-r", str(_FRAME_RATE),
         "-c:a", "aac",

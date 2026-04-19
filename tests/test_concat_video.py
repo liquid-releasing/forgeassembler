@@ -463,6 +463,35 @@ def test_output_args_include_h264_and_aac(tmp_path: Path):
     assert "yuv420p" in cmd.output_args
 
 
+# ── Quality preset → CRF ──────────────────────────────────────────────
+def test_quality_default_emits_crf_23(tmp_path: Path):
+    """Default quality ('medium') maps to CRF 23 in the ffmpeg args."""
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    crf_idx = cmd.output_args.index("-crf")
+    assert cmd.output_args[crf_idx + 1] == "23"
+
+
+def test_quality_high_emits_crf_18(tmp_path: Path):
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)), quality="high")
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    crf_idx = cmd.output_args.index("-crf")
+    assert cmd.output_args[crf_idx + 1] == "18"
+
+
+def test_quality_low_emits_crf_28(tmp_path: Path):
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)), quality="low")
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    crf_idx = cmd.output_args.index("-crf")
+    assert cmd.output_args[crf_idx + 1] == "28"
+
+
 # ── Metadata ──────────────────────────────────────────────────────────
 def test_output_always_tags_encoder(tmp_path: Path):
     v = _mp4(tmp_path, "a")

@@ -19,6 +19,7 @@ from forgeassembler_core.project import (
     Overlay,
     Project,
     PROJECT_VERSION,
+    QUALITY_CRF,
     RESOLUTION_KEYS,
     Segment,
     is_still_image,
@@ -426,6 +427,47 @@ def test_validate_previous_last_frame_happy_path(tmp_path: Path):
     assert not any(
         "previous_last_frame" in e.message for e in errors
     )
+
+
+# ── Quality preset ────────────────────────────────────────────────────
+def test_quality_default_is_medium():
+    assert Output().quality == "medium"
+
+
+def test_quality_crf_mapping():
+    assert Output(quality="high").crf() == 18
+    assert Output(quality="medium").crf() == 23
+    assert Output(quality="low").crf() == 28
+
+
+def test_quality_crf_falls_back_for_unknown():
+    # crf() returns the medium fallback for unknown values (validate
+    # catches the bad key at the top level).
+    assert Output(quality="silly").crf() == 23
+
+
+def test_quality_roundtrip():
+    o = Output(quality="low")
+    o2 = Output.from_dict(o.to_dict())
+    assert o2.quality == "low"
+
+
+def test_validate_rejects_unknown_quality(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    p = Project(
+        items=[Segment(id="s1", video=str(v))],
+        output=Output(folder=str(tmp_path / "out"), quality="ultra"),
+    )
+    issues = validate(p)
+    assert any(
+        "quality 'ultra' is not one of" in i.message and i.level == "error"
+        for i in issues
+    )
+
+
+def test_quality_crf_map_has_three_presets():
+    assert set(QUALITY_CRF.keys()) == {"high", "medium", "low"}
+    assert QUALITY_CRF["high"] < QUALITY_CRF["medium"] < QUALITY_CRF["low"]
 
 
 # ── Metadata ──────────────────────────────────────────────────────────

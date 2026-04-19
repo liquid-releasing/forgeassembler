@@ -17,6 +17,15 @@ JoinerType = Literal["none", "fade_to_black"]
 OverlayType = Literal["image", "text"]
 BugCorner = Literal["tl", "tr", "bl", "br"]
 SegmentBackground = Literal["black", "previous_last_frame"]
+Quality = Literal["high", "medium", "low"]
+
+# Map each quality preset to an H.264 CRF value. Lower CRF = higher
+# quality = bigger file. 18-28 is a sensible span for 1080p x264.
+QUALITY_CRF: dict[str, int] = {
+    "high": 18,      # archive / re-edit (~10 Mbps 1080p)
+    "medium": 23,    # YouTube-friendly default (~4 Mbps 1080p)
+    "low": 28,       # Discord / draft (~2 Mbps 1080p)
+}
 
 # Output resolutions the forge pipeline accepts. "source" defers to
 # ffprobe on the first segment at forge time.
@@ -219,17 +228,23 @@ class Output:
     folder: Optional[str] = None
     basename: str = "combined"
     resolution: str = "1080p"
+    quality: str = "medium"
     normalize_audio: bool = True
     produce_video: bool = True
     produce_funscripts: bool = True
     bug: Optional[BugOverlay] = None
     metadata: Metadata = field(default_factory=Metadata)
 
+    def crf(self) -> int:
+        """Return the H.264 CRF value implied by `quality`."""
+        return QUALITY_CRF.get(self.quality, QUALITY_CRF["medium"])
+
     def to_dict(self) -> dict:
         d: dict[str, Any] = {
             "folder": self.folder,
             "basename": self.basename,
             "resolution": self.resolution,
+            "quality": self.quality,
             "normalize_audio": self.normalize_audio,
             "produce_video": self.produce_video,
             "produce_funscripts": self.produce_funscripts,
@@ -250,6 +265,7 @@ class Output:
             folder=d.get("folder"),
             basename=d.get("basename", "combined"),
             resolution=d.get("resolution", "1080p"),
+            quality=d.get("quality", "medium"),
             normalize_audio=bool(d.get("normalize_audio", True)),
             produce_video=bool(d.get("produce_video", True)),
             produce_funscripts=bool(d.get("produce_funscripts", True)),
@@ -609,6 +625,12 @@ def validate(project: Project) -> list[ValidationIssue]:
             "error",
             f"output.resolution '{out.resolution}' is not one of "
             f"{', '.join(RESOLUTION_KEYS)}.",
+        ))
+    if out.quality not in QUALITY_CRF:
+        issues.append(ValidationIssue(
+            "error",
+            f"output.quality '{out.quality}' is not one of "
+            f"{', '.join(QUALITY_CRF.keys())}.",
         ))
     if not out.produce_video and not out.produce_funscripts:
         issues.append(ValidationIssue(
