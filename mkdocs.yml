@@ -1,0 +1,81 @@
+site_name: ForgeAssembler
+site_description: Assemble many FunscriptForge clips into one long combined video and funscript bundle.
+site_url: https://liquid-releasing.github.io/forgeassembler/
+repo_url: https://github.com/liquid-releasing/forgeassembler
+repo_name: liquid-releasing/forgeassembler
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: deep orange
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: deep orange
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Features: FEATURES.md
+  - Guide:
+    - Title Cards:
+      - Overview: guide/title-cards/index.md
+      - White on Transparent: guide/title-cards/getting_started_white_on_transparent.md
+      - Black Cutout: guide/title-cards/getting_started_black_cutout.md
+      - Sci-Fi Cockpit Example: guide/title-cards/scifi_cockpit_example.md
+  - Architecture: ARCHITECTURE.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/liquid-releasing/forgeassembler
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/sZWCqgxY
+  generator: false
+
+copyright: "&copy; 2026 Liquid Releasing. Licensed under the MIT License."

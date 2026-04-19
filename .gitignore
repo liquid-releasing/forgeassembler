@@ -24,6 +24,10 @@ Thumbs.db
 /output/
 /test_output/
 *.forgeproject.backup
+/test_media/
 
 # Generated icon variants (regenerated at build time)
 /media/forgeassembler.icns
+
+# mkdocs build output
+/site/

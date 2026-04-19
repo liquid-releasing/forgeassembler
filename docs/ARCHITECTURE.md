@@ -21,12 +21,38 @@ ForgeAssembler are also users of FunscriptForge.
 
 - **Segment** — a top-level item in the project list. Roughly "a paragraph
   in the final video". Has layers running in parallel:
-  video, audio, overlays (image, text).
-- **Layer** — a track within a segment: video, audio, image overlay, text
-  overlay. Each layer has optional start/end and fade timings.
+  video, audio, image overlays. The video layer may be a clip or a
+  still PNG (title cards are just segments whose video is a PNG).
+- **Layer** — a track within a segment: video, audio, image overlay.
+  Each layer has optional start/end and fade timings.
 - **Joiner** — a transition between two segments. V1 types: `none` (hard
   cut), `fade_to_black` (duration configurable). Phase 2 adds richer
-  joiners via a declarative template DSL.
+  joiner types (crossfade, dissolve, etc.) as additional subclasses —
+  **not** via a template DSL.
+- **Title card** — *not a distinct type*. It's a segment whose `video`
+  is a PNG, rendered for a configured duration. No text rendering in
+  ForgeAssembler itself; user supplies the designed image.
+- **Bug** — a project-level PNG overlaid in a corner of every segment
+  (opacity + margin configurable). Classic "network logo in the
+  corner" branding.
+- **Output resolution** — the canonical size every segment is scaled to
+  before concat. Values (stored as the JSON key string):
+  - 16:9: `1080p` (1920×1080), `1440p` (2560×1440), `4k` (3840×2160)
+  - 21:9: `uw_1080p` (2560×1080), `uw_1440p` (3440×1440)
+  - 4:3: `4_3_hd` (1440×1080)
+  - 3:4 / 9:16 portrait: `3_4_hd` (1080×1440), `9_16_hd` (1080×1920)
+  - `source` — copy the first segment's resolution
+  
+  In v1 the scale mode is always **pad** (letterbox/pillarbox). A
+  `source` value delays resolution until ffprobe of the first segment
+  at forge time. A Phase 2 `crop` fill mode will add `output.fill_mode`
+  to the schema.
+- **Normalize audio** — project-level toggle that applies ffmpeg's
+  `loudnorm` filter (−16 LUFS) to the final audio track.
+- **Color temperature** — optional per-segment override in Kelvin
+  (4000–10000). Implemented via ffmpeg's `colortemperature` filter. A
+  "generate preview frame" action renders one frame with the current
+  value so the user can tune visually.
 - **Audio bed** — a project-level audio track that spans time across
   segments. Reserved in the v1 schema (`"audio_beds": []`), implemented
   in Phase 2. For MVP, users pre-split bed audio into per-segment files.
@@ -47,7 +73,17 @@ ForgeAssembler projects are JSON. Users can hand-edit them and reload.
   "version": "1.0",
   "output": {
     "folder": "C:/out/",
-    "basename": "combined"
+    "basename": "combined",
+    "resolution": "1080p",
+    "normalize_audio": true,
+    "produce_video": true,
+    "produce_funscripts": true,
+    "bug": {
+      "file": "C:/demo/branding/lr_bug.png",
+      "corner": "bottom-right",
+      "margin_px": 24,
+      "opacity": 0.85
+    }
   },
   "output_channels": {
     "main": true,
@@ -93,27 +129,12 @@ ForgeAssembler projects are JSON. Users can hand-edit them and reload.
     {
       "id": "seg-2",
       "type": "segment",
-      "video": "C:/demo/title2/frozen_last_frame.png",
+      "video": "C:/demo/title2/victoria_oats_wild_ride.png",
+      "still_duration_s": 4.5,
       "audio": {
         "mode": "replace",
         "file": "C:/demo/intro/beat_part_2.mp3"
-      },
-      "overlays": [
-        {
-          "type": "text",
-          "content": "Victoria Oats Wild Ride",
-          "font": "Bebas Neue",
-          "size": 120,
-          "color": "#ffffff",
-          "outline_color": "#000000",
-          "outline_width": 2,
-          "position": "center",
-          "start_s": 0.3,
-          "end_s": 4.5,
-          "fade_in_s": 0.3,
-          "fade_out_s": 0.3
-        }
-      ]
+      }
     },
     {
       "id": "join-2-3",
@@ -126,6 +147,7 @@ ForgeAssembler projects are JSON. Users can hand-edit them and reload.
       "type": "segment",
       "video": "C:/demo/main/demo.mp4",
       "audio": {"mode": "replace", "file": "C:/demo/main/voiceover.mp3"},
+      "color_temperature_k": 6200,
       "funscripts": {"source": "auto_detect"}
     }
   ],
@@ -135,70 +157,139 @@ ForgeAssembler projects are JSON. Users can hand-edit them and reload.
 
 Notes:
 
-- Every item has an `id`. IDs are stable so Phase 2 can reference "last
-  frame of seg-1" from another item.
+- Every item has an `id`. IDs are stable so Phase 2 can reference
+  segments from another item.
+- `output.resolution` is one of `1080p`, `1440p`, `4k`, `uw_1080p`,
+  `uw_1440p`, `4_3_hd`, `3_4_hd`, `9_16_hd`, or `source`. Defaults to
+  `1080p`. See the vocabulary list above for pixel dimensions.
+- `output.normalize_audio` is a boolean. When true, the combined audio
+  runs through ffmpeg `loudnorm` targeting −16 LUFS (single-pass).
+- `output.produce_video` and `output.produce_funscripts` are booleans
+  (default both `true`). **At least one must be true** — validator
+  rejects both-false. When `produce_video` is false the ffmpeg pipeline
+  is skipped entirely; when `produce_funscripts` is false the funscript
+  concat + heatmap previews are skipped. Chapter markers are written
+  whenever `produce_video` is true, regardless of `produce_funscripts`.
+- `output.bug` is optional. When present, the PNG is composited into
+  every segment's video layer at the specified corner/margin/opacity.
+  Per-segment override (e.g. hide bug on the outro) is Phase 2.
 - `output_channels` is a project-level dictionary of booleans. Missing
   channel files in any segment trigger a prompt at forge time.
 - `audio_beds` is reserved; v1 ignores it.
 - Segments may have `funscripts` omitted entirely — those are pure
   video/audio segments (intro, title cards, outro) with no haptic track.
+- A segment whose `video` points at a PNG (extension check) is a
+  **title card**: looped for `still_duration_s` seconds. No typography
+  is rendered by ForgeAssembler; the PNG is authored externally.
+- `color_temperature_k` is optional per-segment (4000–10000 Kelvin).
+  When set, applies ffmpeg `colortemperature` filter to that segment.
+- `overlays[].type` is `image` in v1. Text overlays are deferred to a
+  future phase that bundles an open-licensed font; until then, bake
+  text into PNG overlays upstream.
 
 ## Processing pipeline
 
 At forge time:
 
-1. **Validate project JSON** against schema. Hard errors abort; warnings
-   surface in the UI.
+1. **Validate project JSON** against schema (including:
+   `output.produce_video` OR `output.produce_funscripts` must be true).
+   Hard errors abort; warnings surface in the UI.
 2. **Resolve each segment**: locate the video file, auto-detect
    associated funscripts in the segment's folder (main, multi-axis,
-   estim channels). Probe duration via ffprobe.
+   estim channels). Probe duration via ffprobe. Funscript resolution
+   is skipped when `produce_funscripts` is false.
 3. **Build layout**: compute the running start time of each segment and
    joiner. Joiners insert a gap of known duration between segments.
-4. **Concatenate videos**: emit an ffmpeg `filter_complex` graph that
-   concats segment videos, applies each joiner's transition, and overlays
-   each segment's image/text layers at the right timestamps. Output:
-   a single mp4.
-5. **Concatenate audio**: per segment, select original / replaced / silence.
-   Concat in lockstep with video. Phase 2 mixes audio beds on top.
-6. **Concatenate funscripts**: for each selected output channel, load
-   each segment's funscript for that channel, shift all `at` timestamps
-   by the segment's running start, and concat. Actions that fall in
-   joiner gaps are dropped (v1: hold last position; Phase 2: synthesize
-   via a FunscriptForge transform).
-7. **Write chapter markers**: one chapter per segment in the output mp4
-   (ffmpeg `-metadata` chapters) and as `chapters` array in each output
-   funscript.
+4. **Concatenate videos** *(skipped when `output.produce_video` is false)*:
+   emit an ffmpeg `filter_complex` graph that
+   (a) normalizes every segment's video to the project's canonical
+   `output.resolution` via `scale` + `pad` + `setsar=1`, (b) applies
+   the per-segment `colortemperature` filter if set, (c) composites
+   image overlays for each segment, (d) inserts joiner transitions
+   (e.g. `xfade` for fade-to-black), (e) overlays the project-level
+   `bug` PNG onto every segment via `overlay`, and (f) concats
+   everything to a single mp4.
+5. **Concatenate audio** *(skipped when `output.produce_video` is false)*:
+   per segment, select original / replaced / silence. Concat in
+   lockstep with video. If `output.normalize_audio` is true, run the
+   final audio track through `loudnorm=I=-16:TP=-1.5:LRA=11`.
+   Phase 2 mixes audio beds on top.
+6. **Concatenate funscripts** *(skipped when `output.produce_funscripts`
+   is false)*: for each selected output channel, load each segment's
+   funscript for that channel, shift all `at` timestamps by the
+   segment's running start, and concat. Actions that fall in joiner
+   gaps are dropped (v1: hold last position; Phase 2: synthesize via
+   a FunscriptForge transform).
+7. **Write chapter markers**: one chapter per segment. Always written
+   to the MP4 when video is produced (via ffmpeg `-metadata` chapters)
+   and to each output funscript's `chapters` array when funscripts are
+   produced. Chapter markers cost nothing and help every player.
 8. **Write project JSON** alongside output for reproducibility.
-9. **Generate heatmap + beatmap preview** PNGs per channel.
+9. **Generate heatmap + beatmap preview** PNGs per channel *(skipped
+   when `output.produce_funscripts` is false)*.
 
 ## ffmpeg filter-complex approach
 
-Segments concatenate with the `concat` filter (not the demuxer):
+Every segment is normalized to the project's canonical resolution
+(`scale` + `pad` to preserve aspect ratio) before anything else:
 
-```
-[0:v]scale=1920:1080,setsar=1[v0];
-[1:v]scale=1920:1080,setsar=1[v1];
-[v0][0:a][v1][1:a]concat=n=2:v=1:a=1[vout][aout]
+```text
+[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,
+     pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[v0]
 ```
 
-For a fade-to-black joiner we prepend a black clip + use `xfade`:
+Still images (title cards) are loaded with `-loop 1 -t N` so they
+produce a fixed-duration video stream that feeds the same pipeline.
 
+Optional per-segment color temperature:
+
+```text
+[v0]colortemperature=temperature=6200[v0_warm]
 ```
+
+Segments then concatenate with the `concat` filter (not the demuxer,
+because we need re-encoding anyway to honour the size + temperature +
+bug pipeline):
+
+```text
+[v0][0:a][v1][1:a]concat=n=2:v=1:a=1[vraw][aout]
+```
+
+For a fade-to-black joiner we use `xfade`:
+
+```text
 [v0][v1]xfade=transition=fadeblack:duration=2:offset=X[vout]
 ```
 
-For overlays within a segment, we pre-apply before concat:
+For per-segment image overlays, we pre-apply before concat:
 
-```
+```text
 [v0][1:v]overlay=x=(W-w)/2:y=(H-h)/2:enable='between(t,0.5,3)'[v0_with_logo]
 ```
 
-Text uses `drawtext`. Alpha masks for the "letters revealing next frame"
-effect use `alphamerge`.
+**Bug overlay** (project-level, applied to every segment):
 
-Codec, FPS, and resolution mismatches: v1 assumes clips match. If
-ffprobe shows a mismatch, we emit a warning and let ffmpeg re-encode.
-Phase 2 adds an explicit "normalize" pre-pass.
+```text
+[vraw][bug]overlay=x=W-w-24:y=H-h-24:format=auto[vbug]
+```
+
+The bug PNG is read with `-loop 1` and its opacity is applied via a
+pre-stage `format=rgba,colorchannelmixer=aa=0.85`.
+
+**Audio loudness normalize** (project-level, applied to the final
+concatenated audio track):
+
+```text
+[aout]loudnorm=I=-16:TP=-1.5:LRA=11[afinal]
+```
+
+Text rendering (`drawtext`) is **not** used in v1 — users author
+title cards and captions as PNGs upstream. When text returns in a
+later phase, it will ship with a bundled open-licensed font.
+
+Codec/FPS mismatches: by construction we re-encode everything (the
+bug + temperature + resolution normalize pipeline requires it), so
+input codec/FPS mismatches are handled transparently.
 
 ## Funscript concatenation
 
@@ -231,10 +322,10 @@ begins.
 
 ## Codebase layout
 
-```
+```text
 forgeassembler/
 ├── forgeassembler.py              # PyWebView launcher (dual-mode)
-├── ui.py                           # Streamlit UI, three tabs
+├── ui.py                           # Streamlit UI, two tabs
 ├── cli.py                          # argparse CLI entry point
 ├── forgeassembler_core/
 │   ├── __init__.py
@@ -242,23 +333,28 @@ forgeassembler/
 │   ├── project.py                  # Project model, load/save JSON, validate
 │   ├── detect.py                   # folder → video + funscripts
 │   ├── layout.py                   # compute running timeline
-│   ├── concat_video.py             # ffmpeg video concat + overlays
+│   ├── filters.py                  # per-segment filter-chain builders
+│   │                               #   (scale/pad, colortemperature, overlays)
+│   ├── concat_video.py             # ffmpeg filter_complex orchestration
+│   │                               #   (incl. bug, loudnorm, xfade)
 │   ├── concat_funscript.py         # funscript timestamp shift + concat
 │   ├── joiners/
 │   │   ├── __init__.py
 │   │   ├── base.py                 # Joiner ABC
 │   │   ├── none_joiner.py          # straight cut
 │   │   └── fade_to_black.py        # fade/hold/fade
-│   ├── overlays/                   # image + text overlay builders
+│   ├── preview.py                  # single-frame preview rendering
+│   │                               #   (for color-temp tuning)
 │   ├── chapters.py                 # mp4 chapter markers
-│   ├── heatmap.py                  # preview generation
-│   └── forge.py                    # the top-level forge() orchestrator
+│   ├── heatmap.py                  # funscript heatmap + beatmap previews
+│   └── forge.py                    # top-level forge() orchestrator
 ├── tests/                          # pytest
 │   ├── fixtures/                   # tiny test videos + funscripts
 │   ├── test_project.py
 │   ├── test_detect.py
 │   ├── test_layout.py
 │   ├── test_concat_funscript.py
+│   ├── test_filters.py             # filter-chain string builders
 │   ├── test_concat_video.py        # integration, slow
 │   └── test_cli.py
 ├── .streamlit/config.toml
@@ -280,13 +376,19 @@ forgeassembler/
 assembly. Same process entry point; Streamlit launcher only fires when
 called with no CLI args.
 
-```
-forgeassembler forge <project.json>         # run a saved project
-forgeassembler detect <folder>              # preview what auto-detects in a folder
-forgeassembler validate <project.json>      # schema + resolvability check, no forging
-forgeassembler list-joiners                 # show joiner types and params
+```text
+forgeassembler forge <project.json>            # run a saved project
+forgeassembler forge <project.json> --no-video          # funscripts only
+forgeassembler forge <project.json> --no-funscripts     # video only
+forgeassembler detect <folder>                 # preview what auto-detects
+forgeassembler validate <project.json>         # schema + resolvability check
+forgeassembler list-joiners                    # show joiner types and params
 forgeassembler --version
 ```
+
+`--no-video` / `--no-funscripts` override the corresponding
+`output.produce_*` booleans in the project JSON for the duration of
+that run. Passing both is a usage error.
 
 Exit codes: 0 success, 1 validation error, 2 resolution error (file
 missing), 3 ffmpeg error.
@@ -312,8 +414,19 @@ story we're selling.
 
 ### Phase 1 (v0.0.1-alpha)
 
-- Segments with video + audio options + image overlays + text overlays
+- Two tabs: Build, Joiners
+- Segments with video (clip or PNG still) + audio options + image overlays
+- Title cards = segments whose `video` is a PNG with `still_duration_s`
 - Joiners: None, FadeToBlack
+- Output resolution dropdown (16:9 1080p/1440p/4K, 21:9 ultrawide
+  1080p/1440p, 4:3 HD, 3:4 vertical HD, 9:16 vertical HD, source).
+  Always scale-and-pad in v1.
+- Produce-what toggles (`produce_video`, `produce_funscripts` — at
+  least one must be true). Enables "funscripts-only" and "video-only"
+  fast paths.
+- Audio loudness normalize toggle (ffmpeg `loudnorm`, −16 LUFS)
+- Project-level bug overlay (PNG in a chosen corner)
+- Per-segment color temperature (4000–10000 K) with preview-frame button
 - Output channels: main, multi-axis, 3-phase estim
 - Project JSON save/load
 - Chapter markers (mp4 + funscript)
@@ -325,19 +438,24 @@ story we're selling.
 
 ### Phase 2
 
-- TitleCard joiner built with the template DSL
+- **Timeline tab** — thumbnail strip per segment with joiner markers,
+  click-to-play source clip
+- `output.fill_mode` — `pad` (v1 default) vs `crop` (new). Crop scales
+  to cover the output frame and trims excess on the short axis.
+- Per-segment bug override (hide/replace bug on specific segments)
 - Per-segment trim ranges (HH:MM:SS.mmm)
 - Per-segment bookmark text
 - Audio estim WAV concat (resample to common rate)
 - Pulse frequency + 4-phase estim
 - Transform-based funscript fill during joiner gaps
-- YAML template DSL (Option B) + 5-10 preset templates
+- Additional joiner types (crossfade, dissolve, etc.) as Joiner subclasses
 - Project-level audio beds
 - Reorder UI in the list panel
 
 ### Phase 3+
 
-- Visual template editor
-- Normalize-resolution-FPS pre-pass
+- Text overlays with a bundled open-licensed font
 - Video-on-video overlays (PIP)
+- "Last frame of segment N" as an importable still source
 - Batch mode from the UI (drop a folder of project.json files)
+- Per-clip color-match assistance (reference clip + auto-align)
