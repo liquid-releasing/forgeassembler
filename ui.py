@@ -27,6 +27,7 @@ from forgeassembler_core import (
     BugOverlay,
     FRAME_RATE_KEYS,
     Joiner as CoreJoiner,
+    OVERLAY_POSITIONS,
     Output,
     OutputChannels,
     Project,
@@ -34,6 +35,7 @@ from forgeassembler_core import (
     RESOLUTION_KEYS,
     RESOLUTION_PIXELS,
     Section,
+    SectionOverlay,
     Segment,
     TAGLINE,
     VERSION,
@@ -637,6 +639,40 @@ with tab_build:
                     "panel below and switch target to 'Current section'.",
                 )
 
+            # ── Section overlays list ───────────────────────────
+            if sec.overlays:
+                st.markdown("**Overlays** (section-timed, top-to-bottom):")
+                for ov in sec.overlays:
+                    ocols = st.columns([1, 5, 3, 2, 1])
+                    with ocols[0]:
+                        st.caption(
+                            "🖼" if ov.kind == "image" else "🎵",
+                        )
+                    with ocols[1]:
+                        st.caption(f"`{Path(ov.file).name}`")
+                    with ocols[2]:
+                        dur_label = (
+                            f"{ov.duration_s:g}s" if ov.duration_s > 0
+                            else "full section"
+                        )
+                        st.caption(
+                            f"@ {ov.start_s:g}s · {dur_label}",
+                        )
+                    with ocols[3]:
+                        if ov.kind == "image":
+                            st.caption(f"pos: {ov.position}")
+                        else:
+                            st.caption(f"mix: {ov.mix_pct}%")
+                    with ocols[4]:
+                        if st.button(
+                            "✕", key=f"rmov_{ov.id}",
+                            help="Remove this overlay",
+                        ):
+                            sec.overlays = [
+                                x for x in sec.overlays if x.id != ov.id
+                            ]
+                            st.rerun()
+
             # Trailing-joiner readout: show what happens AFTER this
             # section — i.e. the next section's leading joiner. For the
             # final section we show "→ end of output" so the transition
@@ -702,12 +738,15 @@ with tab_build:
                     "Paste a path into the text box instead.",
                 )
 
+    current_path = st.session_state.get("add_path_input", "").strip()
+
     target_cols = st.columns([3, 2])
     with target_cols[0]:
-        mode_options = ["new_section", "current_section"]
+        mode_options = ["new_section", "current_section", "overlay"]
         mode_labels = {
             "new_section": "As a NEW section (new chapter)",
             "current_section": "Into the LAST section (cut-join)",
+            "overlay": "As an OVERLAY on the LAST section",
         }
         current_mode = st.session_state["add_target_mode"]
         try:
@@ -719,18 +758,121 @@ with tab_build:
             options=mode_options,
             index=m_idx,
             format_func=lambda k: mode_labels[k],
-            horizontal=True,
             label_visibility="collapsed",
             disabled=not project.sections,
         )
-    current_path = st.session_state.get("add_path_input", "").strip()
     with target_cols[1]:
-        add_click = st.button(
-            "Add clips to project",
-            type="primary",
-            use_container_width=True,
-            disabled=not current_path,
+        if st.session_state["add_target_mode"] == "overlay":
+            add_click = False  # overlay uses its own dedicated form below
+        else:
+            add_click = st.button(
+                "Add clips to project",
+                type="primary",
+                use_container_width=True,
+                disabled=not current_path,
+            )
+
+    # ── Overlay-mode form ──────────────────────────────────────────
+    if st.session_state["add_target_mode"] == "overlay":
+        st.caption(
+            "Image overlays composite onto the assembled video during "
+            "the last section's time window. Audio overlays are in the "
+            "schema but not yet rendered — coming in a follow-up.",
         )
+        ov_cols = st.columns(4)
+        with ov_cols[0]:
+            ov_start = st.number_input(
+                "Start (s, from section start)",
+                min_value=0.0, max_value=3600.0, value=0.0, step=0.5,
+                key="ov_start",
+            )
+        with ov_cols[1]:
+            ov_duration = st.number_input(
+                "Duration (s) · 0 = full section",
+                min_value=0.0, max_value=3600.0, value=0.0, step=0.5,
+                key="ov_duration",
+            )
+        with ov_cols[2]:
+            ov_fade_in = st.number_input(
+                "Fade in (s)",
+                min_value=0.0, max_value=10.0, value=0.0, step=0.1,
+                key="ov_fade_in",
+            )
+        with ov_cols[3]:
+            ov_fade_out = st.number_input(
+                "Fade out (s)",
+                min_value=0.0, max_value=10.0, value=0.0, step=0.1,
+                key="ov_fade_out",
+            )
+
+        pos_cols = st.columns([3, 2, 2])
+        with pos_cols[0]:
+            ov_position = st.selectbox(
+                "Position (image only)",
+                options=list(OVERLAY_POSITIONS),
+                index=0,
+                format_func=lambda k: {
+                    "center": "Center",
+                    "tl": "Upper-left",
+                    "tr": "Upper-right",
+                    "bl": "Lower-left",
+                    "br": "Lower-right",
+                }[k],
+                key="ov_position",
+            )
+        with pos_cols[1]:
+            ov_opacity = st.slider(
+                "Opacity (image only)",
+                min_value=0.0, max_value=1.0, value=1.0, step=0.05,
+                key="ov_opacity",
+            )
+        with pos_cols[2]:
+            add_overlay_click = st.button(
+                "Add overlay",
+                type="primary",
+                use_container_width=True,
+                disabled=not (current_path and project.sections),
+            )
+
+        if add_overlay_click and current_path and project.sections:
+            ov_path = Path(current_path).expanduser()
+            if not ov_path.is_file():
+                st.error(f"Overlay file not found: {ov_path}")
+            else:
+                suffix = ov_path.suffix.lower()
+                image_exts = (".png", ".jpg", ".jpeg", ".webp")
+                audio_exts = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
+                kind: str | None
+                if suffix in image_exts:
+                    kind = "image"
+                elif suffix in audio_exts:
+                    kind = "audio"
+                else:
+                    st.error(
+                        f"Unsupported overlay extension: {suffix}. Use "
+                        "PNG/JPG/WEBP for image, MP3/WAV/M4A for audio.",
+                    )
+                    kind = None
+                if kind is not None:
+                    project.sections[-1].overlays.append(SectionOverlay(
+                        id=new_id("ov"),
+                        kind=kind,  # type: ignore[arg-type]
+                        file=str(ov_path),
+                        start_s=float(ov_start),
+                        duration_s=float(ov_duration),
+                        fade_in_s=float(ov_fade_in),
+                        fade_out_s=float(ov_fade_out),
+                        position=ov_position,  # type: ignore[arg-type]
+                        opacity=float(ov_opacity),
+                    ))
+                    label = (
+                        "Image overlay"
+                        if kind == "image" else
+                        "Audio overlay (not yet rendered)"
+                    )
+                    st.success(f"{label} added to last section.")
+                    st.session_state["pending_add_path"] = ""
+                    st.rerun()
 
     if add_click and current_path:
         try:
