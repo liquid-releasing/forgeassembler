@@ -204,7 +204,12 @@ def forge_funscripts(
         raise ValueError("output_folder is required (pass it or set project.output.folder)")
     stem = basename or project.output.basename or "combined"
 
+    # Heatmaps live alongside the .funscript files. Imported here to
+    # keep the import optional for environments that don't have Pillow.
+    from .heatmap import write_heatmap
+
     written: list[Path] = []
+    total_duration_ms = layout.total_duration_ms
     for channel, suffix in _selected_channels(project):
         parts = _build_parts_for_channel(project, layout, channel)
         if not any(p.funscript.get("actions") for p in parts):
@@ -213,4 +218,17 @@ def forge_funscripts(
         out_path = folder / f"{stem}{suffix}.funscript"
         write_funscript(out_path, combined)
         written.append(out_path)
+
+        # Companion heatmap: {stem}{suffix}.heatmap.png — renders the
+        # combined per-channel timeline as a one-strip preview.
+        heatmap_path = folder / f"{stem}{suffix}.heatmap.png"
+        try:
+            write_heatmap(
+                combined.get("actions") or [],
+                total_duration_ms,
+                heatmap_path,
+            )
+        except Exception:  # noqa: BLE001
+            # Never let a heatmap failure take down a funscript forge.
+            pass
     return written

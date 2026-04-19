@@ -42,6 +42,12 @@ from .filters import (
     loudnorm_filter,
     normalize_segment_filter,
 )
+from .heatmap import (
+    compute_peak_speeds,
+    heatmap_color,
+    render_heatmap,
+    write_heatmap,
+)
 from .joiners import REGISTRY as JOINER_REGISTRY
 from .joiners import Joiner, JoinerSpec, all_specs as joiner_specs, instantiate as instantiate_joiner
 from .project import (
@@ -99,6 +105,7 @@ __all__ = [
     "build_chapters",
     "build_ffmpeg_command",
     "categorize_channels",
+    "compute_peak_speeds",
     "concat_filter",
     "concat_funscripts",
     "corner_position_expr",
@@ -108,6 +115,7 @@ __all__ = [
     "fade_to_black_xfade",
     "forge_funscripts",
     "forge_video",
+    "heatmap_color",
     "image_overlay_filter",
     "instantiate_joiner",
     "is_still_image",
@@ -116,7 +124,9 @@ __all__ = [
     "new_id",
     "normalize_segment_filter",
     "read_funscript",
+    "render_heatmap",
     "validate",
     "write_ffmetadata",
     "write_funscript",
+    "write_heatmap",
 ]
