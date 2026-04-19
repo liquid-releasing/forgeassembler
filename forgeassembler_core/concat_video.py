@@ -174,6 +174,7 @@ def build_ffmpeg_command(
     resolution_override: Optional[tuple[int, int]] = None,
     frame_rate_override: Optional[int] = None,
     frame_cache: Optional[dict[str, str]] = None,
+    chapters_path: Optional[str] = None,
 ) -> FfmpegCommand:
     """Return an `FfmpegCommand` describing the video forge for this project.
 
@@ -185,6 +186,10 @@ def build_ffmpeg_command(
     `frame_rate_override` supplies the encode fps when
     `output.frame_rate == 'source'` (probed from the first video segment
     by `forge_video`; tests can pass a literal int).
+
+    `chapters_path` is an optional path to a pre-written ffmetadata
+    file; when supplied, it's added as an input and `-map_metadata` is
+    pointed at it so the output MP4 carries chapter markers.
     """
     frame_cache = frame_cache or {}
     out = project.output
@@ -444,6 +449,17 @@ def build_ffmpeg_command(
 
     filter_complex = ";\n".join(filter_parts)
 
+    # Chapters: extra ffmetadata input supplies MP4 chapter markers.
+    # Added last so every media input keeps its original index.
+    if chapters_path is not None:
+        chapters_idx = len(inputs)
+        inputs.append(FfmpegInput(
+            path=chapters_path,
+            pre_args=["-f", "ffmetadata"],
+        ))
+    else:
+        chapters_idx = None
+
     output_args = [
         "-c:v", "libx264",
         "-preset", "medium",
@@ -454,6 +470,11 @@ def build_ffmpeg_command(
         "-b:a", "192k",
         "-ar", "48000",
     ]
+
+    # Pull global metadata (chapters) from the ffmetadata input. Must
+    # come before the per-key `-metadata` overrides so they win.
+    if chapters_idx is not None:
+        output_args.extend(["-map_metadata", str(chapters_idx)])
 
     # Container metadata. User-set fields first; ForgeAssembler signs
     # the output with its version as the encoder tag.
@@ -613,12 +634,22 @@ def forge_video(
     try:
         frame_cache = _build_frame_cache(project, exe, temp_dir)
 
+        # Write chapters to a temp ffmetadata file, to be passed to ffmpeg.
+        from .chapters import build_chapters, write_ffmetadata
+        chapters = build_chapters(project, layout)
+        chapters_path: Optional[str] = None
+        if chapters:
+            chapters_file = temp_dir / "chapters.ffmetadata"
+            write_ffmetadata(chapters, chapters_file)
+            chapters_path = str(chapters_file)
+
         cmd = build_ffmpeg_command(
             project, layout,
             output_path=output_path,
             resolution_override=resolution_override,
             frame_rate_override=frame_rate_override,
             frame_cache=frame_cache,
+            chapters_path=chapters_path,
         )
 
         out_path = Path(cmd.output_path)

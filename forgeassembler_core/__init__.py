@@ -14,6 +14,11 @@ from .concat_funscript import (
     read_funscript,
     write_funscript,
 )
+from .chapters import (
+    Chapter,
+    build_chapters,
+    write_ffmetadata,
+)
 from .concat_video import (
     FfmpegCommand,
     FfmpegInput,
@@ -65,6 +70,7 @@ __all__ = [
     "APP_NAME",
     "AudioLayer",
     "BugOverlay",
+    "Chapter",
     "DetectedClip",
     "FfmpegCommand",
     "FfmpegInput",
@@ -90,6 +96,7 @@ __all__ = [
     "about_title",
     "bug_overlay_filter",
     "bug_prepare_filter",
+    "build_chapters",
     "build_ffmpeg_command",
     "categorize_channels",
     "concat_filter",
@@ -110,5 +117,6 @@ __all__ = [
     "normalize_segment_filter",
     "read_funscript",
     "validate",
+    "write_ffmetadata",
     "write_funscript",
 ]
