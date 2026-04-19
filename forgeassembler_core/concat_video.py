@@ -1,0 +1,414 @@
+# Copyright (c) 2026 Liquid Releasing. Licensed under the MIT License.
+
+"""Build and run the ffmpeg video-forge command.
+
+Two entry points:
+
+- `build_ffmpeg_command(project, layout)` — **pure**. Returns a
+  declarative `FfmpegCommand` describing every input, the
+  filter_complex graph, mapping, and output args. No subprocess, no
+  disk I/O. Callable from tests without ffmpeg installed.
+- `forge_video(project, layout)` — composes `build_ffmpeg_command` and
+  spawns ffmpeg. Returns the path of the produced MP4.
+
+Fade-to-black semantics
+-----------------------
+A `fade_to_black` joiner with `duration_s = d` contributes:
+  - a `d / 2` fade-out on the tail of the previous segment (capped at
+    `_MAX_FADE_S`),
+  - a solid black bridge clip of `d` seconds,
+  - a `d / 2` fade-in on the head of the next segment.
+
+Total added output time = `d`, matching the layout engine.
+"""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Optional
+
+from .filters import (
+    bug_overlay_filter,
+    bug_prepare_filter,
+    concat_filter,
+    loudnorm_filter,
+    normalize_segment_filter,
+)
+from .joiners import instantiate as instantiate_joiner
+from .layout import Layout
+from .project import (
+    RESOLUTION_PIXELS,
+    Joiner as ProjectJoiner,
+    Project,
+    Segment,
+)
+
+# Cap on the fade-in/out duration applied to segment tails/heads when
+# adjacent to a fade_to_black joiner. Longer fades get clipped to keep
+# them visually subtle; the solid-black bridge still honours duration_s.
+_MAX_FADE_S: float = 0.5
+
+# Hard-coded output frame rate for v1. Later: expose via Project.output.
+_FRAME_RATE: int = 30
+
+
+# ── Declarative command description ───────────────────────────────────
+@dataclass
+class FfmpegInput:
+    path: str
+    pre_args: list[str] = field(default_factory=list)
+
+
+@dataclass
+class FfmpegCommand:
+    inputs: list[FfmpegInput]
+    filter_complex: str
+    map_video: Optional[str]
+    map_audio: Optional[str]
+    output_args: list[str]
+    output_path: str
+
+    def to_argv(self, ffmpeg_exe: str = "ffmpeg") -> list[str]:
+        argv: list[str] = [ffmpeg_exe]
+        for inp in self.inputs:
+            argv.extend(inp.pre_args)
+            argv.extend(["-i", inp.path])
+        argv.extend(["-filter_complex", self.filter_complex])
+        if self.map_video:
+            argv.extend(["-map", self.map_video])
+        if self.map_audio:
+            argv.extend(["-map", self.map_audio])
+        argv.extend(self.output_args)
+        argv.extend(["-y", self.output_path])
+        return argv
+
+
+# ── Internal helpers ──────────────────────────────────────────────────
+def _resolve_resolution(
+    project: Project,
+    override: Optional[tuple[int, int]] = None,
+) -> tuple[int, int]:
+    if override is not None:
+        return override
+    res = project.output.resolution
+    if res == "source":
+        raise ValueError(
+            "output.resolution='source' requires resolution_override; "
+            "probe the first segment before building the command.",
+        )
+    pixels = RESOLUTION_PIXELS.get(res)
+    if pixels is None:
+        raise ValueError(f"No pixel dims for resolution {res!r}")
+    return pixels
+
+
+def _fade_duration_s(joiner: ProjectJoiner) -> float:
+    """Return the per-side fade duration (seconds) for a fade_to_black joiner."""
+    if joiner.joiner_type != "fade_to_black":
+        return 0.0
+    d_ms = instantiate_joiner(joiner.joiner_type, joiner.params).duration_ms()
+    return min((d_ms / 1000.0) / 2.0, _MAX_FADE_S)
+
+
+def _neighbor_joiners(
+    items: list,
+    index: int,
+) -> tuple[Optional[ProjectJoiner], Optional[ProjectJoiner]]:
+    """Return (joiner_before, joiner_after) for the item at `index`."""
+    before = items[index - 1] if index > 0 else None
+    after = items[index + 1] if index + 1 < len(items) else None
+    return (
+        before if isinstance(before, ProjectJoiner) else None,
+        after if isinstance(after, ProjectJoiner) else None,
+    )
+
+
+def _fade_filter_chain(
+    head_fade_s: float, tail_fade_s: float, duration_s: float,
+) -> list[str]:
+    """Build the comma-separated `fade=...` chain for a video segment."""
+    chain: list[str] = []
+    if head_fade_s > 0:
+        chain.append(f"fade=t=in:st=0:d={head_fade_s:g}")
+    if tail_fade_s > 0:
+        start = max(0.0, duration_s - tail_fade_s)
+        chain.append(f"fade=t=out:st={start:g}:d={tail_fade_s:g}")
+    return chain
+
+
+def _afade_filter_chain(
+    head_fade_s: float, tail_fade_s: float, duration_s: float,
+) -> list[str]:
+    """Build the comma-separated `afade=...` chain for a segment's audio."""
+    chain: list[str] = []
+    if head_fade_s > 0:
+        chain.append(f"afade=t=in:st=0:d={head_fade_s:g}")
+    if tail_fade_s > 0:
+        start = max(0.0, duration_s - tail_fade_s)
+        chain.append(f"afade=t=out:st={start:g}:d={tail_fade_s:g}")
+    return chain
+
+
+# ── Pure command builder ──────────────────────────────────────────────
+def build_ffmpeg_command(
+    project: Project,
+    layout: Layout,
+    output_path: Optional[str] = None,
+    resolution_override: Optional[tuple[int, int]] = None,
+) -> FfmpegCommand:
+    """Return an `FfmpegCommand` describing the video forge for this project."""
+    out = project.output
+    if not out.produce_video:
+        raise ValueError(
+            "build_ffmpeg_command called but output.produce_video is False",
+        )
+
+    width, height = _resolve_resolution(project, resolution_override)
+
+    if output_path is None:
+        if not out.folder:
+            raise ValueError("output.folder is required to build a command")
+        output_path = str(Path(out.folder) / f"{out.basename}.mp4")
+
+    segment_layouts = [li for li in layout.items if li.is_segment]
+    if not segment_layouts:
+        raise ValueError("Project has no segments")
+
+    items = project.items
+
+    # Per-segment head/tail fade durations based on adjacent joiners.
+    seg_fades: dict[str, tuple[float, float]] = {}
+    for idx, item in enumerate(items):
+        if not isinstance(item, Segment):
+            continue
+        before, after = _neighbor_joiners(items, idx)
+        head = _fade_duration_s(before) if before else 0.0
+        tail = _fade_duration_s(after) if after else 0.0
+        seg_fades[item.id] = (head, tail)
+
+    # ── Stage A: declare inputs (segment video + optional replacement audio).
+    inputs: list[FfmpegInput] = []
+    seg_vi: dict[str, int] = {}
+    seg_ai: dict[str, int] = {}
+    for li in segment_layouts:
+        seg = li.item
+        assert isinstance(seg, Segment)
+        dur_s = li.duration_ms / 1000.0
+        pre = ["-loop", "1", "-t", f"{dur_s:g}"] if seg.is_still() else []
+        seg_vi[seg.id] = len(inputs)
+        inputs.append(FfmpegInput(path=seg.video, pre_args=pre))
+        if seg.audio.mode == "replace":
+            if not seg.audio.file:
+                raise ValueError(
+                    f"segment {seg.id}: audio.mode=replace but audio.file missing",
+                )
+            aud_pre = ["-t", f"{dur_s:g}"] if seg.is_still() else []
+            seg_ai[seg.id] = len(inputs)
+            inputs.append(FfmpegInput(path=seg.audio.file, pre_args=aud_pre))
+
+    # ── Stage B: per-segment normalize + audio + fades.
+    filter_parts: list[str] = []
+    seg_pair: dict[str, tuple[str, str]] = {}
+    for i, li in enumerate(segment_layouts):
+        seg = li.item
+        assert isinstance(seg, Segment)
+        dur_s = li.duration_ms / 1000.0
+        vidx = seg_vi[seg.id]
+        head_s, tail_s = seg_fades[seg.id]
+
+        # Video: scale+pad+colortemp, then optional fades.
+        v_norm = f"v_norm{i}"
+        filter_parts.append(normalize_segment_filter(
+            in_label=f"{vidx}:v",
+            out_label=v_norm,
+            width=width,
+            height=height,
+            color_temperature_k=seg.color_temperature_k,
+        ))
+        v_label = v_norm
+        v_fade_chain = _fade_filter_chain(head_s, tail_s, dur_s)
+        if v_fade_chain:
+            v_label = f"v_seg{i}"
+            filter_parts.append(
+                f"[{v_norm}]{','.join(v_fade_chain)}[{v_label}]",
+            )
+
+        # Audio: source depends on mode; stills get silence unless replaced.
+        a_base = f"a_base{i}"
+        if seg.audio.mode == "replace":
+            aidx = seg_ai[seg.id]
+            filter_parts.append(
+                f"[{aidx}:a]aresample=48000,aformat=channel_layouts=stereo"
+                f"[{a_base}]",
+            )
+        elif seg.audio.mode == "silence" or seg.is_still():
+            filter_parts.append(
+                f"anullsrc=d={dur_s:g}:r=48000:cl=stereo[{a_base}]",
+            )
+        elif seg.audio.mode == "keep":
+            filter_parts.append(
+                f"[{vidx}:a]aresample=48000,aformat=channel_layouts=stereo"
+                f"[{a_base}]",
+            )
+        else:
+            raise ValueError(f"Unknown audio mode: {seg.audio.mode!r}")
+
+        a_label = a_base
+        a_fade_chain = _afade_filter_chain(head_s, tail_s, dur_s)
+        if a_fade_chain:
+            a_label = f"a_seg{i}"
+            filter_parts.append(
+                f"[{a_base}]{','.join(a_fade_chain)}[{a_label}]",
+            )
+
+        seg_pair[seg.id] = (v_label, a_label)
+
+    # ── Stage C: walk items, assembling the concat-pair list.
+    # Insert a solid black bridge for each fade_to_black joiner.
+    concat_pairs: list[tuple[str, str]] = []
+    bridge_idx = 0
+    for item in items:
+        if isinstance(item, Segment):
+            concat_pairs.append(seg_pair[item.id])
+            continue
+        # Joiner
+        assert isinstance(item, ProjectJoiner)
+        if item.joiner_type == "fade_to_black":
+            d_ms = instantiate_joiner(
+                item.joiner_type, item.params,
+            ).duration_ms()
+            d_s = d_ms / 1000.0
+            v_black = f"v_black{bridge_idx}"
+            a_black = f"a_black{bridge_idx}"
+            bridge_idx += 1
+            filter_parts.append(
+                f"color=c=black:s={width}x{height}:d={d_s:g}:r={_FRAME_RATE}"
+                f"[{v_black}]",
+            )
+            filter_parts.append(
+                f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_black}]",
+            )
+            concat_pairs.append((v_black, a_black))
+        # "none" joiner: no bridge, concat handles it naturally.
+
+    # ── Stage D: concat (skipped when there's only one pair).
+    if len(concat_pairs) == 1:
+        final_v, final_a = concat_pairs[0]
+    else:
+        final_v, final_a = "vconcat", "aconcat"
+        filter_parts.append(concat_filter(concat_pairs, final_v, final_a))
+
+    # ── Stage E: project-level bug overlay.
+    if out.bug is not None:
+        bug_input_idx = len(inputs)
+        inputs.append(FfmpegInput(
+            path=out.bug.file,
+            pre_args=[
+                "-loop", "1",
+                "-t", f"{layout.total_duration_ms / 1000.0:g}",
+            ],
+        ))
+        filter_parts.append(bug_prepare_filter(
+            f"{bug_input_idx}:v", "bug_rgba", out.bug.opacity,
+        ))
+        filter_parts.append(bug_overlay_filter(
+            final_v, "bug_rgba", "v_bugged",
+            out.bug.corner, out.bug.margin_px,
+        ))
+        final_v = "v_bugged"
+
+    # ── Stage F: final loudness normalize.
+    if out.normalize_audio:
+        filter_parts.append(loudnorm_filter(final_a, "a_loud"))
+        final_a = "a_loud"
+
+    filter_complex = ";\n".join(filter_parts)
+
+    output_args = [
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "20",
+        "-pix_fmt", "yuv420p",
+        "-r", str(_FRAME_RATE),
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-ar", "48000",
+    ]
+
+    return FfmpegCommand(
+        inputs=inputs,
+        filter_complex=filter_complex,
+        map_video=f"[{final_v}]",
+        map_audio=f"[{final_a}]",
+        output_args=output_args,
+        output_path=output_path,
+    )
+
+
+# ── ffmpeg invocation ─────────────────────────────────────────────────
+def _resolve_ffmpeg_exe() -> str:
+    """Locate an ffmpeg binary.
+
+    Prefers the static binary shipped with imageio-ffmpeg (same pattern
+    as ForgeYT), falling back to a PATH lookup.
+    """
+    try:
+        import imageio_ffmpeg  # type: ignore[import-not-found]
+    except ImportError:
+        pass
+    else:
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    raise RuntimeError(
+        "No ffmpeg available. Install imageio-ffmpeg "
+        "(`pip install imageio-ffmpeg`) or put ffmpeg on PATH.",
+    )
+
+
+def forge_video(
+    project: Project,
+    layout: Layout,
+    ffmpeg_exe: Optional[str] = None,
+    output_path: Optional[str] = None,
+    resolution_override: Optional[tuple[int, int]] = None,
+    log_callback: Optional[Callable[[str], None]] = None,
+) -> Path:
+    """Run ffmpeg to produce the output MP4. Returns the output path.
+
+    Raises `RuntimeError` if ffmpeg exits non-zero.
+    """
+    cmd = build_ffmpeg_command(
+        project, layout,
+        output_path=output_path,
+        resolution_override=resolution_override,
+    )
+
+    exe = ffmpeg_exe or _resolve_ffmpeg_exe()
+    out_path = Path(cmd.output_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    argv = cmd.to_argv(exe)
+    proc = subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        if log_callback:
+            log_callback(line.rstrip())
+    proc.wait()
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg exited with code {proc.returncode} "
+            f"(see log for details).",
+        )
+    return out_path

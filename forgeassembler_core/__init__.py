@@ -13,6 +13,12 @@ from .concat_funscript import (
     read_funscript,
     write_funscript,
 )
+from .concat_video import (
+    FfmpegCommand,
+    FfmpegInput,
+    build_ffmpeg_command,
+    forge_video,
+)
 from .detect import (
     DetectedClip,
     categorize_channels,
@@ -56,6 +62,8 @@ __all__ = [
     "AudioLayer",
     "BugOverlay",
     "DetectedClip",
+    "FfmpegCommand",
+    "FfmpegInput",
     "FunscriptPart",
     "JOINER_REGISTRY",
     "Joiner",
@@ -75,6 +83,7 @@ __all__ = [
     "about_title",
     "bug_overlay_filter",
     "bug_prepare_filter",
+    "build_ffmpeg_command",
     "categorize_channels",
     "concat_filter",
     "concat_funscripts",
@@ -83,6 +92,7 @@ __all__ = [
     "detect_folder",
     "fade_to_black_audio_acrossfade",
     "fade_to_black_xfade",
+    "forge_video",
     "image_overlay_filter",
     "instantiate_joiner",
     "is_still_image",

@@ -56,13 +56,17 @@ def lay_out(project: Project, probe: DurationProbe) -> Layout:
 
     `probe(path)` must return the duration in ms of the video at `path`.
     In tests, pass a stub. In production, pass a function that shells
-    to ffprobe.
+    to ffprobe. Still-image segments (PNG etc.) skip `probe` and use
+    their declared `still_duration_s`.
     """
     out: list[LaidOutItem] = []
     t = 0
     for item in project.items:
         if isinstance(item, Segment):
-            duration = probe(Path(item.video))
+            if item.is_still():
+                duration = int(round((item.still_duration_s or 0) * 1000))
+            else:
+                duration = probe(Path(item.video))
             out.append(LaidOutItem(item=item, start_ms=t, end_ms=t + duration))
             t += duration
         elif isinstance(item, ProjectJoiner):
