@@ -29,12 +29,16 @@ from forgeassembler_core import (
     VERSION,
     Project,
     RESOLUTION_PIXELS,
+    Segment,
     categorize_channels,
     detect_folder,
     forge_video,
     joiner_specs,
+    new_id,
     validate,
 )
+from forgeassembler_core.project import Joiner as ProjectJoiner
+from forgeassembler_core.project import Output
 from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
 from forgeassembler_core.layout import lay_out
 from forgeassembler_core.probe import probe_duration_ms
@@ -108,6 +112,94 @@ def cmd_validate(args: argparse.Namespace) -> int:
         loc = f" [{e.item_id}]" if e.item_id else ""
         print(f"ERROR{loc}: {e.message}", file=sys.stderr)
     return 1 if errors else 0
+
+
+def _natural_key(path: Path) -> tuple:
+    """Sort `0, 1, 2, ..., 10, 11, ...` instead of lexicographic
+    `0, 1, 10, 11, ..., 2, 3, ...`.
+    """
+    try:
+        return (0, int(path.name))
+    except ValueError:
+        return (1, path.name)
+
+
+def cmd_new_project(args: argparse.Namespace) -> int:
+    """Scan subfolders of a parent, call detect_folder on each, and
+    emit a starter project JSON with one segment per detected clip
+    and 'none' joiners between every pair.
+    """
+    parent = Path(args.folder)
+    if not parent.is_dir():
+        print(f"ERROR: not a directory: {parent}", file=sys.stderr)
+        return 2
+
+    subfolders = sorted(
+        (p for p in parent.iterdir() if p.is_dir()),
+        key=_natural_key,
+    )
+    if not subfolders:
+        print(
+            f"ERROR: no subfolders found under {parent}",
+            file=sys.stderr,
+        )
+        return 2
+
+    items: list = []
+    skipped: list[str] = []
+    clip_count = 0
+    for sub in subfolders:
+        try:
+            clips = detect_folder(sub)
+        except NotADirectoryError:
+            continue
+        if not clips:
+            skipped.append(sub.name)
+            continue
+        for clip in clips:
+            if items:
+                items.append(ProjectJoiner(
+                    id=new_id("join"),
+                    joiner_type="none",
+                ))
+            items.append(Segment(
+                id=new_id("seg"),
+                video=str(clip.video),
+            ))
+            clip_count += 1
+
+    if not items:
+        print(
+            f"ERROR: no clips detected in any subfolder of {parent}",
+            file=sys.stderr,
+        )
+        return 2
+
+    project = Project(
+        items=items,
+        output=Output(
+            folder=args.output_folder or str(parent.parent / "out"),
+            basename=args.basename or parent.parent.name or parent.name,
+            resolution=args.resolution,
+        ),
+    )
+
+    output_json = Path(args.output_json)
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+    project.save(output_json)
+
+    print(f"Wrote {output_json}")
+    print(f"  {clip_count} segments from {len(subfolders) - len(skipped)} "
+          f"subfolder(s); all joiners are 'none'")
+    if skipped:
+        preview = ", ".join(skipped[:5])
+        tail = "..." if len(skipped) > 5 else ""
+        print(f"  skipped {len(skipped)} subfolder(s) with no video: "
+              f"{preview}{tail}")
+    print(f"\nNext: edit joiners to taste, then:")
+    print(f"  python cli.py validate {output_json}")
+    print(f"  python cli.py forge {output_json}")
+    return 0
 
 
 def cmd_forge(args: argparse.Namespace) -> int:
@@ -217,6 +309,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_forge.add_argument("--no-funscripts", action="store_true",
                          help="skip the funscript pipeline (video only)")
     p_forge.set_defaults(func=cmd_forge)
+
+    p_new = sub.add_parser(
+        "new-project",
+        help="scan subfolders and emit a starter project JSON "
+             "(one segment per subfolder, 'none' joiners between)",
+    )
+    p_new.add_argument("folder", help="parent folder to scan")
+    p_new.add_argument("output_json", help="path to write the project JSON")
+    p_new.add_argument("--output-folder",
+                       help="where the forged output will land")
+    p_new.add_argument("--basename",
+                       help="output basename (default: parent folder name)")
+    p_new.add_argument("--resolution", default="1080p",
+                       help="output resolution key (default: 1080p)")
+    p_new.set_defaults(func=cmd_new_project)
 
     p_detect = sub.add_parser("detect", help="show what auto-detects in a folder")
     p_detect.add_argument("folder", help="folder to scan")

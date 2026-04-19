@@ -106,6 +106,71 @@ def test_forge_fails_cleanly_on_unreadable_video(tmp_path: Path):
     assert "ERROR" in r.stderr
 
 
+def test_new_project_scans_subfolders(tmp_path: Path):
+    """new-project walks subfolders, emits a segment per clip, with
+    'none' joiners between, natural-sorted."""
+    root = tmp_path / "pieces"
+    root.mkdir()
+    # Create 0, 1, 2, 10, 11 (tests natural sort: 0,1,2,10,11 not 0,1,10,11,2)
+    for idx in ("0", "1", "2", "10", "11"):
+        sub = root / idx
+        sub.mkdir()
+        video = sub / f"{idx}.mp4"
+        video.write_bytes(b"")
+        fs = sub / f"{idx}.funscript"
+        fs.write_text(json.dumps({"actions": []}), encoding="utf-8")
+
+    out_json = tmp_path / "proj.forgeproject.json"
+    r = run("new-project", str(root), str(out_json))
+    assert r.returncode == 0, r.stderr
+    assert out_json.exists()
+
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    items = data["items"]
+    # 5 segments + 4 joiners = 9 items
+    assert len(items) == 9
+    segments = [i for i in items if i["type"] == "segment"]
+    joiners = [i for i in items if i["type"] == "joiner"]
+    assert len(segments) == 5
+    assert len(joiners) == 4
+    # Joiners all default to 'none'
+    assert all(j["joiner_type"] == "none" for j in joiners)
+    # Natural sort: segments should reference 0, 1, 2, 10, 11 in that order
+    names_in_order = [Path(s["video"]).stem for s in segments]
+    assert names_in_order == ["0", "1", "2", "10", "11"]
+
+
+def test_new_project_skips_empty_subfolders(tmp_path: Path):
+    root = tmp_path / "mixed"
+    root.mkdir()
+    # One clip, two empties
+    (root / "0").mkdir()
+    vid = root / "0" / "0.mp4"
+    vid.write_bytes(b"")
+    (root / "0" / "0.funscript").write_text(
+        json.dumps({"actions": []}), encoding="utf-8",
+    )
+    (root / "1").mkdir()  # empty
+    (root / "2").mkdir()  # empty
+
+    out_json = tmp_path / "proj.forgeproject.json"
+    r = run("new-project", str(root), str(out_json))
+    assert r.returncode == 0
+    assert "skipped 2 subfolder(s)" in r.stdout
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    assert sum(1 for i in data["items"] if i["type"] == "segment") == 1
+
+
+def test_new_project_error_when_no_clips(tmp_path: Path):
+    root = tmp_path / "empties"
+    root.mkdir()
+    (root / "0").mkdir()
+    (root / "1").mkdir()
+    r = run("new-project", str(root), str(tmp_path / "p.json"))
+    assert r.returncode == 2
+    assert "no clips detected" in r.stderr.lower()
+
+
 def test_forge_rejects_no_video_and_no_funscripts_together(tmp_path: Path):
     vid = tmp_path / "a.mp4"
     vid.write_bytes(b"")
