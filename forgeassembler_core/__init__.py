@@ -39,6 +39,7 @@ from .filters import (
 from .joiners import REGISTRY as JOINER_REGISTRY
 from .joiners import Joiner, JoinerSpec, all_specs as joiner_specs, instantiate as instantiate_joiner
 from .project import (
+    FRAME_RATE_KEYS,
     QUALITY_CRF,
     RESOLUTION_KEYS,
     RESOLUTION_PIXELS,
@@ -66,6 +67,7 @@ __all__ = [
     "DetectedClip",
     "FfmpegCommand",
     "FfmpegInput",
+    "FRAME_RATE_KEYS",
     "FunscriptPart",
     "JOINER_REGISTRY",
     "Joiner",

@@ -14,6 +14,7 @@ from forgeassembler_core import (
     ABOUT_MARKDOWN,
     APP_NAME,
     BugOverlay,
+    FRAME_RATE_KEYS,
     Joiner as CoreJoiner,
     Output,
     OutputChannels,
@@ -189,6 +190,25 @@ with st.sidebar:
             disabled=not out.produce_video,
             help="Higher quality = larger file. Most distribution "
                  "sites prefer Medium or Low to keep uploads small.",
+        )
+        frame_rate_labels = {
+            "source": "Match first video (auto-detect)",
+            "24": "24 fps (cinematic)",
+            "30": "30 fps",
+            "60": "60 fps (smooth)",
+        }
+        try:
+            fr_index = list(FRAME_RATE_KEYS).index(out.frame_rate)
+        except ValueError:
+            fr_index = 0
+        out.frame_rate = st.selectbox(
+            "Frame rate",
+            options=list(FRAME_RATE_KEYS),
+            index=fr_index,
+            format_func=lambda k: frame_rate_labels[k],
+            disabled=not out.produce_video,
+            help="'Match first video' avoids frame drops when sources are "
+                 "60 fps. Pick a fixed value to force every clip to it.",
         )
         out.normalize_audio = st.checkbox(
             "Normalize audio loudness (−16 LUFS)",
@@ -510,6 +530,22 @@ with tab_build:
                     )
                     resolution_override = (1920, 1080)
 
+                # Resolve 'source' frame rate up front so we can show
+                # the user which fps got chosen.
+                frame_rate_override = None
+                if project.output.produce_video:
+                    from forgeassembler_core.concat_video import (
+                        _resolve_source_frame_rate,
+                    )
+                    frame_rate_override = _resolve_source_frame_rate(
+                        project, ffmpeg_exe,
+                    )
+                    if frame_rate_override is not None:
+                        status.write(
+                            f"Frame rate: matched source → "
+                            f"{frame_rate_override} fps",
+                        )
+
                 def _log(line: str) -> None:
                     # Update the progress bar when ffmpeg prints a
                     # `time=HH:MM:SS.ss` marker.
@@ -535,6 +571,7 @@ with tab_build:
                         project, layout,
                         ffmpeg_exe=ffmpeg_exe,
                         resolution_override=resolution_override,
+                        frame_rate_override=frame_rate_override,
                         log_callback=_log,
                     )
                     progress_bar.progress(1.0, text=f"Done — {out_path.name}")

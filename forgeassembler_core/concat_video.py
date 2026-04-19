@@ -53,9 +53,6 @@ from .project import (
 # them visually subtle; the solid-black bridge still honours duration_s.
 _MAX_FADE_S: float = 0.5
 
-# Hard-coded output frame rate for v1. Later: expose via Project.output.
-_FRAME_RATE: int = 30
-
 
 # ── Declarative command description ───────────────────────────────────
 @dataclass
@@ -105,6 +102,21 @@ def _resolve_resolution(
     if pixels is None:
         raise ValueError(f"No pixel dims for resolution {res!r}")
     return pixels
+
+
+def _resolve_frame_rate(
+    project: Project,
+    override: Optional[int] = None,
+) -> int:
+    if override is not None:
+        return override
+    fps = project.output.fps()
+    if fps is None:
+        raise ValueError(
+            "output.frame_rate='source' requires frame_rate_override; "
+            "probe the first video segment before building the command.",
+        )
+    return fps
 
 
 def _fade_duration_s(joiner: ProjectJoiner) -> float:
@@ -160,6 +172,7 @@ def build_ffmpeg_command(
     layout: Layout,
     output_path: Optional[str] = None,
     resolution_override: Optional[tuple[int, int]] = None,
+    frame_rate_override: Optional[int] = None,
     frame_cache: Optional[dict[str, str]] = None,
 ) -> FfmpegCommand:
     """Return an `FfmpegCommand` describing the video forge for this project.
@@ -168,6 +181,10 @@ def build_ffmpeg_command(
     pre-extracted previous-last-frame PNG (required for any segment with
     `background='previous_last_frame'`). `forge_video` populates this via
     a pre-pass; tests can pass a synthetic dict.
+
+    `frame_rate_override` supplies the encode fps when
+    `output.frame_rate == 'source'` (probed from the first video segment
+    by `forge_video`; tests can pass a literal int).
     """
     frame_cache = frame_cache or {}
     out = project.output
@@ -176,12 +193,13 @@ def build_ffmpeg_command(
             "build_ffmpeg_command called but output.produce_video is False",
         )
 
-    width, height = _resolve_resolution(project, resolution_override)
-
     if output_path is None:
         if not out.folder:
             raise ValueError("output.folder is required to build a command")
         output_path = str(Path(out.folder) / f"{out.basename}.mp4")
+
+    width, height = _resolve_resolution(project, resolution_override)
+    fps = _resolve_frame_rate(project, frame_rate_override)
 
     segment_layouts = [li for li in layout.items if li.is_segment]
     if not segment_layouts:
@@ -385,7 +403,7 @@ def build_ffmpeg_command(
             # ffmpeg `color` source takes 0xRRGGBB hex; strip the '#'.
             filter_parts.append(
                 f"color=c=0x{bridge_color.lstrip('#')}:s={width}x{height}:"
-                f"d={d_s:g}:r={_FRAME_RATE}[{v_bridge}]",
+                f"d={d_s:g}:r={fps}[{v_bridge}]",
             )
             filter_parts.append(
                 f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_bridge}]",
@@ -431,7 +449,7 @@ def build_ffmpeg_command(
         "-preset", "medium",
         "-crf", str(out.crf()),
         "-pix_fmt", "yuv420p",
-        "-r", str(_FRAME_RATE),
+        "-r", str(fps),
         "-c:a", "aac",
         "-b:a", "192k",
         "-ar", "48000",
@@ -546,12 +564,34 @@ def _build_frame_cache(
     return cache
 
 
+def _resolve_source_frame_rate(
+    project: Project, ffmpeg_exe: str,
+) -> Optional[int]:
+    """When `output.frame_rate == 'source'`, probe the first real video
+    segment via ffmpeg and return its fps rounded to the nearest integer.
+    Returns None when the frame_rate is a fixed value (no probe needed)
+    or when the project has no video segments to probe.
+    """
+    if project.output.fps() is not None:
+        return None
+    first_video = next(
+        (s for s in project.segments() if not s.is_still()),
+        None,
+    )
+    if first_video is None:
+        return None
+    from .probe import probe_frame_rate_fps
+    fps = probe_frame_rate_fps(first_video.video, ffmpeg_exe)
+    return int(round(fps))
+
+
 def forge_video(
     project: Project,
     layout: Layout,
     ffmpeg_exe: Optional[str] = None,
     output_path: Optional[str] = None,
     resolution_override: Optional[tuple[int, int]] = None,
+    frame_rate_override: Optional[int] = None,
     log_callback: Optional[Callable[[str], None]] = None,
 ) -> Path:
     """Run ffmpeg to produce the output MP4. Returns the output path.
@@ -564,6 +604,11 @@ def forge_video(
     """
     exe = ffmpeg_exe or _resolve_ffmpeg_exe()
 
+    # When the project asks for 'source' fps, probe first video segment.
+    # Explicit override from the caller always wins.
+    if frame_rate_override is None:
+        frame_rate_override = _resolve_source_frame_rate(project, exe)
+
     temp_dir = Path(tempfile.mkdtemp(prefix="forgeassembler_"))
     try:
         frame_cache = _build_frame_cache(project, exe, temp_dir)
@@ -572,6 +617,7 @@ def forge_video(
             project, layout,
             output_path=output_path,
             resolution_override=resolution_override,
+            frame_rate_override=frame_rate_override,
             frame_cache=frame_cache,
         )
 

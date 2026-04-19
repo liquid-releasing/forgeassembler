@@ -12,6 +12,7 @@ import pytest
 from forgeassembler_core.project import (
     AudioLayer,
     BugOverlay,
+    FRAME_RATE_KEYS,
     Joiner,
     Metadata,
     Output,
@@ -468,6 +469,60 @@ def test_validate_rejects_unknown_quality(tmp_path: Path):
 def test_quality_crf_map_has_three_presets():
     assert set(QUALITY_CRF.keys()) == {"high", "medium", "low"}
     assert QUALITY_CRF["high"] < QUALITY_CRF["medium"] < QUALITY_CRF["low"]
+
+
+# ── Frame rate ────────────────────────────────────────────────────────
+def test_frame_rate_default_is_source():
+    assert Output().frame_rate == "source"
+
+
+def test_frame_rate_fps_source_returns_none():
+    # 'source' means "probe the first video" — fps() returns None so
+    # the caller knows to supply frame_rate_override.
+    assert Output(frame_rate="source").fps() is None
+
+
+@pytest.mark.parametrize("key,expected", [
+    ("24", 24),
+    ("30", 30),
+    ("60", 60),
+])
+def test_frame_rate_fps_fixed_values(key, expected):
+    assert Output(frame_rate=key).fps() == expected
+
+
+def test_frame_rate_roundtrip():
+    o = Output(frame_rate="60")
+    o2 = Output.from_dict(o.to_dict())
+    assert o2.frame_rate == "60"
+
+
+def test_frame_rate_keys_include_expected():
+    for k in ("source", "24", "30", "60"):
+        assert k in FRAME_RATE_KEYS
+
+
+def test_validate_rejects_unknown_frame_rate(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    p = Project(
+        items=[Segment(id="s1", video=str(v))],
+        output=Output(folder=str(tmp_path / "out"), frame_rate="120"),
+    )
+    issues = validate(p)
+    assert any(
+        "frame_rate '120' is not one of" in i.message and i.level == "error"
+        for i in issues
+    )
+
+
+def test_validate_accepts_source_frame_rate(tmp_path: Path):
+    v = _make_video(tmp_path, "a")
+    p = Project(
+        items=[Segment(id="s1", video=str(v))],
+        output=Output(folder=str(tmp_path / "out"), frame_rate="source"),
+    )
+    errors = [i for i in validate(p) if i.level == "error"]
+    assert not any("frame_rate" in e.message for e in errors)
 
 
 # ── Metadata ──────────────────────────────────────────────────────────

@@ -44,8 +44,13 @@ def _png(tmp: Path, name: str) -> Path:
 
 
 def _project(tmp: Path, *items, **output_overrides) -> Project:
-    """Convenience: build a Project with a default output.folder."""
-    defaults = {"folder": str(tmp / "out")}
+    """Convenience: build a Project with a default output.folder.
+
+    Defaults `frame_rate` to `"30"` so build_ffmpeg_command doesn't
+    require a probe. Tests that need to exercise `"source"` supply it
+    explicitly.
+    """
+    defaults = {"folder": str(tmp / "out"), "frame_rate": "30"}
     defaults.update(output_overrides)
     return Project(items=list(items), output=Output(**defaults))
 
@@ -490,6 +495,68 @@ def test_quality_low_emits_crf_28(tmp_path: Path):
     cmd = build_ffmpeg_command(p, layout)
     crf_idx = cmd.output_args.index("-crf")
     assert cmd.output_args[crf_idx + 1] == "28"
+
+
+# ── Frame rate ────────────────────────────────────────────────────────
+@pytest.mark.parametrize("key,expected", [
+    ("24", "24"),
+    ("30", "30"),
+    ("60", "60"),
+])
+def test_frame_rate_fixed_value_emits_matching_r(tmp_path: Path, key, expected):
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)), frame_rate=key)
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    r_idx = cmd.output_args.index("-r")
+    assert cmd.output_args[r_idx + 1] == expected
+
+
+def test_frame_rate_source_requires_override(tmp_path: Path):
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)), frame_rate="source")
+    layout = lay_out(p, probe=lambda _p: 1000)
+    with pytest.raises(ValueError, match="frame_rate_override"):
+        build_ffmpeg_command(p, layout)
+
+
+def test_frame_rate_source_honours_override(tmp_path: Path):
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)), frame_rate="source")
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout, frame_rate_override=60)
+    r_idx = cmd.output_args.index("-r")
+    assert cmd.output_args[r_idx + 1] == "60"
+
+
+def test_frame_rate_override_wins_over_fixed(tmp_path: Path):
+    """Explicit override from caller beats the project's fixed value
+    (lets callers force a specific fps from the CLI / tests)."""
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)), frame_rate="30")
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout, frame_rate_override=24)
+    r_idx = cmd.output_args.index("-r")
+    assert cmd.output_args[r_idx + 1] == "24"
+
+
+def test_frame_rate_reaches_color_bridge(tmp_path: Path):
+    """Fade-to-black bridge source uses the same fps as the encoder."""
+    v1 = _mp4(tmp_path, "a")
+    v2 = _mp4(tmp_path, "b")
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(v1)),
+        Joiner(id="j1", joiner_type="fade_to_black",
+               params={"duration_s": 1.0}),
+        Segment(id="s2", video=str(v2)),
+        frame_rate="60",
+        normalize_audio=False,
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    # Bridge color source declares its own frame rate.
+    assert ":r=60" in cmd.filter_complex
 
 
 # ── Metadata ──────────────────────────────────────────────────────────

@@ -271,6 +271,24 @@ def cmd_forge(args: argparse.Namespace) -> int:
         )
         resolution_override = (1920, 1080)
 
+    # When frame_rate is 'source', probe first video segment for a fps.
+    # forge_video does this internally; we probe here too so we can print
+    # what got chosen (otherwise the user has no feedback until ffmpeg
+    # starts logging).
+    from forgeassembler_core.concat_video import _resolve_source_frame_rate
+    frame_rate_override = None
+    if out.produce_video:
+        try:
+            frame_rate_override = _resolve_source_frame_rate(project, ffmpeg_exe)
+        except RuntimeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 2
+        if frame_rate_override is not None:
+            print(
+                f"Frame rate: matched source → {frame_rate_override} fps",
+                file=sys.stderr,
+            )
+
     if out.produce_video:
         print(f"Forging video at {out.resolution} → {out.folder}/{out.basename}.mp4")
         try:
@@ -278,6 +296,7 @@ def cmd_forge(args: argparse.Namespace) -> int:
                 project, layout,
                 ffmpeg_exe=ffmpeg_exe,
                 resolution_override=resolution_override,
+                frame_rate_override=frame_rate_override,
                 log_callback=lambda line: print(line, file=sys.stderr),
             )
             print(f"Wrote {output}")

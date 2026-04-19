@@ -18,6 +18,13 @@ OverlayType = Literal["image", "text"]
 BugCorner = Literal["tl", "tr", "bl", "br"]
 SegmentBackground = Literal["black", "previous_last_frame"]
 Quality = Literal["high", "medium", "low"]
+FrameRate = Literal["source", "24", "30", "60"]
+
+# Keys for the Frame rate dropdown. "source" probes the first video
+# segment at forge time (via ffmpeg stderr) and mirrors its fps; this
+# avoids the `drop=N` frame-drop artefact you get when forcing a 60fps
+# source down to 30fps on encode.
+FRAME_RATE_KEYS: tuple[str, ...] = ("source", "24", "30", "60")
 
 # Map each quality preset to an H.264 CRF value. Lower CRF = higher
 # quality = bigger file. 18-28 is a sensible span for 1080p x264.
@@ -229,6 +236,7 @@ class Output:
     basename: str = "combined"
     resolution: str = "1080p"
     quality: str = "medium"
+    frame_rate: str = "source"
     normalize_audio: bool = True
     produce_video: bool = True
     produce_funscripts: bool = True
@@ -239,12 +247,23 @@ class Output:
         """Return the H.264 CRF value implied by `quality`."""
         return QUALITY_CRF.get(self.quality, QUALITY_CRF["medium"])
 
+    def fps(self) -> Optional[int]:
+        """Return the integer fps implied by `frame_rate`, or None when
+        the caller must probe the first segment (`frame_rate == 'source'`)."""
+        if self.frame_rate == "source":
+            return None
+        try:
+            return int(self.frame_rate)
+        except ValueError:
+            return None
+
     def to_dict(self) -> dict:
         d: dict[str, Any] = {
             "folder": self.folder,
             "basename": self.basename,
             "resolution": self.resolution,
             "quality": self.quality,
+            "frame_rate": self.frame_rate,
             "normalize_audio": self.normalize_audio,
             "produce_video": self.produce_video,
             "produce_funscripts": self.produce_funscripts,
@@ -266,6 +285,7 @@ class Output:
             basename=d.get("basename", "combined"),
             resolution=d.get("resolution", "1080p"),
             quality=d.get("quality", "medium"),
+            frame_rate=d.get("frame_rate", "source"),
             normalize_audio=bool(d.get("normalize_audio", True)),
             produce_video=bool(d.get("produce_video", True)),
             produce_funscripts=bool(d.get("produce_funscripts", True)),
@@ -631,6 +651,12 @@ def validate(project: Project) -> list[ValidationIssue]:
             "error",
             f"output.quality '{out.quality}' is not one of "
             f"{', '.join(QUALITY_CRF.keys())}.",
+        ))
+    if out.frame_rate not in FRAME_RATE_KEYS:
+        issues.append(ValidationIssue(
+            "error",
+            f"output.frame_rate '{out.frame_rate}' is not one of "
+            f"{', '.join(FRAME_RATE_KEYS)}.",
         ))
     if not out.produce_video and not out.produce_funscripts:
         issues.append(ValidationIssue(
