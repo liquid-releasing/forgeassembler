@@ -1289,3 +1289,70 @@ def test_section_overlay_applies_before_bug(tmp_path: Path):
     assert cmd.map_video == "[v_bugged]"
     # The bug stage references the last section-overlay label as its input
     assert "[v_secov0][bug_rgba]" in cmd.filter_complex
+
+
+# ── Closing fade-to-black ─────────────────────────────────────────────
+def test_closing_fade_to_black_applies_to_video_and_audio(tmp_path: Path):
+    """When output.closing_joiner is fade_to_black, the engine appends
+    fade=t=out and afade=t=out filters to the final video and audio
+    streams. Start time = total_duration - duration_s; end time = total.
+    """
+    p, _v1, _v2 = _section_project(tmp_path)
+    p.output.closing_joiner = Joiner(
+        id="join-close", joiner_type="fade_to_black",
+        params={"duration_s": 1.5},
+    )
+    # Each section is 2s long; total = 4s. Fade should start at 2.5s.
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    assert "fade=t=out:st=2.5:d=1.5" in fc
+    assert "afade=t=out:st=2.5:d=1.5" in fc
+    assert cmd.map_video == "[v_close]"
+    assert cmd.map_audio == "[a_close]"
+
+
+def test_closing_fade_none_emits_no_fade_filter(tmp_path: Path):
+    """Default closing_joiner ("none") means no fade at the tail."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "fade=t=out" not in cmd.filter_complex
+    assert "afade=t=out" not in cmd.filter_complex
+    assert "v_close" not in cmd.filter_complex
+    assert "a_close" not in cmd.filter_complex
+
+
+def test_closing_fade_runs_after_bug_so_bug_fades_too(tmp_path: Path):
+    """Closing fade should apply AFTER the bug overlay so the bug fades
+    to black with the rest of the frame."""
+    bug = tmp_path / "bug.png"
+    bug.write_bytes(b"")
+    p, _v1, _v2 = _section_project(tmp_path)
+    p.output.bug = BugOverlay(file=str(bug), corner="br")
+    p.output.closing_joiner = Joiner(
+        id="join-close", joiner_type="fade_to_black",
+        params={"duration_s": 1.0},
+    )
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    # v_bugged is produced by the bug stage; the closing fade consumes
+    # it to produce v_close.
+    assert "[v_bugged]fade=t=out" in fc
+
+
+def test_closing_fade_roundtrips_through_json(tmp_path: Path):
+    """Output.closing_joiner round-trips cleanly through to_dict/from_dict."""
+    o = Output(
+        folder=str(tmp_path),
+        closing_joiner=Joiner(
+            id="join-close", joiner_type="fade_to_black",
+            params={"duration_s": 2.5},
+        ),
+    )
+    d = o.to_dict()
+    assert "closing_joiner" in d
+    o2 = Output.from_dict(d)
+    assert o2.closing_joiner.joiner_type == "fade_to_black"
+    assert o2.closing_joiner.params["duration_s"] == 2.5

@@ -280,6 +280,13 @@ class Output:
     produce_funscripts: bool = True
     bug: Optional[BugOverlay] = None
     metadata: Metadata = field(default_factory=Metadata)
+    # Closing transition for the whole output. When `closing_joiner` is
+    # "fade_to_black", the engine fades the final video (and audio) to
+    # black/silence in the last `duration_s` seconds of the output.
+    # Default "none" = hard end, no fade.
+    closing_joiner: "Joiner" = field(default_factory=lambda: Joiner(
+        id="join-close", joiner_type="none",
+    ))
 
     def crf(self) -> int:
         """Return the H.264 CRF value implied by `quality`."""
@@ -311,6 +318,8 @@ class Output:
         md = self.metadata.to_dict()
         if md:
             d["metadata"] = md
+        if self.closing_joiner.joiner_type != "none":
+            d["closing_joiner"] = self.closing_joiner.to_dict()
         return d
 
     @staticmethod
@@ -318,6 +327,7 @@ class Output:
         if not d:
             return Output()
         bug_dict = d.get("bug")
+        closing_dict = d.get("closing_joiner")
         return Output(
             folder=d.get("folder"),
             basename=d.get("basename", "combined"),
@@ -329,6 +339,10 @@ class Output:
             produce_funscripts=bool(d.get("produce_funscripts", True)),
             bug=BugOverlay.from_dict(bug_dict) if bug_dict else None,
             metadata=Metadata.from_dict(d.get("metadata")),
+            closing_joiner=(
+                Joiner.from_dict(closing_dict) if closing_dict
+                else Joiner(id="join-close", joiner_type="none")
+            ),
         )
 
 

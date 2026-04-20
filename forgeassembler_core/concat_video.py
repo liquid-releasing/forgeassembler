@@ -649,6 +649,27 @@ def build_ffmpeg_command(
         filter_parts.append(loudnorm_filter(final_a, "a_loud"))
         final_a = "a_loud"
 
+    # ── Stage G: closing fade-to-black (applied to video AND audio in
+    # lockstep). Starts at `total - duration_s` and ends at the tail of
+    # the output so the picture and sound close together. The bug, if
+    # present, also fades out because this runs after the bug overlay.
+    if out.closing_joiner.joiner_type == "fade_to_black":
+        close_d_s = float(out.closing_joiner.params.get("duration_s", 1.0))
+        total_s = layout.total_duration_ms / 1000.0
+        fade_start_s = max(0.0, total_s - close_d_s)
+        filter_parts.append(
+            f"[{final_v}]"
+            f"fade=t=out:st={fade_start_s:g}:d={close_d_s:g}"
+            f"[v_close]",
+        )
+        final_v = "v_close"
+        filter_parts.append(
+            f"[{final_a}]"
+            f"afade=t=out:st={fade_start_s:g}:d={close_d_s:g}"
+            f"[a_close]",
+        )
+        final_a = "a_close"
+
     filter_complex = ";\n".join(filter_parts)
 
     # Chapters: extra ffmetadata input supplies MP4 chapter markers.

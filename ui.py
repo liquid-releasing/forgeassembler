@@ -749,24 +749,78 @@ with tab_build:
                             ]
                             st.rerun()
 
-            # Trailing-joiner readout: show what happens AFTER this
-            # section — i.e. the next section's leading joiner. For the
-            # final section we show "→ end of output" so the transition
-            # story is complete at a glance.
-            if sec_idx + 1 < len(project.sections):
-                nxt = project.sections[sec_idx + 1].leading_joiner
-                if nxt.joiner_type == "fade_to_black":
-                    d = float(nxt.params.get("duration_s", 1.0))
-                    st.caption(
-                        f"⤴ Transitions OUT with **Fade to black** "
-                        f"({d:g}s) into Section {sec_idx + 2}.",
+            # Trailing-joiner picker — symmetric with the leading-joiner
+            # picker at the top of the section. For non-last sections,
+            # this IS the next section's leading_joiner (two views, one
+            # source of truth — editing either keeps them in sync). For
+            # the last section, it drives `output.closing_joiner` which
+            # fades the final video + audio to black/silence.
+            is_last = sec_idx + 1 >= len(project.sections)
+            if is_last:
+                trailing = project.output.closing_joiner
+                close_labels = {
+                    "none": "Cut (hard end)",
+                    "fade_to_black": "Fade to black",
+                }
+                key_suffix = "close"
+                end_caption = "⤴ End of output."
+                dur_help = (
+                    "Video and audio fade together over this duration "
+                    "at the very end of the output."
+                )
+            else:
+                trailing = project.sections[sec_idx + 1].leading_joiner
+                close_labels = {
+                    "none": f"Cut into Section {sec_idx + 2}",
+                    "fade_to_black": "Fade to black",
+                }
+                key_suffix = f"out_{sec.id}"
+                end_caption = f"⤴ Into Section {sec_idx + 2}."
+                dur_help = (
+                    "Fade-to-black bridge between this section and the "
+                    "next. Matches the next section's leading-joiner "
+                    "picker (editing either stays in sync)."
+                )
+
+            tcols = st.columns([2, 3, 3])
+            with tcols[0]:
+                cur_ttype = trailing.joiner_type
+                if cur_ttype not in _JOINER_TYPES:
+                    cur_ttype = "none"
+                new_ttype = st.selectbox(
+                    "Select joiner",
+                    options=list(_JOINER_TYPES),
+                    index=list(_JOINER_TYPES).index(cur_ttype),
+                    format_func=lambda k: close_labels[k],
+                    key=f"jtype_{key_suffix}",
+                    label_visibility="collapsed",
+                )
+                if new_ttype != trailing.joiner_type:
+                    trailing.joiner_type = new_ttype
+                    if new_ttype == "none":
+                        trailing.params.pop("duration_s", None)
+                    elif "duration_s" not in trailing.params:
+                        trailing.params["duration_s"] = 1.0
+
+            with tcols[1]:
+                if trailing.joiner_type == "fade_to_black":
+                    trailing.params["duration_s"] = float(
+                        st.number_input(
+                            "Duration (s)",
+                            min_value=0.1, max_value=30.0,
+                            value=float(trailing.params.get("duration_s", 1.0)),
+                            step=0.5,
+                            key=f"jdur_{key_suffix}",
+                            help=dur_help,
+                        )
                     )
                 else:
                     st.caption(
-                        f"⤴ Cuts straight into Section {sec_idx + 2}.",
+                        "End hard — no closing fade." if is_last
+                        else "Hard cut into the next section.",
                     )
-            else:
-                st.caption("⤴ End of output.")
+            with tcols[2]:
+                st.caption(end_caption)
 
     # ── Add clips panel ───────────────────────────────────────────
     st.divider()
