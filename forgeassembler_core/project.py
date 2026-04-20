@@ -443,11 +443,15 @@ class Joiner:
 # ── Output channels ────────────────────────────────────────────────────
 @dataclass
 class OutputChannels:
+    # All implemented channels default ON. Users typically want every
+    # detected channel in the output; off-by-default would silently
+    # drop e1/e2/prostate tracks even when they exist on the source
+    # clips. Phase-2 channels stay off until they're implemented.
     main: bool = True
-    multi_axis: bool = False
-    three_phase_estim: bool = False
+    multi_axis: bool = True
+    three_phase_estim: bool = True
     four_phase_estim: bool = False  # Phase 2
-    prostate: bool = False
+    prostate: bool = True
     audio_estim: bool = False  # Phase 2
     pulse_frequency: bool = False  # Phase 2
 
