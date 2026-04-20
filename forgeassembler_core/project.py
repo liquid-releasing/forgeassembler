@@ -33,7 +33,7 @@ FrameRate = Literal["source", "24", "30", "60"]
 # Section-level overlay positions. "center" plus the four corners
 # match the `BugCorner` set with a center option.
 OverlayPosition = Literal["center", "tl", "tr", "bl", "br"]
-SectionOverlayKind = Literal["image", "audio"]
+SectionOverlayKind = Literal["image", "audio", "text"]
 
 OVERLAY_POSITIONS: tuple[str, ...] = (
     "center", "tc", "bc", "tl", "tr", "bl", "br",
@@ -505,20 +505,34 @@ class SectionOverlay:
     Audio-only fields:  mix_pct (0-100; overlay's share of the mix).
     """
     id: str
-    kind: SectionOverlayKind  # "image" | "audio"
-    file: str
+    kind: SectionOverlayKind  # "image" | "audio" | "text"
+    file: str  # image/audio path; unused when kind == "text"
     start_s: float = 0.0
     duration_s: float = 0.0  # 0 = play to end of section
     fade_in_s: float = 0.0
     fade_out_s: float = 0.0
-    # Image-only
+    # Image/text-only: position on the frame.
     position: OverlayPosition = "center"
+    # Image/text-only: opacity 0.0-1.0.
     opacity: float = 1.0
-    # scale_pct: render the image at this percentage of its native
-    # size. 100 = native; 50 = half. Image-only.
+    # Image-only: render at this percentage of native size.
     scale_pct: int = 100
     # Audio-only: 0 = no overlay (clip audio dominates), 100 = overlay only.
     mix_pct: int = 50
+    # Text-only fields ─────────────────────────────────────────────
+    # The literal string to render. Supports "\n" for manual line
+    # breaks. Ignored when kind != "text".
+    text: str = ""
+    # Hex colour like "#ffffff". Ignored when kind != "text".
+    text_color: str = "#ffffff"
+    # Point-size-ish number fed to drawtext's fontsize. Ignored when
+    # kind != "text".
+    font_size: int = 48
+    # Filesystem-stem of the font (e.g. "Arial", "Georgia"). The UI
+    # enumerates system fonts; the engine resolves this stem back to
+    # a full .ttf/.otf/.ttc path at forge time. Ignored when kind !=
+    # "text". Empty string means "let ffmpeg pick a default font".
+    font_family: str = ""
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {
@@ -536,6 +550,13 @@ class SectionOverlay:
             d["scale_pct"] = self.scale_pct
         elif self.kind == "audio":
             d["mix_pct"] = self.mix_pct
+        elif self.kind == "text":
+            d["position"] = self.position
+            d["opacity"] = self.opacity
+            d["text"] = self.text
+            d["text_color"] = self.text_color
+            d["font_size"] = self.font_size
+            d["font_family"] = self.font_family
         return d
 
     @staticmethod
@@ -543,7 +564,7 @@ class SectionOverlay:
         return SectionOverlay(
             id=d["id"],
             kind=d["kind"],
-            file=d["file"],
+            file=d.get("file", ""),  # text overlays have no file
             start_s=float(d.get("start_s", 0.0)),
             duration_s=float(d.get("duration_s", 0.0)),
             fade_in_s=float(d.get("fade_in_s", 0.0)),
@@ -552,6 +573,10 @@ class SectionOverlay:
             opacity=float(d.get("opacity", 1.0)),
             scale_pct=int(d.get("scale_pct", 100)),
             mix_pct=int(d.get("mix_pct", 50)),
+            text=d.get("text", ""),
+            text_color=d.get("text_color", "#ffffff"),
+            font_size=int(d.get("font_size", 48)),
+            font_family=d.get("font_family", ""),
         )
 
 

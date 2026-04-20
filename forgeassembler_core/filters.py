@@ -252,3 +252,113 @@ def image_overlay_filter(
         f"overlay=x={x_expr}:y={y_expr}{enable}:format=auto"
         f"[{out_label}]"
     )
+
+
+# ── Text overlay (section-scoped) ─────────────────────────────────────
+# Positions use drawtext's `tw`/`th` (text width/height) and `W`/`H`
+# (main frame size). Corners get a small breathing-room margin so the
+# glyphs don't sit flush against the edge.
+_TEXT_POSITION_EXPRS: dict[str, tuple[str, str]] = {
+    "center": ("(W-tw)/2", "(H-th)/2"),
+    "tc": ("(W-tw)/2", "20"),
+    "bc": ("(W-tw)/2", "H-th-20"),
+    "tl": ("20", "20"),
+    "tr": ("W-tw-20", "20"),
+    "bl": ("20", "H-th-20"),
+    "br": ("W-tw-20", "H-th-20"),
+}
+
+
+def _escape_drawtext(text: str) -> str:
+    """Escape a string for inline use in ffmpeg's drawtext `text=...`.
+
+    drawtext treats `\\`, `:`, `'`, and `%` specially inside a
+    single-quoted value. Newlines pass through as literal line breaks.
+    """
+    return (
+        text.replace("\\", "\\\\")
+            .replace(":", "\\:")
+            .replace("'", "\\'")
+            .replace("%", "\\%")
+    )
+
+
+def text_overlay_filter(
+    in_video_label: str,
+    out_label: str,
+    text: str,
+    fontfile: str,
+    font_size: int = 48,
+    font_color: str = "#ffffff",
+    position: str = "center",
+    start_s: float = 0.0,
+    end_s: float | None = None,
+    opacity: float = 1.0,
+    fade_in_s: float = 0.0,
+    fade_out_s: float = 0.0,
+) -> str:
+    """Composite a text string onto a video stream via ffmpeg drawtext.
+
+    Timing: `enable='between(t,start_s,end_s)'` gates visibility.
+    Fades are expressed via the `alpha` parameter so the text fades
+    rather than pops — ffmpeg evaluates the alpha expression at each
+    frame and smoothly ramps 0 → opacity on fade-in, opacity → 0 on
+    fade-out.
+
+    Path-quoting: drawtext's `fontfile=` argument doesn't accept
+    quotes; instead colons inside the path must be escaped (Windows
+    paths like `C:\\Windows\\Fonts\\arial.ttf`). We escape colons and
+    backslashes the same way drawtext expects.
+    """
+    if position not in _TEXT_POSITION_EXPRS:
+        raise ValueError(
+            f"Unknown text overlay position: {position!r}. "
+            f"Known: {', '.join(sorted(_TEXT_POSITION_EXPRS))}"
+        )
+    x_expr, y_expr = _TEXT_POSITION_EXPRS[position]
+
+    safe_text = _escape_drawtext(text)
+    # drawtext needs the backslashes in Windows paths doubled and the
+    # drive-letter colon escaped. Using forward slashes avoids the
+    # backslash dance and works on Windows ffmpeg builds.
+    safe_font = fontfile.replace("\\", "/").replace(":", "\\:")
+    opacity = max(0.0, min(1.0, opacity))
+
+    # Alpha expression — see docstring. Skips branches when fades
+    # are zero to keep the graph readable.
+    if end_s is not None and (fade_in_s > 0 or fade_out_s > 0):
+        fi = max(0.001, float(fade_in_s))
+        fo = max(0.001, float(fade_out_s))
+        # Clamp the fade ramps inside the visible window so fades
+        # don't extend before start or after end.
+        alpha = (
+            f"if(lt(t,{start_s:g}),0,"
+            f"if(lt(t,{start_s + fi:g}),"
+            f"{opacity:g}*(t-{start_s:g})/{fi:g},"
+            f"if(lt(t,{end_s - fo:g}),{opacity:g},"
+            f"if(lt(t,{end_s:g}),"
+            f"{opacity:g}*({end_s:g}-t)/{fo:g},0))))"
+        )
+        alpha_clause = f":alpha='{alpha}'"
+    elif opacity < 1.0:
+        alpha_clause = f":alpha={opacity:g}"
+    else:
+        alpha_clause = ""
+
+    enable = ""
+    if end_s is not None:
+        enable = f":enable='between(t,{start_s:g},{end_s:g})'"
+    elif start_s > 0:
+        enable = f":enable='gte(t,{start_s:g})'"
+
+    return (
+        f"[{in_video_label}]"
+        f"drawtext=fontfile='{safe_font}'"
+        f":text='{safe_text}'"
+        f":fontcolor={font_color}"
+        f":fontsize={int(font_size)}"
+        f":x={x_expr}:y={y_expr}"
+        f"{alpha_clause}"
+        f"{enable}"
+        f"[{out_label}]"
+    )

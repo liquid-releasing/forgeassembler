@@ -1356,3 +1356,137 @@ def test_closing_fade_roundtrips_through_json(tmp_path: Path):
     o2 = Output.from_dict(d)
     assert o2.closing_joiner.joiner_type == "fade_to_black"
     assert o2.closing_joiner.params["duration_s"] == 2.5
+
+
+# ── Text overlays ─────────────────────────────────────────────────────
+def _make_font_file(tmp_path: Path) -> Path:
+    """Drop a zero-byte .ttf in tmp so tests can point the engine at a
+    file that 'exists'. The engine only cares about the path string; it
+    never parses the font itself."""
+    font = tmp_path / "TestFont.ttf"
+    font.write_bytes(b"")
+    return font
+
+
+def test_text_overlay_emits_drawtext(tmp_path: Path, monkeypatch):
+    """A section text overlay should render as a drawtext filter with
+    escaped text, the resolved fontfile path, and an absolute-time
+    enable window."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    font = _make_font_file(tmp_path)
+
+    # Stub the font resolver so the test doesn't depend on what's
+    # installed on the host.
+    from forgeassembler_core import fonts as fonts_mod
+    monkeypatch.setattr(
+        fonts_mod, "resolve_font_path",
+        lambda stem: str(font) if stem == "TestFont" else None,
+    )
+
+    p.sections[1].overlays.append(SectionOverlay(
+        id="ov-text", kind="text", file="",
+        start_s=0.5, duration_s=1.0,
+        position="center",
+        text="Hello world",
+        text_color="#ff0000",
+        font_size=64,
+        font_family="TestFont",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    # Section 2 starts at 2s, overlay start_s=0.5 → abs 2.5..3.5
+    assert "drawtext=" in fc
+    assert "text='Hello world'" in fc
+    assert "fontsize=64" in fc
+    assert "fontcolor=#ff0000" in fc
+    assert "enable='between(t,2.5,3.5)'" in fc
+    # fontfile path should be present with forward slashes + escaped colon
+    assert font.name in fc
+
+
+def test_text_overlay_escapes_special_chars(tmp_path: Path, monkeypatch):
+    """Colons, single quotes, backslashes and percent signs must be
+    escaped so ffmpeg doesn't interpret them as filter delimiters."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    font = _make_font_file(tmp_path)
+    from forgeassembler_core import fonts as fonts_mod
+    monkeypatch.setattr(
+        fonts_mod, "resolve_font_path", lambda _stem: str(font),
+    )
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov-text", kind="text", file="",
+        text="100%: it's 'great' \\ on track",
+        font_family="TestFont",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    # Each special char has its escape
+    assert "100\\%" in fc
+    assert "it\\'s" in fc
+    assert "\\'great\\'" in fc
+    # Double-escaped backslash (one in source → two in escaped)
+    assert "\\\\" in fc
+
+
+def test_text_overlay_skipped_when_no_font_resolves(
+    tmp_path: Path, monkeypatch,
+):
+    """When the font stem doesn't resolve and the machine has no fonts
+    at all, the overlay is silently skipped (no filter emitted). With
+    fonts available, it falls back to the first one."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    from forgeassembler_core import fonts as fonts_mod
+    monkeypatch.setattr(fonts_mod, "resolve_font_path", lambda _stem: None)
+    monkeypatch.setattr(fonts_mod, "list_fonts", lambda: [])
+
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov-text", kind="text", file="",
+        text="won't render", font_family="NotInstalled",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "drawtext=" not in cmd.filter_complex
+
+
+def test_text_overlay_falls_back_to_first_font(
+    tmp_path: Path, monkeypatch,
+):
+    """When the stem doesn't resolve but other fonts are installed,
+    the engine uses the first available one so text still renders."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    font = _make_font_file(tmp_path)
+    from forgeassembler_core import fonts as fonts_mod
+    monkeypatch.setattr(fonts_mod, "resolve_font_path", lambda _stem: None)
+    monkeypatch.setattr(
+        fonts_mod, "list_fonts", lambda: [("Fallback", str(font))],
+    )
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov-text", kind="text", file="",
+        text="hi", font_family="Missing",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "drawtext=" in cmd.filter_complex
+    assert font.name in cmd.filter_complex
+
+
+def test_text_overlay_roundtrips_json(tmp_path: Path):
+    """A text SectionOverlay survives to_dict/from_dict cleanly."""
+    ov = SectionOverlay(
+        id="ov-text", kind="text", file="",
+        text="Round trip", text_color="#00ff00",
+        font_size=48, font_family="Arial",
+        start_s=1.0, duration_s=2.5, fade_in_s=0.3, fade_out_s=0.7,
+        position="tc", opacity=0.8,
+    )
+    d = ov.to_dict()
+    assert d["kind"] == "text"
+    assert "file" not in d or d.get("file") == ""
+    ov2 = SectionOverlay.from_dict(d)
+    assert ov2.text == "Round trip"
+    assert ov2.text_color == "#00ff00"
+    assert ov2.font_size == 48
+    assert ov2.font_family == "Arial"
+    assert ov2.position == "tc"

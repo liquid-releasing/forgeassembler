@@ -38,6 +38,7 @@ from .filters import (
     image_overlay_filter,
     loudnorm_filter,
     normalize_segment_filter,
+    text_overlay_filter,
 )
 from .joiners import instantiate as instantiate_joiner
 from .layout import Layout
@@ -551,6 +552,57 @@ def build_ffmpeg_command(
             ))
             final_v = out_label
             section_overlay_count += 1
+
+    # ── Stage D.6: section-level text overlays (drawtext).
+    # Rendered AFTER image overlays so text can sit on top of a logo
+    # or banner. Same absolute-time enable window as images.
+    text_overlay_count = 0
+    for sec, sec_start_ms, sec_end_ms in _section_time_windows(project, layout):
+        for ov in sec.overlays:
+            if ov.kind != "text":
+                continue
+            if not ov.text:
+                continue  # blank text → nothing to draw
+            abs_start_s = (sec_start_ms / 1000.0) + float(ov.start_s)
+            sec_end_s = sec_end_ms / 1000.0
+            if ov.duration_s and ov.duration_s > 0:
+                abs_end_s = min(abs_start_s + float(ov.duration_s), sec_end_s)
+            else:
+                abs_end_s = sec_end_s
+            if abs_end_s <= abs_start_s:
+                continue
+
+            # Resolve the font stem to a full path. When the stem
+            # doesn't match any installed font (font was set on a
+            # different machine, user hasn't picked one yet), fall
+            # back to the first available system font so the text
+            # still renders. If no fonts are installed at all, skip
+            # the overlay with no filter emitted.
+            from .fonts import list_fonts, resolve_font_path
+            fontfile = resolve_font_path(ov.font_family) if ov.font_family else None
+            if fontfile is None:
+                all_fonts = list_fonts()
+                if not all_fonts:
+                    continue  # no fonts on this machine
+                fontfile = all_fonts[0][1]
+
+            out_label = f"v_sectx{text_overlay_count}"
+            filter_parts.append(text_overlay_filter(
+                in_video_label=final_v,
+                out_label=out_label,
+                text=ov.text,
+                fontfile=fontfile,
+                font_size=ov.font_size,
+                font_color=ov.text_color,
+                position=ov.position,
+                start_s=abs_start_s,
+                end_s=abs_end_s,
+                opacity=ov.opacity,
+                fade_in_s=ov.fade_in_s,
+                fade_out_s=ov.fade_out_s,
+            ))
+            final_v = out_label
+            text_overlay_count += 1
 
     # ── Stage D.75: section-level audio overlays (mix into main).
     # For each audio overlay: register an audio input; resample/delay
