@@ -262,6 +262,19 @@ with st.sidebar:
                     data = _json.loads(uploaded.read().decode("utf-8"))
                     st.session_state["project"] = Project.from_dict(data)
                     st.session_state["_last_loaded_file_id"] = uploaded.file_id
+                    try:
+                        from forgeassembler_core.debug import log_event, hash_project
+                        log_event(
+                            "project_load_json",
+                            f"Loaded {uploaded.name}",
+                            filename=uploaded.name,
+                            file_id=uploaded.file_id,
+                            size_bytes=uploaded.size,
+                            section_count=len(st.session_state["project"].sections),
+                            project_hash=hash_project(st.session_state["project"]),
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                     st.toast("Project loaded.")
                     st.rerun()
                 except Exception as exc:  # noqa: BLE001
@@ -279,6 +292,16 @@ with st.sidebar:
                     st.error(f"Save failed: {exc}")
 
         if st.button("New project", use_container_width=True):
+            try:
+                from forgeassembler_core.debug import log_event
+                old_sections = len(st.session_state["project"].sections)
+                log_event(
+                    "new_project_clicked",
+                    "User clicked New project",
+                    sections_dropped=old_sections,
+                )
+            except Exception:  # noqa: BLE001
+                pass
             st.session_state["project"] = _initial_project()
             # Clear the uploader widget + load-tracker so a previously
             # dropped file doesn't re-apply itself on the next rerun.
@@ -432,6 +455,12 @@ with st.sidebar:
         st.caption("Encoding typically 1–2× realtime on modern hardware.")
     elif all_segs:
         st.caption("Add clips to estimate duration.")
+
+    # Debug-mode toggle + optional event panel. Lives above the
+    # Liquid Releasing footer so the panel (when expanded) doesn't
+    # push the branding off-screen.
+    from forgeassembler_core.debug import render_debug_sidebar
+    render_debug_sidebar()
 
     st.divider()
     _fl, _fc, _fr = st.columns([1, 3, 1])
@@ -1088,6 +1117,35 @@ with tab_build:
         from forgeassembler_core.layout import lay_out
         from forgeassembler_core.probe import probe_duration_ms
 
+        # Debug instrumentation: stamp the forge click with a project
+        # snapshot so post-mortem questions like "was section 3 in the
+        # project at forge time?" can be answered from the log.
+        try:
+            from forgeassembler_core.debug import log_event, hash_project
+            _oc = project.output_channels
+            log_event(
+                "forge_clicked",
+                f"Forge clicked — {len(project.sections)} section(s)",
+                project_hash=hash_project(project),
+                section_count=len(project.sections),
+                segment_count=sum(len(s.segments) for s in project.sections),
+                overlay_count=sum(len(s.overlays) for s in project.sections),
+                produce_video=project.output.produce_video,
+                produce_funscripts=project.output.produce_funscripts,
+                output_channels={
+                    "main": _oc.main, "multi_axis": _oc.multi_axis,
+                    "three_phase_estim": _oc.three_phase_estim,
+                    "prostate": _oc.prostate,
+                },
+                output_folder=project.output.folder,
+                output_basename=project.output.basename,
+                closing_joiner=project.output.closing_joiner.joiner_type,
+                resolution=project.output.resolution,
+                frame_rate=project.output.frame_rate,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
         progress_bar = st.progress(0.0, text="Preparing…")
         _TIME_RE = _re.compile(r"time=(\d+):(\d+):([\d.]+)")
         _SPEED_RE = _re.compile(r"speed=\s*([\d.]+)x")
@@ -1177,7 +1235,26 @@ with tab_build:
                         written = forge_funscripts(project, layout)
                     except Exception as fexc:  # noqa: BLE001
                         st.error(f"Funscript forge failed: {fexc}")
+                        try:
+                            from forgeassembler_core.debug import log_event
+                            log_event(
+                                "forge_funscripts_failed",
+                                f"Funscript forge raised: {fexc}",
+                                error_type=type(fexc).__name__,
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
                     else:
+                        try:
+                            from forgeassembler_core.debug import log_event
+                            log_event(
+                                "forge_funscripts_done",
+                                f"Wrote {len(written)} funscript file(s)",
+                                files=[p.name for p in written],
+                                count=len(written),
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
                         if written:
                             st.success(
                                 f"Wrote {len(written)} funscript file(s): "
