@@ -1080,26 +1080,133 @@ def test_multiple_section_overlays_stack_in_order(tmp_path: Path):
     assert "[v_secov0]" in fc
 
 
-def test_audio_overlay_kind_ignored_in_phase_b(tmp_path: Path):
-    """Phase B wires image overlays only. An audio overlay shouldn't
-    register a video input or an overlay filter; audio mixing ships in
-    a later phase."""
+def test_audio_overlay_registers_input_and_mixes(tmp_path: Path):
+    """A section-level audio overlay becomes an additional audio input,
+    prepped (resample + format + delay + gain) and amix'd into the
+    main audio at mix_pct share."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    mp3 = tmp_path / "bed.mp3"
+    mp3.write_bytes(b"")
+    p.sections[1].overlays.append(SectionOverlay(
+        id="ov1", kind="audio", file=str(mp3), mix_pct=50,
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert any(inp.path == str(mp3) for inp in cmd.inputs)
+    fc = cmd.filter_complex
+    # Resample + stereo format
+    assert "aresample=48000" in fc
+    assert "aformat=channel_layouts=stereo" in fc
+    # 50% mix = overlay volume 0.5, main duck volume 0.5 during the window
+    assert "volume=0.5" in fc
+    # amix with 2 inputs, explicit normalize off, main-length-wins
+    assert "amix=inputs=2:normalize=0:duration=first" in fc
+
+
+def test_audio_overlay_respects_section_start_offset(tmp_path: Path):
+    """Section 2 starts at 2s (section 1 was 2s). An overlay on sec 2
+    with start_s=0.5 should delay by 2500 ms in the filter graph."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    mp3 = tmp_path / "bed.mp3"
+    mp3.write_bytes(b"")
+    p.sections[1].overlays.append(SectionOverlay(
+        id="ov1", kind="audio", file=str(mp3),
+        start_s=0.5, mix_pct=100,
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    # Section 2 absolute start = 2s; + overlay start_s 0.5 = 2.5s ≈ 2500ms
+    assert "adelay=2500|2500" in cmd.filter_complex
+
+
+def test_audio_overlay_100_pct_mutes_main(tmp_path: Path):
+    """mix_pct=100 means 'overlay only'; the main audio gets volume=0
+    within the overlay window."""
     p, _v1, _v2 = _section_project(tmp_path)
     mp3 = tmp_path / "bed.mp3"
     mp3.write_bytes(b"")
     p.sections[0].overlays.append(SectionOverlay(
-        id="ov1", kind="audio", file=str(mp3), mix_pct=50,
+        id="ov1", kind="audio", file=str(mp3), mix_pct=100,
     ))
     layout = lay_out(p, probe=lambda _p: 1000)
     cmd = build_ffmpeg_command(p, layout)
-    assert not any(inp.path == str(mp3) for inp in cmd.inputs)
-    assert "v_secov" not in cmd.filter_complex
+    fc = cmd.filter_complex
+    # Main duck volume = 1 - 1.0 = 0
+    assert "volume=0:enable=" in fc
+
+
+def test_audio_overlay_0_pct_does_not_duck_main(tmp_path: Path):
+    """mix_pct=0 leaves the main at full; overlay is effectively
+    silent. The ducking filter is skipped to keep the graph minimal."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    mp3 = tmp_path / "bed.mp3"
+    mp3.write_bytes(b"")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="audio", file=str(mp3), mix_pct=0,
+    ))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "a_main_dim" not in cmd.filter_complex
+
+
+def test_audio_overlay_fades_are_on_overlay_timeline(tmp_path: Path):
+    """Fade-in st should equal the absolute start time; fade-out should
+    start fade_out_s seconds before the absolute end."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    mp3 = tmp_path / "bed.mp3"
+    mp3.write_bytes(b"")
+    # Section 1 covers 0-2s; overlay starts at 0s, ends at 2s (full section).
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="audio", file=str(mp3),
+        fade_in_s=0.5, fade_out_s=0.5, mix_pct=50,
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    # fade in starts at absolute 0s for 0.5s
+    assert "afade=t=in:st=0:d=0.5" in fc
+    # fade out starts at absolute 1.5s (abs_end - fade_out)
+    assert "afade=t=out:st=1.5:d=0.5" in fc
+
+
+def test_audio_overlay_ignored_for_image_kind(tmp_path: Path):
+    """An image-only overlay shouldn't touch the audio filter chain."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo),
+    ))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "a_secov" not in cmd.filter_complex
+    assert "a_mixed" not in cmd.filter_complex
+
+
+def test_audio_overlay_multiple_chain(tmp_path: Path):
+    """Two audio overlays on one section produce a chain of amix
+    outputs (a_mixed0 → a_mixed1 → ...), each layer stacking."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    a = tmp_path / "a.mp3"; a.write_bytes(b"")
+    b = tmp_path / "b.mp3"; b.write_bytes(b"")
+    p.sections[0].overlays.extend([
+        SectionOverlay(id="ov1", kind="audio", file=str(a), mix_pct=30),
+        SectionOverlay(id="ov2", kind="audio", file=str(b), mix_pct=40),
+    ])
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    assert "a_secov0" in fc
+    assert "a_secov1" in fc
+    assert "a_mixed0" in fc
+    assert "a_mixed1" in fc
 
 
 def test_section_overlay_scale_emits_scale_filter(tmp_path: Path):
-    """scale_pct != 100 should inject a `scale=iw*ratio:ih*ratio` node
-    before the overlay composite — lets the user shrink/grow the
-    logo at the same place they pick its position."""
+    """scale_pct != 100 should inject `format=rgba,scale=iw*r:ih*r`
+    before the overlay composite. Forcing format=rgba PRE-scale stops
+    ffmpeg from picking a YUV intermediate that turns transparent
+    PNG backgrounds opaque."""
     p, _v1, _v2 = _section_project(tmp_path)
     logo = tmp_path / "logo.png"
     logo.write_bytes(b"")
@@ -1112,6 +1219,8 @@ def test_section_overlay_scale_emits_scale_filter(tmp_path: Path):
     fc = cmd.filter_complex
     # Ratio 0.5 renders as "scale=iw*0.5:ih*0.5" in the graph
     assert "scale=iw*0.5:ih*0.5" in fc
+    # format=rgba must come before the scale (alpha preservation)
+    assert "format=rgba,scale=iw*0.5:ih*0.5" in fc
     # Scaled label feeds into the overlay, not the raw input
     assert "v_secov0_scaled" in fc
 

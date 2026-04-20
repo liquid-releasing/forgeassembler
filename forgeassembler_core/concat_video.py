@@ -505,16 +505,19 @@ def build_ffmpeg_command(
             # Pre-scale the image at scale_pct before feeding it into
             # the overlay helper. 100 = native; anything else gets a
             # separate filter node so the overlay can reference the
-            # scaled label.
+            # scaled label. `format=rgba` *before* scale forces the
+            # scaler to interpolate with an alpha channel; without it,
+            # ffmpeg can pick a YUV intermediate and the PNG's
+            # transparent background becomes opaque after scaling.
             image_label = f"{ov_input_idx}:v"
             if int(ov.scale_pct) != 100:
                 scaled_label = f"v_secov{section_overlay_count}_scaled"
-                # scale=iw*p:ih*p scales both dims by the ratio; setsar=1
-                # keeps square pixels after rescaling.
                 ratio = ov.scale_pct / 100.0
                 filter_parts.append(
                     f"[{image_label}]"
-                    f"scale=iw*{ratio:g}:ih*{ratio:g},setsar=1"
+                    f"format=rgba,"
+                    f"scale=iw*{ratio:g}:ih*{ratio:g},"
+                    f"setsar=1"
                     f"[{scaled_label}]",
                 )
                 image_label = scaled_label
@@ -533,6 +536,88 @@ def build_ffmpeg_command(
             ))
             final_v = out_label
             section_overlay_count += 1
+
+    # ── Stage D.75: section-level audio overlays (mix into main).
+    # For each audio overlay: register an audio input; resample/delay
+    # it to the section-relative start; apply fades; scale to mix_pct;
+    # duck the main audio during the overlay window by the complementary
+    # share (so a 50% mix drops the main to 50% while the overlay
+    # plays); then amix the two streams with duration=first so the
+    # main audio's length governs the output.
+    audio_overlay_count = 0
+    for sec, sec_start_ms, sec_end_ms in _section_time_windows(project, layout):
+        for ov in sec.overlays:
+            if ov.kind != "audio":
+                continue
+            abs_start_s = (sec_start_ms / 1000.0) + float(ov.start_s)
+            sec_end_s = sec_end_ms / 1000.0
+            if ov.duration_s and ov.duration_s > 0:
+                abs_end_s = min(abs_start_s + float(ov.duration_s), sec_end_s)
+            else:
+                abs_end_s = sec_end_s
+            effective_dur = max(0.0, abs_end_s - abs_start_s)
+            if effective_dur <= 0:
+                continue
+
+            aov_idx = len(inputs)
+            # `-t` truncates on read; input file shorter than the
+            # window naturally ends on its own.
+            inputs.append(FfmpegInput(
+                path=ov.file,
+                pre_args=["-t", f"{effective_dur:g}"],
+            ))
+
+            mix_share = max(0.0, min(1.0, ov.mix_pct / 100.0))
+            clip_share = 1.0 - mix_share
+
+            # Build the overlay's prep chain.
+            ov_label = f"a_secov{audio_overlay_count}"
+            chain: list[str] = [
+                "aresample=48000",
+                "aformat=channel_layouts=stereo",
+            ]
+            delay_ms = int(round(abs_start_s * 1000))
+            if delay_ms > 0:
+                chain.append(f"adelay={delay_ms}|{delay_ms}")
+            if ov.fade_in_s > 0:
+                chain.append(
+                    f"afade=t=in:st={abs_start_s:g}:d={ov.fade_in_s:g}",
+                )
+            if ov.fade_out_s > 0:
+                fo_start = max(abs_start_s, abs_end_s - float(ov.fade_out_s))
+                chain.append(
+                    f"afade=t=out:st={fo_start:g}:d={ov.fade_out_s:g}",
+                )
+            # Apply the overlay's gain last so fades operate at full range.
+            if mix_share < 1.0:
+                chain.append(f"volume={mix_share:g}")
+            filter_parts.append(
+                f"[{aov_idx}:a]{','.join(chain)}[{ov_label}]",
+            )
+
+            # Duck the main audio during the overlay window (only when
+            # the clip share is less than 1.0 — at 100% overlay mix the
+            # main is muted in-window).
+            if clip_share < 1.0:
+                dim_label = f"a_main_dim{audio_overlay_count}"
+                filter_parts.append(
+                    f"[{final_a}]volume={clip_share:g}:"
+                    f"enable='between(t,{abs_start_s:g},{abs_end_s:g})'"
+                    f"[{dim_label}]",
+                )
+                final_a = dim_label
+
+            mixed_label = f"a_mixed{audio_overlay_count}"
+            # normalize=0 keeps the per-leg gains we just applied;
+            # duration=first caps the mix to the main's length so the
+            # video controls overall timing (user's rule).
+            filter_parts.append(
+                f"[{final_a}][{ov_label}]"
+                f"amix=inputs=2:normalize=0:duration=first"
+                f"[{mixed_label}]",
+            )
+            final_a = mixed_label
+            audio_overlay_count += 1
 
     # ── Stage E: project-level bug overlay.
     if out.bug is not None:
