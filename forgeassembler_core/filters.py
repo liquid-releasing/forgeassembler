@@ -186,6 +186,8 @@ _POSITION_EXPRS: dict[str, tuple[str, str]] = {
     "tr": ("W-w", "0"),
     "bl": ("0", "H-h"),
     "br": ("W-w", "H-h"),
+    "tc": ("(W-w)/2", "0"),
+    "bc": ("(W-w)/2", "H-h"),
 }
 
 

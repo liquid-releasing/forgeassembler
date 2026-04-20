@@ -35,7 +35,9 @@ FrameRate = Literal["source", "24", "30", "60"]
 OverlayPosition = Literal["center", "tl", "tr", "bl", "br"]
 SectionOverlayKind = Literal["image", "audio"]
 
-OVERLAY_POSITIONS: tuple[str, ...] = ("center", "tl", "tr", "bl", "br")
+OVERLAY_POSITIONS: tuple[str, ...] = (
+    "center", "tc", "bc", "tl", "tr", "bl", "br",
+)
 
 # Keys for the Frame rate dropdown. "source" probes the first video
 # segment at forge time (via ffmpeg stderr) and mirrors its fps; this

@@ -506,6 +506,14 @@ def _add_from_path(path_str: str, mode: str) -> tuple[int, str]:
         project.add_section(Section(
             id=new_id("sec"), segments=new_segments,
         ))
+    elif mode == "new_section_per_file":
+        # One NEW section per segment. A folder with N clips yields N
+        # sections; a single file collapses to the same behavior as
+        # "new_section".
+        for seg in new_segments:
+            project.add_section(Section(
+                id=new_id("sec"), segments=[seg],
+            ))
     else:
         project.sections[-1].segments.extend(new_segments)
 
@@ -872,12 +880,21 @@ with tab_build:
 
     target_cols = st.columns([3, 2])
     with target_cols[0]:
-        mode_options = ["new_section", "current_section", "overlay"]
+        mode_options = [
+            "new_section", "new_section_per_file",
+            "current_section", "overlay",
+        ]
         mode_labels = {
-            "new_section": "As a NEW section (new chapter)",
+            "new_section": "As ONE NEW section (all clips together)",
+            "new_section_per_file": "As SEPARATE NEW sections (one per file)",
             "current_section": "Into the LAST section (cut-join)",
             "overlay": "As an OVERLAY on the LAST section",
         }
+        # When the project has no sections, only "new_section" is a
+        # valid target — snap the mode back so the radio isn't stuck
+        # on a disabled option after "New project".
+        if not project.sections:
+            st.session_state["add_target_mode"] = "new_section"
         current_mode = st.session_state["add_target_mode"]
         try:
             m_idx = mode_options.index(current_mode)
@@ -943,6 +960,8 @@ with tab_build:
                 index=0,
                 format_func=lambda k: {
                     "center": "Center",
+                    "tc": "Top center",
+                    "bc": "Bottom center",
                     "tl": "Upper-left",
                     "tr": "Upper-right",
                     "bl": "Lower-left",
