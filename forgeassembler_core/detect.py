@@ -67,6 +67,17 @@ def _split_ff_suffix(filename: str) -> tuple[str, str | None]:
     return stem, None
 
 
+# Channel-funscript sub-folders written by FunscriptForge. When the
+# video sits next to `estim/`, `multi_axis/`, etc., the non-main
+# channel funscripts live inside those folders — not alongside the
+# main. Detection scans the immediate folder AND each of these
+# well-known sub-folders so users can point ForgeAssembler at a
+# FunscriptForge output directory and get all channels picked up.
+_CHANNEL_SUBFOLDERS: tuple[str, ...] = (
+    "estim", "multi_axis", "prostate", "audio_estim",
+)
+
+
 def funscripts_for_stem(folder: Path, stem: str) -> dict[str, Path]:
     """Return a map of channel -> path for funscripts sharing `stem`.
 
@@ -77,16 +88,33 @@ def funscripts_for_stem(folder: Path, stem: str) -> dict[str, Path]:
       "alpha-prostate" / "beta-prostate" -> prostate variants
       "pulse_frequency" -> pulse-frequency funscript
       anything else is carried through under its own name.
+
+    Scans the video's immediate folder AND well-known channel
+    sub-folders (`estim/`, `multi_axis/`, `prostate/`, `audio_estim/`)
+    so a FunscriptForge output layout — main funscript next to the
+    .mp4, channel funscripts nested one level down — picks up every
+    channel cleanly.
     """
     out: dict[str, Path] = {}
-    for f in folder.iterdir():
-        if not f.is_file() or not f.name.endswith(".funscript"):
+    search_dirs: list[Path] = [folder]
+    for sub in _CHANNEL_SUBFOLDERS:
+        d = folder / sub
+        if d.is_dir():
+            search_dirs.append(d)
+    for d in search_dirs:
+        try:
+            for f in d.iterdir():
+                if not f.is_file() or not f.name.endswith(".funscript"):
+                    continue
+                base, channel = _split_ff_suffix(f.name)
+                if base != stem:
+                    continue
+                key = channel if channel else "main"
+                # First hit wins — the main folder takes precedence
+                # over any duplicate in a sub-folder.
+                out.setdefault(key, f)
+        except OSError:
             continue
-        base, channel = _split_ff_suffix(f.name)
-        if base != stem:
-            continue
-        key = channel if channel else "main"
-        out[key] = f
     return out
 
 

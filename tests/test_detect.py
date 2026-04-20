@@ -87,6 +87,39 @@ def test_funscripts_for_stem_filters_correctly(tmp_path: Path):
     assert set(bob.keys()) == {"main", "alpha"}
 
 
+def test_funscripts_for_stem_scans_channel_subfolders(tmp_path: Path):
+    """FunscriptForge writes main funscript next to the .mp4 but
+    nests estim/multi-axis/prostate channel funscripts into
+    sub-folders. Detection should reach into those sub-folders so
+    every channel is picked up."""
+    _stub_funscript(tmp_path / "0.funscript")  # main, at root
+    (tmp_path / "estim").mkdir()
+    _stub_funscript(tmp_path / "estim" / "0.alpha.funscript")
+    _stub_funscript(tmp_path / "estim" / "0.beta.funscript")
+    (tmp_path / "multi_axis").mkdir()
+    _stub_funscript(tmp_path / "multi_axis" / "0.pitch.funscript")
+    _stub_funscript(tmp_path / "multi_axis" / "0.roll.funscript")
+    (tmp_path / "prostate").mkdir()
+    _stub_funscript(tmp_path / "prostate" / "0.alpha-prostate.funscript")
+
+    found = funscripts_for_stem(tmp_path, "0")
+    assert set(found.keys()) == {
+        "main", "alpha", "beta", "pitch", "roll", "alpha-prostate",
+    }
+
+
+def test_funscripts_for_stem_root_wins_over_subfolder_dupe(tmp_path: Path):
+    """If the same channel shows up in both the root and a sub-folder
+    (shouldn't normally happen, but defensive), the root takes
+    precedence."""
+    root_main = tmp_path / "0.funscript"
+    _stub_funscript(root_main)
+    (tmp_path / "estim").mkdir()
+    _stub_funscript(tmp_path / "estim" / "0.funscript")
+    found = funscripts_for_stem(tmp_path, "0")
+    assert found["main"] == root_main
+
+
 def test_categorize_channels():
     # Fabricate paths for category testing; they don't have to exist.
     fake = {
