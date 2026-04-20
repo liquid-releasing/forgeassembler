@@ -255,14 +255,17 @@ with st.sidebar:
             "Load a project JSON", type=["json"], key="project_upload",
         )
         if uploaded is not None:
-            try:
-                import json as _json
-                data = _json.loads(uploaded.read().decode("utf-8"))
-                st.session_state["project"] = Project.from_dict(data)
-                st.toast("Project loaded.")
-                st.rerun()
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"Could not load project: {exc}")
+            last_id = st.session_state.get("_last_loaded_file_id")
+            if uploaded.file_id != last_id:
+                try:
+                    import json as _json
+                    data = _json.loads(uploaded.read().decode("utf-8"))
+                    st.session_state["project"] = Project.from_dict(data)
+                    st.session_state["_last_loaded_file_id"] = uploaded.file_id
+                    st.toast("Project loaded.")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Could not load project: {exc}")
 
         if project.sections and project.output.folder:
             save_path = Path(project.output.folder) / (
@@ -277,6 +280,10 @@ with st.sidebar:
 
         if st.button("New project", use_container_width=True):
             st.session_state["project"] = _initial_project()
+            # Clear the uploader widget + load-tracker so a previously
+            # dropped file doesn't re-apply itself on the next rerun.
+            st.session_state.pop("project_upload", None)
+            st.session_state.pop("_last_loaded_file_id", None)
             st.rerun()
 
     with st.expander("Produce", expanded=True):
@@ -702,7 +709,7 @@ with tab_build:
             # ── Section overlays list ───────────────────────────
             if sec.overlays:
                 st.markdown("**Overlays** (section-timed, top-to-bottom):")
-                for ov in sec.overlays:
+                for ov_idx, ov in enumerate(sec.overlays):
                     ocols = st.columns([1, 5, 3, 2, 1])
                     with ocols[0]:
                         st.caption(
@@ -729,7 +736,12 @@ with tab_build:
                             st.caption(f"mix: {ov.mix_pct}%")
                     with ocols[4]:
                         if st.button(
-                            "✕", key=f"rmov_{ov.id}",
+                            "✕",
+                            # Scope by section index + overlay position so
+                            # duplicate ov.id values (e.g. same ID reused
+                            # across sections in hand-edited JSON) don't
+                            # crash the widget tree.
+                            key=f"rmov_s{sec_idx}_i{ov_idx}_{ov.id}",
                             help="Remove this overlay",
                         ):
                             sec.overlays = [

@@ -1011,6 +1011,41 @@ def test_section_image_overlay_adds_input(tmp_path: Path):
     assert matches, "overlay PNG should be registered as a looped input"
 
 
+def test_section_image_overlay_input_lives_until_enable_window_ends(
+    tmp_path: Path,
+):
+    """Regression: the image input's `-t` must cover [0, abs_end_s],
+    not just [0, effective_dur]. Otherwise, for any section that isn't
+    the first, the looped image stream ends long before the overlay's
+    enable window opens and the image never appears.
+
+    Section 1 = 0..2s, Section 2 = 2..4s. Overlay on sec 2 with
+    start_s=0.5, duration_s=1.0 → abs_end_s = 3.5. The input's `-t`
+    must be 3.5, not 1.0.
+    """
+    p, _v1, _v2 = _section_project(tmp_path)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"")
+    p.sections[1].overlays.append(SectionOverlay(
+        id="ov1", kind="image", file=str(logo),
+        start_s=0.5, duration_s=1.0, position="center",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    matches = [
+        inp for inp in cmd.inputs
+        if inp.path == str(logo) and "-loop" in inp.pre_args
+    ]
+    assert matches, "overlay PNG should be registered as a looped input"
+    # pre_args is ["-loop", "1", "-t", "<value>"]
+    t_idx = matches[0].pre_args.index("-t")
+    t_value = float(matches[0].pre_args[t_idx + 1])
+    assert t_value == 3.5, (
+        f"expected -t 3.5 (abs_end_s) so the image stream is alive when "
+        f"enable opens at abs_start_s=2.5; got {t_value}"
+    )
+
+
 def test_section_image_overlay_uses_section_absolute_times(tmp_path: Path):
     """Overlay start_s is relative to the SECTION; in the final graph
     it translates to an absolute timeline time (section_start +

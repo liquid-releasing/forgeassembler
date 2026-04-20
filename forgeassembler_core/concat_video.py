@@ -498,9 +498,15 @@ def build_ffmpeg_command(
                 continue
 
             ov_input_idx = len(inputs)
+            # -t runs from the start of the input (t=0 of the concat'd
+            # timeline) through abs_end_s so the looped image is still
+            # alive when the enable window opens at abs_start_s. Using
+            # `effective_dur` here was the old bug: the image stream
+            # ended at t=effective_dur, which for any later section is
+            # long before enable activates.
             inputs.append(FfmpegInput(
                 path=ov.file,
-                pre_args=["-loop", "1", "-t", f"{effective_dur:g}"],
+                pre_args=["-loop", "1", "-t", f"{abs_end_s:g}"],
             ))
             # Pre-scale the image at scale_pct before feeding it into
             # the overlay helper. 100 = native; anything else gets a
