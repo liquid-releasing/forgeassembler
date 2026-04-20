@@ -28,7 +28,9 @@ def test_none_joiner_has_zero_duration():
 
 def test_fade_to_black_duration_default():
     j = instantiate("fade_to_black")
-    assert j.duration_ms() == 1000  # default 1.0s
+    # Default hold is 5s (new decoupled fade/hold model — fade_s=1.0,
+    # duration_s=5.0). duration_ms is the HOLD length (added to output).
+    assert j.duration_ms() == 5000
 
 
 def test_fade_to_black_duration_respects_param():
@@ -44,8 +46,24 @@ def test_fade_to_black_validate_catches_zero():
 
 def test_fade_to_black_ignores_bad_type():
     j = FadeToBlack({"duration_s": "not a number"})
-    # should fall back to default
-    assert j.duration_ms() == 1000
+    # Falls back to class default — now 5.0s.
+    assert j.duration_ms() == 5000
+
+
+def test_fade_to_black_fade_s_default():
+    """Per-side fade defaults to 1.0s when not specified."""
+    j = FadeToBlack({})
+    assert j.fade_s() == 1.0
+
+
+def test_fade_to_black_fade_s_respects_param():
+    j = FadeToBlack({"fade_s": 2.5})
+    assert j.fade_s() == 2.5
+
+
+def test_fade_to_black_fade_s_ignores_bad_type():
+    j = FadeToBlack({"fade_s": "not a number"})
+    assert j.fade_s() == 1.0
 
 
 def test_all_specs_includes_param_schemas():

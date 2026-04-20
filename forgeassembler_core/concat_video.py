@@ -48,10 +48,11 @@ from .project import (
     Segment,
 )
 
-# Cap on the fade-in/out duration applied to segment tails/heads when
-# adjacent to a fade_to_black joiner. Longer fades get clipped to keep
-# them visually subtle; the solid-black bridge still honours duration_s.
-_MAX_FADE_S: float = 0.5
+# Legacy default for the per-side fade when a loaded project pre-dates
+# the explicit `fade_s` param. Kept so old JSON files render with a
+# subtle fade; new projects set `fade_s` explicitly (default 1.0) via
+# the FadeToBlack joiner's params_schema.
+_LEGACY_FADE_S: float = 0.5
 
 
 # ── Declarative command description ───────────────────────────────────
@@ -120,11 +121,19 @@ def _resolve_frame_rate(
 
 
 def _fade_duration_s(joiner: ProjectJoiner) -> float:
-    """Return the per-side fade duration (seconds) for a fade_to_black joiner."""
+    """Return the per-side fade duration (seconds) for a fade_to_black joiner.
+
+    Reads `fade_s` from the joiner's params (new in the decoupled
+    fade/hold model). Legacy projects that predate the split — they
+    only have `duration_s` — get the old 0.5s default so their output
+    renders with the subtle fade they used to have.
+    """
     if joiner.joiner_type != "fade_to_black":
         return 0.0
-    d_ms = instantiate_joiner(joiner.joiner_type, joiner.params).duration_ms()
-    return min((d_ms / 1000.0) / 2.0, _MAX_FADE_S)
+    inst = instantiate_joiner(joiner.joiner_type, joiner.params)
+    if hasattr(inst, "fade_s") and "fade_s" in joiner.params:
+        return float(inst.fade_s())  # type: ignore[no-any-return]
+    return _LEGACY_FADE_S
 
 
 def _neighbor_joiners(
@@ -654,7 +663,16 @@ def build_ffmpeg_command(
     # the output so the picture and sound close together. The bug, if
     # present, also fades out because this runs after the bug overlay.
     if out.closing_joiner.joiner_type == "fade_to_black":
-        close_d_s = float(out.closing_joiner.params.get("duration_s", 1.0))
+        # Prefer `fade_s` (new decoupled model); fall back to
+        # `duration_s` for legacy projects that predate the split.
+        # Hold (`duration_s` in the new model) is irrelevant for
+        # closing — there's no section after to fade INTO, so we just
+        # fade out the tail of existing content.
+        close_params = out.closing_joiner.params
+        if "fade_s" in close_params:
+            close_d_s = float(close_params.get("fade_s", 1.0))
+        else:
+            close_d_s = float(close_params.get("duration_s", 1.0))
         total_s = layout.total_duration_ms / 1000.0
         fade_start_s = max(0.0, total_s - close_d_s)
         filter_parts.append(

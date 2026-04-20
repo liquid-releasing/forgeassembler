@@ -5,8 +5,17 @@ frame, fade in the next. Default colour is black, but any hex colour
 works (dark grey, deep blue, etc.) — the joiner type name is kept for
 backward compat but the behaviour is `fade_to_color`.
 
-`duration_s` is the total solid-colour bridge time. The adjacent
-segments get small fades (capped at 0.5s per side) at the boundary.
+Params
+------
+- `duration_s` — length of the solid-colour HOLD between fades. Added
+  to the output timeline. Default 5.0.
+- `fade_s` — per-side fade length. The previous segment's tail fades
+  TO the colour over `fade_s` seconds, and the next segment's head
+  fades FROM the colour over `fade_s` seconds. Fades happen within
+  the existing segments; they do NOT add to the output timeline.
+  Default 1.0. No upper cap — a 10-second fade is allowed if the
+  adjacent segment is long enough.
+- `color` — hex colour of the bridge. Default '#000000'.
 """
 
 from __future__ import annotations
@@ -24,10 +33,12 @@ class FadeToBlack(Joiner):
     description = (
         "Previous segment fades into a solid colour bridge (default "
         "black), which holds for `duration_s` seconds, then the next "
-        "segment fades in. Audio is silent during the bridge."
+        "segment fades in over `fade_s` seconds per side. Audio is "
+        "silent during the hold."
     )
 
-    DEFAULT_DURATION_S: float = 1.0
+    DEFAULT_DURATION_S: float = 5.0
+    DEFAULT_FADE_S: float = 1.0
 
     def duration_ms(self) -> int:
         return int(round(self._duration_s() * 1000))
@@ -39,6 +50,15 @@ class FadeToBlack(Joiner):
         except (TypeError, ValueError):
             d = self.DEFAULT_DURATION_S
         return max(0.0, d)
+
+    def fade_s(self) -> float:
+        """Per-side fade duration (seconds). Never negative."""
+        raw = self.params.get("fade_s", self.DEFAULT_FADE_S)
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            v = self.DEFAULT_FADE_S
+        return max(0.0, v)
 
     def color(self) -> str:
         """Return the bridge colour as a hex string (e.g. '#1a1a1a').
@@ -68,10 +88,21 @@ class FadeToBlack(Joiner):
             "duration_s": {
                 "type": "float",
                 "default": cls.DEFAULT_DURATION_S,
-                "min": 0.1,
+                "min": 0.0,
+                "max": 30.0,
+                "label": "Hold (seconds)",
+                "help": "Length of the solid-colour bridge between fades.",
+            },
+            "fade_s": {
+                "type": "float",
+                "default": cls.DEFAULT_FADE_S,
+                "min": 0.0,
                 "max": 10.0,
-                "label": "Duration (seconds)",
-                "help": "Length of the solid-colour bridge.",
+                "label": "Fade (seconds, per side)",
+                "help": "Length of the fade-out on the previous segment "
+                        "and the fade-in on the next. Applied within "
+                        "the existing segments — does not add to the "
+                        "output duration.",
             },
             "color": {
                 "type": "color",

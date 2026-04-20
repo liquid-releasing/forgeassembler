@@ -603,18 +603,42 @@ with tab_build:
                     sec.leading_joiner.joiner_type = new_jtype
                     if new_jtype == "none":
                         sec.leading_joiner.params.pop("duration_s", None)
-                    elif "duration_s" not in sec.leading_joiner.params:
-                        sec.leading_joiner.params["duration_s"] = 1.0
+                        sec.leading_joiner.params.pop("fade_s", None)
+                    elif new_jtype == "fade_to_black":
+                        sec.leading_joiner.params.setdefault("duration_s", 5.0)
+                        sec.leading_joiner.params.setdefault("fade_s", 1.0)
 
             with hcols[1]:
                 if sec.leading_joiner.joiner_type == "fade_to_black":
-                    sec.leading_joiner.params["duration_s"] = float(st.number_input(
-                        "Duration (s)", min_value=0.1, max_value=30.0,
-                        value=float(sec.leading_joiner.params.get("duration_s", 1.0)),
-                        step=0.5, key=f"jdur_{sec.id}",
-                        help="Total transition time. Fades take up to 0.5s on "
-                             "each side; longer durations extend the middle hold.",
-                    ))
+                    _hc, _fc = st.columns([1, 1])
+                    with _hc:
+                        sec.leading_joiner.params["duration_s"] = float(
+                            st.number_input(
+                                "Hold (s)",
+                                min_value=0.1, max_value=30.0,
+                                value=float(sec.leading_joiner.params.get(
+                                    "duration_s", 5.0,
+                                )),
+                                step=0.5, key=f"jhold_{sec.id}",
+                                help="Solid-black hold between the fade-out "
+                                     "on the previous section and the fade-in "
+                                     "on this one. Adds to total duration.",
+                            )
+                        )
+                    with _fc:
+                        sec.leading_joiner.params["fade_s"] = float(
+                            st.number_input(
+                                "Fade (s)",
+                                min_value=0.0, max_value=10.0,
+                                value=float(sec.leading_joiner.params.get(
+                                    "fade_s", 1.0,
+                                )),
+                                step=0.5, key=f"jfade_{sec.id}",
+                                help="Per-side fade duration. Fades happen "
+                                     "within the adjacent clips — don't add "
+                                     "to total duration.",
+                            )
+                        )
                 else:
                     st.caption(
                         "Hard cut — clips inside this section cut straight together.",
@@ -836,21 +860,54 @@ with tab_build:
                     trailing.joiner_type = new_ttype
                     if new_ttype == "none":
                         trailing.params.pop("duration_s", None)
-                    elif "duration_s" not in trailing.params:
-                        trailing.params["duration_s"] = 1.0
+                        trailing.params.pop("fade_s", None)
+                    elif new_ttype == "fade_to_black":
+                        trailing.params.setdefault("duration_s", 5.0)
+                        trailing.params.setdefault("fade_s", 1.0)
 
             with tcols[1]:
                 if trailing.joiner_type == "fade_to_black":
-                    trailing.params["duration_s"] = float(
-                        st.number_input(
-                            "Duration (s)",
-                            min_value=0.1, max_value=30.0,
-                            value=float(trailing.params.get("duration_s", 1.0)),
-                            step=0.5,
-                            key=f"jdur_{key_suffix}",
-                            help=dur_help,
+                    if is_last:
+                        # Closing fade has nothing to fade INTO — just
+                        # fade the tail of existing content out. Show
+                        # Fade only; ignore Hold here.
+                        trailing.params["fade_s"] = float(
+                            st.number_input(
+                                "Fade (s)",
+                                min_value=0.1, max_value=10.0,
+                                value=float(trailing.params.get("fade_s", 1.0)),
+                                step=0.5,
+                                key=f"jfade_{key_suffix}",
+                                help=(
+                                    "Length of the closing fade-out on "
+                                    "the final video + audio."
+                                ),
+                            )
                         )
-                    )
+                    else:
+                        _hc, _fc = st.columns([1, 1])
+                        with _hc:
+                            trailing.params["duration_s"] = float(
+                                st.number_input(
+                                    "Hold (s)",
+                                    min_value=0.1, max_value=30.0,
+                                    value=float(trailing.params.get("duration_s", 5.0)),
+                                    step=0.5,
+                                    key=f"jhold_{key_suffix}",
+                                    help=dur_help,
+                                )
+                            )
+                        with _fc:
+                            trailing.params["fade_s"] = float(
+                                st.number_input(
+                                    "Fade (s)",
+                                    min_value=0.0, max_value=10.0,
+                                    value=float(trailing.params.get("fade_s", 1.0)),
+                                    step=0.5,
+                                    key=f"jfade_{key_suffix}",
+                                    help="Per-side fade duration.",
+                                )
+                            )
                 else:
                     st.caption(
                         "End hard — no closing fade." if is_last
