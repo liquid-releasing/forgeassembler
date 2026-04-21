@@ -369,6 +369,11 @@ with st.sidebar:
         out.normalize_audio = st.checkbox(
             "Normalize audio loudness (−16 LUFS)",
             value=out.normalize_audio, disabled=not out.produce_video,
+            help=(
+                "Recommended ON when sections use audio overlays — balances "
+                "levels across sections. Does not rebalance within a section's "
+                "mix (use each overlay's Mix % for that)."
+            ),
         )
         bug_on = st.checkbox(
             "Corner bug overlay", value=out.bug is not None,
