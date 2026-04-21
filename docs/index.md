@@ -21,11 +21,13 @@ markers — into one long output.
 - Concatenates videos into a single MP4 at your chosen resolution.
 - Concatenates every funscript channel in lockstep: main, multi-axis,
   3-phase estim, prostate, and more.
-- Drops in joiners between segments: straight cuts, fade-to-black,
-  with more transitions to come.
-- Writes chapter markers at every segment boundary.
+- Drops in joiners between sections: straight cuts, fade-to-black
+  with configurable hold and fade times, closing fade at the end.
+- Writes chapter markers, one per section, into the MP4.
 - Normalizes audio loudness to the YouTube standard (−16 LUFS).
-- Optionally overlays a corner "bug" PNG across every segment.
+- Per-section overlays: image (PNG/JPG with alpha), audio (music
+  beds / ambience), or text (system-font title cards).
+- Renders a heatmap of the main funscript track alongside the output.
 - Saves the whole project as a reusable JSON file — hand-edit it,
   script it, version it.
 
@@ -35,10 +37,16 @@ A full feature list lives on the [Features](FEATURES.md) page.
 
 ## Getting started
 
-A first-run walkthrough will land here once v0.0.1-alpha ships.
-In the meantime, the **Title Cards** guides in the sidebar walk
-through building the PNG stills you'll assemble into your first
-project.
+New to ForgeAssembler? Start with **[Getting Started](guide/getting-started.md)** —
+install, first forge, and pointers into the rest of the guide. End-to-end
+in about ten minutes.
+
+Ready to go deeper? The **User Guide** covers
+[sections & segments](guide/sections-and-segments.md),
+[overlays](guide/overlays.md),
+[joiners](guide/joiners.md),
+[output channels](guide/channels.md), and
+[debug mode](guide/debug-mode.md).
 
 ---
 
