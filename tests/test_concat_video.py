@@ -754,7 +754,7 @@ def test_segment_overlay_registers_input_and_composites(tmp_path: Path):
     assert cmd.inputs[1].pre_args == ["-loop", "1", "-t", "2"]
     # Overlay composite appears in the graph
     assert "v_ov_0_0" in cmd.filter_complex
-    assert "overlay=x=0:y=H-h" in cmd.filter_complex
+    assert "overlay=x=W*0.05:y=H-h-H*0.05" in cmd.filter_complex
 
 
 def test_segment_overlay_fade_in(tmp_path: Path):
@@ -1092,8 +1092,8 @@ def test_section_image_overlay_position_shortcuts(tmp_path: Path):
     ))
     layout = lay_out(p, probe=lambda _p: 1000)
     cmd = build_ffmpeg_command(p, layout)
-    # Bottom-right places overlay at (W-w, H-h)
-    assert "overlay=x=W-w:y=H-h" in cmd.filter_complex
+    # Bottom-right places overlay near (W-w, H-h) with 5% breathing room
+    assert "overlay=x=W-w-W*0.05:y=H-h-H*0.05" in cmd.filter_complex
 
 
 def test_multiple_section_overlays_stack_in_order(tmp_path: Path):

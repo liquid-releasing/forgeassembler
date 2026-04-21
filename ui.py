@@ -24,7 +24,6 @@ import streamlit as st
 from forgeassembler_core import (
     ABOUT_MARKDOWN,
     APP_NAME,
-    BugOverlay,
     FRAME_RATE_KEYS,
     Joiner as CoreJoiner,
     OVERLAY_POSITIONS,
@@ -375,35 +374,6 @@ with st.sidebar:
                 "mix (use each overlay's Mix % for that)."
             ),
         )
-        bug_on = st.checkbox(
-            "Corner bug overlay", value=out.bug is not None,
-            disabled=not out.produce_video,
-        )
-        if bug_on and out.bug is None:
-            out.bug = BugOverlay(file="")
-        elif not bug_on:
-            out.bug = None
-        if out.bug is not None:
-            out.bug.file = st.text_input(
-                "Bug PNG path", value=out.bug.file,
-                placeholder=r"C:\brand\logo_bug.png",
-            )
-            out.bug.corner = st.selectbox(
-                "Corner", options=["tl", "tr", "bl", "br"],
-                index=["tl", "tr", "bl", "br"].index(out.bug.corner),
-                format_func=lambda k: {
-                    "tl": "Top-left", "tr": "Top-right",
-                    "bl": "Bottom-left", "br": "Bottom-right",
-                }[k],
-            )
-            out.bug.opacity = st.slider(
-                "Opacity", 0.0, 1.0, float(out.bug.opacity), 0.05,
-            )
-            out.bug.margin_px = int(st.number_input(
-                "Margin (px)", min_value=0, max_value=500,
-                value=int(out.bug.margin_px),
-            ))
-
     with st.expander("Metadata", expanded=False):
         md = project.output.metadata
         st.caption(

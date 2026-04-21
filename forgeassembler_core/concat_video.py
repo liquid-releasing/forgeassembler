@@ -882,8 +882,12 @@ def _build_text_files(
             if not ov.text:
                 continue
             path = temp_dir / f"text_{ov.id}.txt"
-            # Write UTF-8 with real newlines. No escapes.
-            path.write_text(ov.text, encoding="utf-8")
+            # Normalize line endings to `\n` and write bytes so Python's
+            # Windows newline translation doesn't leave `\r\n` in the
+            # file — a stray `\r` renders in drawtext as a tall
+            # invisible glyph, bloating line spacing.
+            normalized = ov.text.replace("\r\n", "\n").replace("\r", "\n")
+            path.write_bytes(normalized.encode("utf-8"))
             files[ov.id] = str(path)
     return files
 

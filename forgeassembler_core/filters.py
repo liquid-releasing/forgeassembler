@@ -174,22 +174,25 @@ def loudnorm_filter(
 # ── Image overlay (per-segment / per-section) ────────────────────────
 # Long names used by the per-clip Overlay dataclass; short aliases
 # (tl/tr/bl/br) match the SectionOverlay and BugCorner conventions.
+# Corner/edge positions use a 5%-of-frame breathing-room margin so
+# overlays don't sit flush against the frame edge. Users who need
+# precise placement can build a transparent PNG instead.
 _POSITION_EXPRS: dict[str, tuple[str, str]] = {
     "center": ("(W-w)/2", "(H-h)/2"),
-    "top-left": ("0", "0"),
-    "top-right": ("W-w", "0"),
-    "bottom-left": ("0", "H-h"),
-    "bottom-right": ("W-w", "H-h"),
-    "top-center": ("(W-w)/2", "0"),
-    "bottom-center": ("(W-w)/2", "H-h"),
-    "tl": ("0", "0"),
-    "tr": ("W-w", "0"),
-    "bl": ("0", "H-h"),
-    "br": ("W-w", "H-h"),
-    "tc": ("(W-w)/2", "0"),
-    "bc": ("(W-w)/2", "H-h"),
-    "ml": ("0", "(H-h)/2"),
-    "mr": ("W-w", "(H-h)/2"),
+    "top-left": ("W*0.05", "H*0.05"),
+    "top-right": ("W-w-W*0.05", "H*0.05"),
+    "bottom-left": ("W*0.05", "H-h-H*0.05"),
+    "bottom-right": ("W-w-W*0.05", "H-h-H*0.05"),
+    "top-center": ("(W-w)/2", "H*0.05"),
+    "bottom-center": ("(W-w)/2", "H-h-H*0.05"),
+    "tl": ("W*0.05", "H*0.05"),
+    "tr": ("W-w-W*0.05", "H*0.05"),
+    "bl": ("W*0.05", "H-h-H*0.05"),
+    "br": ("W-w-W*0.05", "H-h-H*0.05"),
+    "tc": ("(W-w)/2", "H*0.05"),
+    "bc": ("(W-w)/2", "H-h-H*0.05"),
+    "ml": ("W*0.05", "(H-h)/2"),
+    "mr": ("W-w-W*0.05", "(H-h)/2"),
 }
 
 
@@ -258,18 +261,21 @@ def image_overlay_filter(
 
 # ── Text overlay (section-scoped) ─────────────────────────────────────
 # Positions use drawtext's `tw`/`th` (text width/height) and `W`/`H`
-# (main frame size). Corners get a small breathing-room margin so the
-# glyphs don't sit flush against the edge.
+# (main frame size). Corner/edge positions use a 5%-of-frame margin
+# so text doesn't sit flush against the edge. Matches the image
+# overlay margins in `_POSITION_EXPRS` — users who need precise
+# placement can build a transparent PNG instead of asking the
+# placement logic to do more work.
 _TEXT_POSITION_EXPRS: dict[str, tuple[str, str]] = {
     "center": ("(W-tw)/2", "(H-th)/2"),
-    "tc": ("(W-tw)/2", "20"),
-    "bc": ("(W-tw)/2", "H-th-20"),
-    "tl": ("20", "20"),
-    "tr": ("W-tw-20", "20"),
-    "ml": ("20", "(H-th)/2"),
-    "mr": ("W-tw-20", "(H-th)/2"),
-    "bl": ("20", "H-th-20"),
-    "br": ("W-tw-20", "H-th-20"),
+    "tc": ("(W-tw)/2", "H*0.05"),
+    "bc": ("(W-tw)/2", "H-th-H*0.05"),
+    "tl": ("W*0.05", "H*0.05"),
+    "tr": ("W-tw-W*0.05", "H*0.05"),
+    "ml": ("W*0.05", "(H-th)/2"),
+    "mr": ("W-tw-W*0.05", "(H-th)/2"),
+    "bl": ("W*0.05", "H-th-H*0.05"),
+    "br": ("W-tw-W*0.05", "H-th-H*0.05"),
 }
 
 # Per-position horizontal alignment within the multi-line text block.

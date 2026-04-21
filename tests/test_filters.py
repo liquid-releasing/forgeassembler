@@ -178,12 +178,12 @@ def test_image_overlay_rejects_unknown_position():
 
 @pytest.mark.parametrize("position,expected", [
     ("center",        "x=(W-w)/2:y=(H-h)/2"),
-    ("top-left",      "x=0:y=0"),
-    ("top-right",     "x=W-w:y=0"),
-    ("bottom-left",   "x=0:y=H-h"),
-    ("bottom-right",  "x=W-w:y=H-h"),
-    ("top-center",    "x=(W-w)/2:y=0"),
-    ("bottom-center", "x=(W-w)/2:y=H-h"),
+    ("top-left",      "x=W*0.05:y=H*0.05"),
+    ("top-right",     "x=W-w-W*0.05:y=H*0.05"),
+    ("bottom-left",   "x=W*0.05:y=H-h-H*0.05"),
+    ("bottom-right",  "x=W-w-W*0.05:y=H-h-H*0.05"),
+    ("top-center",    "x=(W-w)/2:y=H*0.05"),
+    ("bottom-center", "x=(W-w)/2:y=H-h-H*0.05"),
 ])
 def test_image_overlay_positions(position, expected):
     s = image_overlay_filter("v", "img", "out", position=position)
