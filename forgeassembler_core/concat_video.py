@@ -220,6 +220,7 @@ def build_ffmpeg_command(
     frame_cache: Optional[dict[str, str]] = None,
     chapters_path: Optional[str] = None,
     segments_with_audio: Optional[set[str]] = None,
+    text_files: Optional[dict[str, str]] = None,
 ) -> FfmpegCommand:
     """Return an `FfmpegCommand` describing the video forge for this project.
 
@@ -465,19 +466,25 @@ def build_ffmpeg_command(
             joiner_inst = instantiate_joiner(item.joiner_type, item.params)
             d_ms = joiner_inst.duration_ms()
             d_s = d_ms / 1000.0
-            bridge_color = joiner_inst.color()  # '#rrggbb' or '#000000'
-            v_bridge = f"v_bridge{bridge_idx}"
-            a_bridge = f"a_bridge{bridge_idx}"
-            bridge_idx += 1
-            # ffmpeg `color` source takes 0xRRGGBB hex; strip the '#'.
-            filter_parts.append(
-                f"color=c=0x{bridge_color.lstrip('#')}:s={width}x{height}:"
-                f"d={d_s:g}:r={fps}[{v_bridge}]",
-            )
-            filter_parts.append(
-                f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_bridge}]",
-            )
-            concat_pairs.append((v_bridge, a_bridge))
+            # Hold == 0 means pure crossfade through black — the
+            # adjacent segments still get fade-out / fade-in, but
+            # there's no solid bridge between them. Skip the color
+            # source and anullsrc entirely; ffmpeg refuses a color
+            # source with d=0.
+            if d_s > 0:
+                bridge_color = joiner_inst.color()  # '#rrggbb' or '#000000'
+                v_bridge = f"v_bridge{bridge_idx}"
+                a_bridge = f"a_bridge{bridge_idx}"
+                bridge_idx += 1
+                # ffmpeg `color` source takes 0xRRGGBB hex; strip the '#'.
+                filter_parts.append(
+                    f"color=c=0x{bridge_color.lstrip('#')}:s={width}x{height}:"
+                    f"d={d_s:g}:r={fps}[{v_bridge}]",
+                )
+                filter_parts.append(
+                    f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_bridge}]",
+                )
+                concat_pairs.append((v_bridge, a_bridge))
         # "none" joiner: no bridge, concat handles it naturally.
 
     # ── Stage D: concat (skipped when there's only one pair).
@@ -587,10 +594,17 @@ def build_ffmpeg_command(
                 fontfile = all_fonts[0][1]
 
             out_label = f"v_sectx{text_overlay_count}"
+            # Prefer the pre-written textfile when available (runtime
+            # path). Inline text= is kept for tests and for legacy
+            # projects without a pre-pass.
+            textfile_path = None
+            if text_files is not None:
+                textfile_path = text_files.get(ov.id)
             filter_parts.append(text_overlay_filter(
                 in_video_label=final_v,
                 out_label=out_label,
                 text=ov.text,
+                textfile=textfile_path,
                 fontfile=fontfile,
                 font_size=ov.font_size,
                 font_color=ov.text_color,
@@ -849,6 +863,31 @@ def _extract_last_frame(
         )
 
 
+def _build_text_files(
+    project: Project, temp_dir: Path,
+) -> dict[str, str]:
+    """Write each text overlay's content to a tempfile under
+    `temp_dir` and return a dict of SectionOverlay.id -> file path.
+
+    Using drawtext's `textfile=` at forge time sidesteps all the
+    inline-escape traps — real newlines in the user's text become
+    real line breaks in the rendered output, and apostrophes /
+    colons / percents need no escaping at the filter_complex layer.
+    """
+    files: dict[str, str] = {}
+    for sec in project.sections:
+        for ov in sec.overlays:
+            if ov.kind != "text":
+                continue
+            if not ov.text:
+                continue
+            path = temp_dir / f"text_{ov.id}.txt"
+            # Write UTF-8 with real newlines. No escapes.
+            path.write_text(ov.text, encoding="utf-8")
+            files[ov.id] = str(path)
+    return files
+
+
 def _build_frame_cache(
     project: Project, ffmpeg_exe: str, temp_dir: Path,
 ) -> dict[str, str]:
@@ -926,6 +965,7 @@ def forge_video(
     temp_dir = Path(tempfile.mkdtemp(prefix="forgeassembler_"))
     try:
         frame_cache = _build_frame_cache(project, exe, temp_dir)
+        text_files = _build_text_files(project, temp_dir)
 
         # Probe each non-still segment for an audio stream. Segments
         # without one (phone captures, silent loops, animation renders)
@@ -963,6 +1003,7 @@ def forge_video(
             frame_cache=frame_cache,
             chapters_path=chapters_path,
             segments_with_audio=segments_with_audio,
+            text_files=text_files,
         )
 
         out_path = Path(cmd.output_path)

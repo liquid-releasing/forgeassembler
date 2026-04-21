@@ -486,6 +486,29 @@ tab_build, tab_joiners, tab_templates = st.tabs(["Build", "Joiners", "Templates"
 
 
 # ── Helpers used by the Build tab ─────────────────────────────────────
+# Single source of truth for overlay-position display labels. Every
+# selectbox that offers OVERLAY_POSITIONS should call _POSITION_LABEL
+# via format_func — keeping the labels here means adding a new
+# position (e.g. ml/mr in 2026-04-20) only needs one touch point.
+_POSITION_LABELS: dict[str, str] = {
+    "center": "Center",
+    "tc": "Top-center",
+    "bc": "Bottom-center",
+    "tl": "Top-left",
+    "tr": "Top-right",
+    "ml": "Middle-left",
+    "mr": "Middle-right",
+    "bl": "Bottom-left",
+    "br": "Bottom-right",
+}
+
+
+def _POSITION_LABEL(key: str) -> str:
+    """Fallback to the raw key when an unknown position slips through,
+    rather than raising KeyError from inside a Streamlit render."""
+    return _POSITION_LABELS.get(key, key)
+
+
 _JOINER_TYPES: tuple[str, ...] = ("none", "fade_to_black")
 _JOINER_LABELS = {
     "none": "Cut (no transition)",
@@ -615,7 +638,7 @@ with tab_build:
                         sec.leading_joiner.params["duration_s"] = float(
                             st.number_input(
                                 "Hold (s)",
-                                min_value=0.1, max_value=30.0,
+                                min_value=0.0, max_value=30.0,
                                 value=float(sec.leading_joiner.params.get(
                                     "duration_s", 5.0,
                                 )),
@@ -905,7 +928,7 @@ with tab_build:
                             trailing.params["duration_s"] = float(
                                 st.number_input(
                                     "Hold (s)",
-                                    min_value=0.1, max_value=30.0,
+                                    min_value=0.0, max_value=30.0,
                                     value=float(trailing.params.get("duration_s", 5.0)),
                                     step=0.5,
                                     key=f"jhold_{key_suffix}",
@@ -977,7 +1000,12 @@ with tab_build:
                     "Paste a path into the text box instead.",
                 )
 
+    # Strip whitespace AND any surrounding quotes — Windows' "Copy as
+    # path" wraps the path in double quotes, so pasting that string
+    # would otherwise fail existence checks on the literal quoted path.
     current_path = st.session_state.get("add_path_input", "").strip()
+    if len(current_path) >= 2 and current_path[0] == current_path[-1] and current_path[0] in ('"', "'"):
+        current_path = current_path[1:-1].strip()
 
     target_cols = st.columns([3, 2])
     with target_cols[0]:
@@ -1026,11 +1054,28 @@ with tab_build:
 
     # ── Overlay-mode form ──────────────────────────────────────────
     if st.session_state["add_target_mode"] == "overlay":
-        st.caption(
-            "Image overlays composite onto the assembled video during "
-            "the last section's time window. Audio overlays are in the "
-            "schema but not yet rendered — coming in a follow-up.",
-        )
+        # Peek at the path extension so we can swap image-only
+        # controls (Position / Opacity / Scale) for the audio-only
+        # Mix slider when the user has an audio file loaded.
+        _image_exts = (".png", ".jpg", ".jpeg", ".webp")
+        _audio_exts = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
+        _path_suffix = Path(current_path).suffix.lower() if current_path else ""
+        _is_audio_path = _path_suffix in _audio_exts
+
+        if _is_audio_path:
+            st.caption(
+                "Audio overlay mixes into the assembled video during "
+                "the last section's time window. Mix % sets this "
+                "overlay's share of the audio — 50% splits it evenly "
+                "with the section's main audio; 20% leaves the main "
+                "audio mostly intact."
+            )
+        else:
+            st.caption(
+                "Image overlays composite onto the assembled video "
+                "during the last section's time window. Pick a PNG / "
+                "JPG / WEBP file for image, MP3 / WAV / M4A for audio."
+            )
         ov_cols = st.columns(4)
         with ov_cols[0]:
             ov_start = st.number_input(
@@ -1058,35 +1103,48 @@ with tab_build:
             )
 
         pos_cols = st.columns([2, 2, 2, 2])
+        # Image inputs get rendered regardless (keeps their keys
+        # alive in session_state even when the path is audio), but
+        # disabled for audio paths so their values are obviously
+        # inert. For audio paths the third slot becomes Mix %.
         with pos_cols[0]:
             ov_position = st.selectbox(
                 "Position (image only)",
                 options=list(OVERLAY_POSITIONS),
                 index=0,
-                format_func=lambda k: {
-                    "center": "Center",
-                    "tc": "Top center",
-                    "bc": "Bottom center",
-                    "tl": "Upper-left",
-                    "tr": "Upper-right",
-                    "bl": "Lower-left",
-                    "br": "Lower-right",
-                }[k],
+                format_func=_POSITION_LABEL,
                 key="ov_position",
+                disabled=_is_audio_path,
             )
         with pos_cols[1]:
             ov_opacity = st.slider(
                 "Opacity (image only)",
                 min_value=0.0, max_value=1.0, value=1.0, step=0.05,
                 key="ov_opacity",
+                disabled=_is_audio_path,
             )
         with pos_cols[2]:
-            ov_scale_pct = int(st.slider(
-                "Scale % (image only)",
-                min_value=10, max_value=200, value=100, step=5,
-                key="ov_scale_pct",
-                help="100 = native size. 50 = half. 200 = double.",
-            ))
+            if _is_audio_path:
+                ov_mix_pct = int(st.slider(
+                    "Mix % (audio only)",
+                    min_value=0, max_value=100, value=50, step=5,
+                    key="ov_mix_pct",
+                    help=(
+                        "This overlay's share of the audio mix. 50 = "
+                        "evenly blended with the section's main audio; "
+                        "20 = main audio dominates; 100 = main is muted "
+                        "during the overlay window."
+                    ),
+                ))
+                ov_scale_pct = 100
+            else:
+                ov_scale_pct = int(st.slider(
+                    "Scale % (image only)",
+                    min_value=10, max_value=200, value=100, step=5,
+                    key="ov_scale_pct",
+                    help="100 = native size. 50 = half. 200 = double.",
+                ))
+                ov_mix_pct = 50
         with pos_cols[3]:
             add_overlay_click = st.button(
                 "Add overlay",
@@ -1126,11 +1184,11 @@ with tab_build:
                         position=ov_position,  # type: ignore[arg-type]
                         opacity=float(ov_opacity),
                         scale_pct=ov_scale_pct,
+                        mix_pct=ov_mix_pct,
                     ))
                     label = (
-                        "Image overlay"
-                        if kind == "image" else
-                        "Audio overlay (not yet rendered)"
+                        "Image overlay" if kind == "image"
+                        else f"Audio overlay (mix {ov_mix_pct}%)"
                     )
                     st.success(f"{label} added to last section.")
                     st.session_state["pending_add_path"] = ""
@@ -1187,15 +1245,7 @@ with tab_build:
                 "Position",
                 options=list(OVERLAY_POSITIONS),
                 index=list(OVERLAY_POSITIONS).index("center"),
-                format_func=lambda k: {
-                    "center": "Center",
-                    "tc": "Top center",
-                    "bc": "Bottom center",
-                    "tl": "Upper-left",
-                    "tr": "Upper-right",
-                    "bl": "Lower-left",
-                    "br": "Lower-right",
-                }[k],
+                format_func=_POSITION_LABEL,
                 key="tx_position",
             )
         with tx_row2[1]:

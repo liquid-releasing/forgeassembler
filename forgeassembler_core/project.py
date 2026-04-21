@@ -36,7 +36,11 @@ OverlayPosition = Literal["center", "tl", "tr", "bl", "br"]
 SectionOverlayKind = Literal["image", "audio", "text"]
 
 OVERLAY_POSITIONS: tuple[str, ...] = (
-    "center", "tc", "bc", "tl", "tr", "bl", "br",
+    # 3×3 grid ordered top-row, middle-row, bottom-row for readable
+    # dropdowns. "center" is the vertical-and-horizontal center.
+    "tl", "tc", "tr",
+    "ml", "center", "mr",
+    "bl", "bc", "br",
 )
 
 # Keys for the Frame rate dropdown. "source" probes the first video
@@ -870,24 +874,34 @@ def validate(project: Project) -> list[ValidationIssue]:
                 item_id=sec.id,
             ))
         for ov in sec.overlays:
-            if ov.kind not in ("image", "audio"):
+            if ov.kind not in ("image", "audio", "text"):
                 issues.append(ValidationIssue(
                     "error",
                     f"Overlay {ov.id} has unknown kind '{ov.kind}'.",
                     item_id=sec.id,
                 ))
-            if not ov.file:
-                issues.append(ValidationIssue(
-                    "error",
-                    f"Overlay {ov.id} has no file.",
-                    item_id=sec.id,
-                ))
-            elif not Path(ov.file).exists():
-                issues.append(ValidationIssue(
-                    "warning",
-                    f"Overlay file not found: {ov.file}",
-                    item_id=sec.id,
-                ))
+            # Text overlays have no file — they carry a string instead.
+            # Require non-empty text; image/audio require a real file.
+            if ov.kind == "text":
+                if not ov.text or not ov.text.strip():
+                    issues.append(ValidationIssue(
+                        "error",
+                        f"Text overlay {ov.id} has no text.",
+                        item_id=sec.id,
+                    ))
+            else:
+                if not ov.file:
+                    issues.append(ValidationIssue(
+                        "error",
+                        f"Overlay {ov.id} has no file.",
+                        item_id=sec.id,
+                    ))
+                elif not Path(ov.file).exists():
+                    issues.append(ValidationIssue(
+                        "warning",
+                        f"Overlay file not found: {ov.file}",
+                        item_id=sec.id,
+                    ))
             if ov.start_s < 0:
                 issues.append(ValidationIssue(
                     "error",
@@ -1033,18 +1047,39 @@ def validate(project: Project) -> list[ValidationIssue]:
     for j in project.joiners():
         if j.joiner_type == "fade_to_black":
             d = j.params.get("duration_s")
-            if d is None:
+            f = j.params.get("fade_s")
+            # With fade/hold decoupled, duration_s (hold) = 0 is a
+            # valid pure-crossfade configuration as long as fade_s > 0.
+            # Reject only when both are zero or either is negative.
+            if d is None and f is None:
                 issues.append(ValidationIssue(
                     "warning",
-                    "fade_to_black joiner has no duration_s; defaulting to 1.0.",
+                    "fade_to_black joiner has no duration_s/fade_s; "
+                    "defaulting to hold=5.0, fade=1.0.",
                     item_id=j.id,
                 ))
-            elif d <= 0:
-                issues.append(ValidationIssue(
-                    "error",
-                    "fade_to_black duration_s must be positive.",
-                    item_id=j.id,
-                ))
+            else:
+                d_val = 0.0 if d is None else float(d)
+                f_val = 0.0 if f is None else float(f)
+                if d_val < 0:
+                    issues.append(ValidationIssue(
+                        "error",
+                        "fade_to_black duration_s (hold) must be >= 0.",
+                        item_id=j.id,
+                    ))
+                if f_val < 0:
+                    issues.append(ValidationIssue(
+                        "error",
+                        "fade_to_black fade_s must be >= 0.",
+                        item_id=j.id,
+                    ))
+                if d_val == 0 and f_val == 0:
+                    issues.append(ValidationIssue(
+                        "error",
+                        "fade_to_black needs duration_s (hold) > 0 or "
+                        "fade_s > 0 — otherwise the joiner is a no-op.",
+                        item_id=j.id,
+                    ))
 
     # Output settings
     out = project.output

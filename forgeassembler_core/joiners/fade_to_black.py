@@ -78,8 +78,28 @@ class FadeToBlack(Joiner):
 
     def validate(self) -> list[str]:
         errors: list[str] = []
-        if self._duration_s() <= 0:
-            errors.append("FadeToBlack duration_s must be > 0.")
+        # With fade/hold decoupled, duration_s=0 is meaningful — it's
+        # a pure crossfade through black with no solid hold. Require
+        # at least one of (duration_s > 0, fade_s > 0) to be non-zero.
+        # Inspect the raw params so negative values surface even
+        # though the accessors clamp them.
+        raw_d = self.params.get("duration_s", self.DEFAULT_DURATION_S)
+        raw_f = self.params.get("fade_s", self.DEFAULT_FADE_S)
+        try:
+            if float(raw_d) < 0:
+                errors.append("FadeToBlack duration_s must be >= 0.")
+        except (TypeError, ValueError):
+            pass  # accessor falls back to default; not a hard error
+        try:
+            if float(raw_f) < 0:
+                errors.append("FadeToBlack fade_s must be >= 0.")
+        except (TypeError, ValueError):
+            pass
+        if self._duration_s() == 0 and self.fade_s() == 0:
+            errors.append(
+                "FadeToBlack needs duration_s > 0 or fade_s > 0 "
+                "— otherwise the joiner is a no-op.",
+            )
         return errors
 
     @classmethod

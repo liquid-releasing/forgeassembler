@@ -1405,9 +1405,42 @@ def test_text_overlay_emits_drawtext(tmp_path: Path, monkeypatch):
     assert font.name in fc
 
 
+def test_text_overlay_escapes_newlines(tmp_path: Path, monkeypatch):
+    """Literal newline bytes in the text would terminate ffmpeg's
+    filter_complex chain, breaking the whole graph. They must be
+    converted to the two-char `\\n` escape that drawtext renders as
+    a line break."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    font = _make_font_file(tmp_path)
+    from forgeassembler_core import fonts as fonts_mod
+    monkeypatch.setattr(
+        fonts_mod, "resolve_font_path", lambda _stem: str(font),
+    )
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov-text", kind="text", file="",
+        text="line one\nline two",
+        font_family="TestFont",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    # No literal newlines inside the drawtext text=... value. The
+    # easiest check: the drawtext node must stay on a single filter
+    # chain line. Grab everything between drawtext and the next ;
+    # and verify no \n bytes.
+    import re
+    m = re.search(r"drawtext=[^;]+", fc)
+    assert m, "expected a drawtext filter in the graph"
+    assert "\n" not in m.group(0)
+    # And the two-char escape should be present.
+    assert "line one\\nline two" in fc
+
+
 def test_text_overlay_escapes_special_chars(tmp_path: Path, monkeypatch):
-    """Colons, single quotes, backslashes and percent signs must be
-    escaped so ffmpeg doesn't interpret them as filter delimiters."""
+    """Colons, backslashes and percent signs must be escaped with a
+    preceding backslash. Apostrophes use the shell-style
+    close-escape-reopen sequence `'\\''` so filter_complex doesn't
+    terminate the single-quoted region early."""
     p, _v1, _v2 = _section_project(tmp_path)
     font = _make_font_file(tmp_path)
     from forgeassembler_core import fonts as fonts_mod
@@ -1422,12 +1455,70 @@ def test_text_overlay_escapes_special_chars(tmp_path: Path, monkeypatch):
     layout = lay_out(p, probe=lambda _p: 2000)
     cmd = build_ffmpeg_command(p, layout)
     fc = cmd.filter_complex
-    # Each special char has its escape
+    # Percent + colon get backslash-escaped.
     assert "100\\%" in fc
-    assert "it\\'s" in fc
-    assert "\\'great\\'" in fc
+    # Apostrophes use close-escape-open concat, NOT \' (which would
+    # terminate the single-quoted region).
+    assert "\\'" not in fc.replace("'\\''", "")  # no bare \' anywhere
+    assert "it'\\''s" in fc
+    assert "'\\''great'\\''" in fc
     # Double-escaped backslash (one in source → two in escaped)
     assert "\\\\" in fc
+
+
+def test_text_overlay_uses_textfile_when_provided(tmp_path: Path, monkeypatch):
+    """Runtime path: when `text_files` maps the overlay id to a
+    tempfile path, drawtext uses `textfile='<path>':expansion=none`
+    instead of inline `text=...`. This sidesteps all the fragile
+    inline-escape traps (newlines, apostrophes, colons) because
+    ffmpeg reads literal bytes from disk."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    font = _make_font_file(tmp_path)
+    from forgeassembler_core import fonts as fonts_mod
+    monkeypatch.setattr(
+        fonts_mod, "resolve_font_path", lambda _stem: str(font),
+    )
+    text_path = tmp_path / "text_ov-text.txt"
+    text_path.write_text("line one\nline two\nlet's test", encoding="utf-8")
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov-text", kind="text", file="",
+        text="line one\nline two\nlet's test",
+        font_family="TestFont",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(
+        p, layout, text_files={"ov-text": str(text_path)},
+    )
+    fc = cmd.filter_complex
+    # textfile= present, inline text= absent, expansion=none set
+    assert "textfile=" in fc
+    assert ":text=" not in fc  # inline form should not appear
+    assert "expansion=none" in fc
+    # The path goes through the same colon-escape as fontfile.
+    escaped = str(text_path).replace("\\", "/").replace(":", "\\:")
+    assert escaped in fc
+
+
+def test_text_overlay_url_with_colons(tmp_path: Path, monkeypatch):
+    """A URL like 'http://funscriptforge.com' must escape every colon
+    so drawtext doesn't mistake 'http' as an option key. Slashes are
+    literal and need no escape."""
+    p, _v1, _v2 = _section_project(tmp_path)
+    font = _make_font_file(tmp_path)
+    from forgeassembler_core import fonts as fonts_mod
+    monkeypatch.setattr(
+        fonts_mod, "resolve_font_path", lambda _stem: str(font),
+    )
+    p.sections[0].overlays.append(SectionOverlay(
+        id="ov-text", kind="text", file="",
+        text="http://funscriptforge.com",
+        font_family="TestFont",
+    ))
+    layout = lay_out(p, probe=lambda _p: 2000)
+    cmd = build_ffmpeg_command(p, layout)
+    fc = cmd.filter_complex
+    # Colon escaped, slashes left alone.
+    assert "http\\://funscriptforge.com" in fc
 
 
 def test_text_overlay_skipped_when_no_font_resolves(

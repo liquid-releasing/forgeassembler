@@ -38,10 +38,23 @@ def test_fade_to_black_duration_respects_param():
     assert j.duration_ms() == 2500
 
 
-def test_fade_to_black_validate_catches_zero():
-    j = FadeToBlack({"duration_s": 0})
+def test_fade_to_black_validate_catches_both_zero():
+    """duration_s=0 is fine alone (pure crossfade through black), but
+    the joiner can't be a complete no-op — require fade_s or hold."""
+    j = FadeToBlack({"duration_s": 0, "fade_s": 0})
     errors = j.validate()
-    assert any("duration_s" in e for e in errors)
+    assert any("no-op" in e for e in errors)
+
+
+def test_fade_to_black_validate_allows_hold_zero_with_fade():
+    """Hold 0 + fade 1 is a valid pure crossfade-through-black."""
+    j = FadeToBlack({"duration_s": 0, "fade_s": 1.0})
+    assert j.validate() == []
+
+
+def test_fade_to_black_validate_rejects_negative():
+    j = FadeToBlack({"duration_s": -1, "fade_s": 1.0})
+    assert any("duration_s" in e for e in j.validate())
 
 
 def test_fade_to_black_ignores_bad_type():

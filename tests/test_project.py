@@ -144,15 +144,40 @@ def test_legacy_items_migrate_to_sections(tmp_path: Path):
 
 
 def test_validate_fade_needs_positive_duration(tmp_path: Path):
+    """With fade/hold decoupled, a joiner can't be a no-op — hold=0
+    AND fade=0 is rejected. Hold=0 alone (crossfade-through-black) is
+    now valid as long as fade_s > 0."""
     v1 = _make_video(tmp_path, "a")
     v2 = _make_video(tmp_path, "b")
     p = Project(items=[
         Segment(id="s1", video=str(v1)),
-        Joiner(id="j1", joiner_type="fade_to_black", params={"duration_s": 0}),
+        Joiner(
+            id="j1", joiner_type="fade_to_black",
+            params={"duration_s": 0, "fade_s": 0},
+        ),
         Segment(id="s2", video=str(v2)),
     ])
     issues = validate(p)
-    assert any("must be positive" in i.message for i in issues)
+    assert any("no-op" in i.message for i in issues)
+
+
+def test_validate_fade_accepts_zero_hold_with_positive_fade(tmp_path: Path):
+    """Hold=0 + fade=1 is a valid pure crossfade through black."""
+    v1 = _make_video(tmp_path, "a")
+    v2 = _make_video(tmp_path, "b")
+    p = Project(items=[
+        Segment(id="s1", video=str(v1)),
+        Joiner(
+            id="j1", joiner_type="fade_to_black",
+            params={"duration_s": 0, "fade_s": 1.0},
+        ),
+        Segment(id="s2", video=str(v2)),
+    ])
+    issues = validate(p)
+    errors = [i for i in issues if i.level == "error"]
+    # Sub-filter to joiner-related issues only (other warnings may exist).
+    joiner_errors = [i for i in errors if "fade_to_black" in i.message]
+    assert joiner_errors == []
 
 
 def test_validate_audio_replace_requires_file(tmp_path: Path):

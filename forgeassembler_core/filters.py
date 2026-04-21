@@ -188,6 +188,8 @@ _POSITION_EXPRS: dict[str, tuple[str, str]] = {
     "br": ("W-w", "H-h"),
     "tc": ("(W-w)/2", "0"),
     "bc": ("(W-w)/2", "H-h"),
+    "ml": ("0", "(H-h)/2"),
+    "mr": ("W-w", "(H-h)/2"),
 }
 
 
@@ -264,21 +266,54 @@ _TEXT_POSITION_EXPRS: dict[str, tuple[str, str]] = {
     "bc": ("(W-tw)/2", "H-th-20"),
     "tl": ("20", "20"),
     "tr": ("W-tw-20", "20"),
+    "ml": ("20", "(H-th)/2"),
+    "mr": ("W-tw-20", "(H-th)/2"),
     "bl": ("20", "H-th-20"),
     "br": ("W-tw-20", "H-th-20"),
+}
+
+# Per-position horizontal alignment within the multi-line text block.
+# drawtext defaults to left-alignment, which looks ragged on
+# right-positioned multi-line text (FunscriptForge / Tutorial
+# showing as `FunscriptForge...` `Tutorial....` instead of
+# `...FunscriptForge` `.........Tutorial`). Map the position's
+# horizontal slot to drawtext's `text_align` value.
+_TEXT_POSITION_HALIGN: dict[str, str] = {
+    "center": "C",
+    "tc": "C", "bc": "C",
+    "tl": "L", "ml": "L", "bl": "L",
+    "tr": "R", "mr": "R", "br": "R",
 }
 
 
 def _escape_drawtext(text: str) -> str:
     """Escape a string for inline use in ffmpeg's drawtext `text=...`.
 
-    drawtext treats `\\`, `:`, `'`, and `%` specially inside a
-    single-quoted value. Newlines pass through as literal line breaks.
+    Two quoting layers are in play:
+
+    1. ffmpeg's `filter_complex` parser wraps option values in single
+       quotes. Inside a single-quoted region, a single quote ENDS the
+       region (backslash does NOT escape it). To embed a literal `'`,
+       we use the shell-style `'\\''` sequence: close-quote, escaped
+       quote, reopen-quote.
+    2. drawtext's own text= parser treats `\\`, `\\n`, `\\:`, and `\\%`
+       as escapes. Real newline bytes in the string would also
+       terminate the filter chain at the filter_complex layer, so we
+       convert them to the two-char `\\n` escape that drawtext then
+       renders as a line break.
+
+    Order matters: backslash first (otherwise the backslashes we
+    introduce get double-escaped). Apostrophe is handled by the
+    close-escape-open sequence and is NOT prefixed with a backslash —
+    `\\'` inside a single-quoted filter_complex value would terminate
+    the region and produce "Filter not found" when the tail is
+    interpreted as a new filter chain.
     """
     return (
         text.replace("\\", "\\\\")
+            .replace("\n", "\\n")
             .replace(":", "\\:")
-            .replace("'", "\\'")
+            .replace("'", "'\\''")
             .replace("%", "\\%")
     )
 
@@ -296,19 +331,27 @@ def text_overlay_filter(
     opacity: float = 1.0,
     fade_in_s: float = 0.0,
     fade_out_s: float = 0.0,
+    textfile: str | None = None,
 ) -> str:
     """Composite a text string onto a video stream via ffmpeg drawtext.
+
+    Prefers `textfile=<path>` when `textfile` is supplied — the caller
+    has already written the literal text (with real newlines, real
+    apostrophes, etc.) to a tempfile. Using textfile sidesteps the
+    thorny inline escaping of `\\n`, apostrophes, colons, and other
+    filter-complex-meaningful characters. `expansion=none` is set so
+    drawtext doesn't try to interpret `%{...}` sequences in user
+    content.
+
+    Falls back to inline `text=...` (with `_escape_drawtext`) when
+    `textfile` is None — used by tests that assert on the emitted
+    filter string without writing a file to disk.
 
     Timing: `enable='between(t,start_s,end_s)'` gates visibility.
     Fades are expressed via the `alpha` parameter so the text fades
     rather than pops — ffmpeg evaluates the alpha expression at each
     frame and smoothly ramps 0 → opacity on fade-in, opacity → 0 on
     fade-out.
-
-    Path-quoting: drawtext's `fontfile=` argument doesn't accept
-    quotes; instead colons inside the path must be escaped (Windows
-    paths like `C:\\Windows\\Fonts\\arial.ttf`). We escape colons and
-    backslashes the same way drawtext expects.
     """
     if position not in _TEXT_POSITION_EXPRS:
         raise ValueError(
@@ -317,11 +360,26 @@ def text_overlay_filter(
         )
     x_expr, y_expr = _TEXT_POSITION_EXPRS[position]
 
-    safe_text = _escape_drawtext(text)
-    # drawtext needs the backslashes in Windows paths doubled and the
-    # drive-letter colon escaped. Using forward slashes avoids the
-    # backslash dance and works on Windows ffmpeg builds.
-    safe_font = fontfile.replace("\\", "/").replace(":", "\\:")
+    # Windows paths (`C:\...`) need colons escaped and backslashes
+    # forward-slashed for drawtext's single-quoted value.
+    def _escape_path(p: str) -> str:
+        return p.replace("\\", "/").replace(":", "\\:")
+
+    safe_font = _escape_path(fontfile)
+    if textfile is not None:
+        # Runtime path: ffmpeg reads literal bytes from the file, so
+        # no text-level escaping is needed. expansion=none stops
+        # drawtext from interpreting %{...} sequences in user content.
+        text_clause = (
+            f":textfile='{_escape_path(textfile)}':expansion=none"
+        )
+    else:
+        # Test / fallback path: emit inline text=. Keep the escape
+        # chain for apostrophes, colons, backslashes, percents, and
+        # the two-char `\n` escape (rendered literally by drawtext,
+        # but at least the filter_complex parser survives).
+        safe_text = _escape_drawtext(text)
+        text_clause = f":text='{safe_text}'"
     opacity = max(0.0, min(1.0, opacity))
 
     # Alpha expression — see docstring. Skips branches when fades
@@ -351,13 +409,15 @@ def text_overlay_filter(
     elif start_s > 0:
         enable = f":enable='gte(t,{start_s:g})'"
 
+    halign = _TEXT_POSITION_HALIGN.get(position, "L")
     return (
         f"[{in_video_label}]"
         f"drawtext=fontfile='{safe_font}'"
-        f":text='{safe_text}'"
+        f"{text_clause}"
         f":fontcolor={font_color}"
         f":fontsize={int(font_size)}"
         f":x={x_expr}:y={y_expr}"
+        f":text_align={halign}"
         f"{alpha_clause}"
         f"{enable}"
         f"[{out_label}]"
