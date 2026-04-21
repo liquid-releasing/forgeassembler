@@ -226,3 +226,17 @@ jobs:
             Questions, bug reports, and feedback welcome in [our Discord](https://discord.gg/sZWCqgxY).
           append_body: true
           generate_release_notes: false
+
+      - name: Notify forgeassembler-web to bump version badge
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_PAT }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/liquid-releasing/forgeassembler-web/dispatches \
+            -f event_type='release-published' \
+            -f 'client_payload[tag]'="$TAG_NAME" \
+            || echo "::warning::forgeassembler-web dispatch failed — repo may not exist yet. Badge will stay on previous version until next release."
