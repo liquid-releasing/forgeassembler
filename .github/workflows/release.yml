@@ -225,4 +225,4 @@ jobs:
 
             Questions, bug reports, and feedback welcome in [our Discord](https://discord.gg/sZWCqgxY).
           append_body: true
-          generate_release_notes: true
+          generate_release_notes: false
