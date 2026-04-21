@@ -1,0 +1,228 @@
+name: Release Builds
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Windows build
+  # ---------------------------------------------------------------------------
+  build-windows:
+    name: Build — Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-desktop.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller ForgeAssembler.spec --noconfirm --clean
+
+      - name: Verify build
+        run: |
+          if (!(Test-Path "dist\ForgeAssembler\ForgeAssembler.exe")) {
+            Write-Error "Build artifact not found"
+            exit 1
+          }
+
+      - name: Zip artifact
+        run: Compress-Archive -Path dist\ForgeAssembler -DestinationPath dist\ForgeAssembler-windows.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ForgeAssembler-windows
+          path: dist/ForgeAssembler-windows.zip
+
+  # ---------------------------------------------------------------------------
+  # macOS build
+  # ---------------------------------------------------------------------------
+  build-macos:
+    name: Build — macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-desktop.txt
+
+      - name: Generate .icns icon
+        run: |
+          ICO_SRC="media/forgeassembler_icon.png"
+          ICNS_OUT="media/forgeassembler.icns"
+          if [ -f "$ICO_SRC" ] && [ ! -f "$ICNS_OUT" ]; then
+            ICONSET_DIR="$(mktemp -d)/ForgeAssembler.iconset"
+            mkdir -p "$ICONSET_DIR"
+            for SIZE in 16 32 64 128 256 512; do
+              sips -z "$SIZE" "$SIZE" "$ICO_SRC" --out "$ICONSET_DIR/icon_${SIZE}x${SIZE}.png" 2>/dev/null
+              DOUBLE=$((SIZE * 2))
+              sips -z "$DOUBLE" "$DOUBLE" "$ICO_SRC" --out "$ICONSET_DIR/icon_${SIZE}x${SIZE}@2x.png" 2>/dev/null
+            done
+            iconutil -c icns "$ICONSET_DIR" -o "$ICNS_OUT"
+            rm -rf "$(dirname "$ICONSET_DIR")"
+            echo "Generated $ICNS_OUT"
+          fi
+
+      - name: Build with PyInstaller
+        run: pyinstaller ForgeAssembler.spec --noconfirm --clean
+
+      - name: Verify build
+        run: |
+          if [ ! -d "dist/ForgeAssembler.app" ] && [ ! -d "dist/ForgeAssembler" ]; then
+            echo "Build artifact not found"
+            exit 1
+          fi
+
+      - name: Zip artifact
+        run: |
+          cd dist
+          if [ -d "ForgeAssembler.app" ]; then
+            zip -r ForgeAssembler-macos.zip ForgeAssembler.app
+          else
+            zip -r ForgeAssembler-macos.zip ForgeAssembler
+          fi
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ForgeAssembler-macos
+          path: dist/ForgeAssembler-macos.zip
+
+  # ---------------------------------------------------------------------------
+  # Linux build
+  # ---------------------------------------------------------------------------
+  build-linux:
+    name: Build — Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies (PyWebView GTK backend)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-gi \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 \
+            libgirepository1.0-dev \
+            libcairo2-dev
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-desktop.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller ForgeAssembler.spec --noconfirm --clean
+
+      - name: Verify build
+        run: |
+          if [ ! -f "dist/ForgeAssembler/ForgeAssembler" ]; then
+            echo "Build artifact not found"
+            exit 1
+          fi
+
+      - name: Create tarball
+        run: tar -czf dist/ForgeAssembler-linux.tar.gz -C dist ForgeAssembler
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ForgeAssembler-linux
+          path: dist/ForgeAssembler-linux.tar.gz
+
+  # ---------------------------------------------------------------------------
+  # Create GitHub Release with all artifacts
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish Release
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ForgeAssembler-windows
+          path: artifacts/
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ForgeAssembler-macos
+          path: artifacts/
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ForgeAssembler-linux
+          path: artifacts/
+
+      - name: Compute release name
+        id: relname
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          STRIPPED="${TAG#v}"
+          NAME="ForgeAssembler ${STRIPPED//-/ }"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: liquid-releasing/forgeassembler-releases
+          token: ${{ secrets.RELEASES_PAT }}
+          name: ${{ steps.relname.outputs.name }}
+          prerelease: false
+          files: |
+            artifacts/ForgeAssembler-windows.zip
+            artifacts/ForgeAssembler-macos.zip
+            artifacts/ForgeAssembler-linux.tar.gz
+          body: |
+            > ⚠️ **Alpha release.** This build is under active development. Expect rough edges.
+
+            ForgeAssembler — take many FunscriptForge-style clips (video + funscripts) and concatenate them into one long combined output: a single MP4 with chapter markers, every funscript channel stitched in lockstep, plus a heatmap. Per-section image / audio / text overlays; fade-to-black joiners between sections; closing fade at the end. Runs locally — no cloud, no account.
+
+            ## Downloads
+            - **Windows** — `ForgeAssembler-windows.zip` — unzip and run `ForgeAssembler.exe`
+            - **macOS** — `ForgeAssembler-macos.zip` — unzip and open `ForgeAssembler.app`
+            - **Linux** — `ForgeAssembler-linux.tar.gz` — extract and run `ForgeAssembler/ForgeAssembler`
+
+            See the [Getting Started guide](https://liquid-releasing.github.io/forgeassembler/guide/getting-started/) for a first-run walkthrough.
+
+            Questions, bug reports, and feedback welcome in [our Discord](https://discord.gg/sZWCqgxY).
+          append_body: true
+          generate_release_notes: true
