@@ -10,29 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/">
+        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/guide/debug-mode/">
       
       
+        <link rel="prev" href="../channels/">
       
-        <link rel="next" href="guide/getting-started/">
+      
+        <link rel="next" href="../title-cards/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>ForgeAssembler</title>
+        <title>Debug Mode - ForgeAssembler</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,7 +53,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -76,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#forgeassembler" class="md-skip">
+        <a href="#debug-mode" class="md-skip">
           Skip to content
         </a>
       
@@ -90,7 +92,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="ForgeAssembler" class="md-header__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
+    <a href="../.." title="ForgeAssembler" class="md-header__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -110,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              Debug Mode
             
           </span>
         </div>
@@ -221,11 +223,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="." class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -244,7 +244,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="guide/getting-started/" class="md-tabs__link">
+      <a href="../getting-started/" class="md-tabs__link">
         
   
   
@@ -261,11 +261,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="guide/sections-and-segments/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../sections-and-segments/" class="md-tabs__link">
           
   
   
@@ -285,7 +287,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="guide/title-cards/" class="md-tabs__link">
+        <a href="../title-cards/" class="md-tabs__link">
           
   
   
@@ -303,7 +305,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="FEATURES/" class="md-tabs__link">
+      <a href="../../FEATURES/" class="md-tabs__link">
         
   
   
@@ -322,7 +324,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="ARCHITECTURE/" class="md-tabs__link">
+      <a href="../../ARCHITECTURE/" class="md-tabs__link">
         
   
   
@@ -357,7 +359,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="ForgeAssembler" class="md-nav__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
+    <a href="../.." title="ForgeAssembler" class="md-nav__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -384,37 +386,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -430,70 +405,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#what-it-does" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What it does
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#getting-started" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Getting started
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#download" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Download
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#community" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Community
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -505,7 +416,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/getting-started/" class="md-nav__link">
+      <a href="../getting-started/" class="md-nav__link">
         
   
   
@@ -529,28 +440,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
-        
-          
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -568,7 +482,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -586,7 +500,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/sections-and-segments/" class="md-nav__link">
+      <a href="../sections-and-segments/" class="md-nav__link">
         
   
   
@@ -614,7 +528,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/overlays/" class="md-nav__link">
+      <a href="../overlays/" class="md-nav__link">
         
   
   
@@ -642,7 +556,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/joiners/" class="md-nav__link">
+      <a href="../joiners/" class="md-nav__link">
         
   
   
@@ -670,7 +584,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/channels/" class="md-nav__link">
+      <a href="../channels/" class="md-nav__link">
         
   
   
@@ -695,10 +609,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="guide/debug-mode/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Debug Mode
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -714,6 +655,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#turning-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turning it on
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-recorded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets recorded
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#marking-a-specific-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Marking a specific issue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exporting-the-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exporting the log
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-include-in-a-bug-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to include in a bug report
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-not-to-use-debug-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When NOT to use debug mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -787,7 +814,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/title-cards/" class="md-nav__link">
+      <a href="../title-cards/" class="md-nav__link">
         
   
   
@@ -815,7 +842,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/title-cards/getting_started_white_on_transparent/" class="md-nav__link">
+      <a href="../title-cards/getting_started_white_on_transparent/" class="md-nav__link">
         
   
   
@@ -843,7 +870,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/title-cards/getting_started_black_cutout/" class="md-nav__link">
+      <a href="../title-cards/getting_started_black_cutout/" class="md-nav__link">
         
   
   
@@ -871,7 +898,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/title-cards/scifi_cockpit_example/" class="md-nav__link">
+      <a href="../title-cards/scifi_cockpit_example/" class="md-nav__link">
         
   
   
@@ -906,7 +933,7 @@
   
   
     <li class="md-nav__item">
-      <a href="FEATURES/" class="md-nav__link">
+      <a href="../../FEATURES/" class="md-nav__link">
         
   
   
@@ -933,7 +960,7 @@
   
   
     <li class="md-nav__item">
-      <a href="ARCHITECTURE/" class="md-nav__link">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
         
   
   
@@ -980,10 +1007,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-it-does" class="md-nav__link">
+  <a href="#turning-it-on" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it does
+        Turning it on
       
     </span>
   </a>
@@ -991,10 +1018,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#getting-started" class="md-nav__link">
+  <a href="#what-gets-recorded" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Getting started
+        What gets recorded
       
     </span>
   </a>
@@ -1002,10 +1029,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#download" class="md-nav__link">
+  <a href="#marking-a-specific-issue" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Download
+        Marking a specific issue
       
     </span>
   </a>
@@ -1013,10 +1040,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#community" class="md-nav__link">
+  <a href="#exporting-the-log" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Community
+        Exporting the log
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-include-in-a-bug-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to include in a bug report
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-not-to-use-debug-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When NOT to use debug mode
       
     </span>
   </a>
@@ -1043,59 +1092,83 @@
   
 
 
-<h1 id="forgeassembler">ForgeAssembler<a class="headerlink" href="#forgeassembler" title="Permanent link">&para;</a></h1>
-<p><strong>Assemble many FunscriptForge clips into one long combined video and
-funscript bundle.</strong></p>
-<p><img alt="ForgeAssembler" src="/media/forgeassembler_horizontal.png" /></p>
-<p>ForgeAssembler is the third tool in the Liquid Releasing family.
-Where <a href="https://github.com/liquid-releasing/funscriptforge">FunscriptForge</a>
-shapes and polishes a single clip's funscripts and
-<a href="https://github.com/liquid-releasing/forgeyt">ForgeYT</a> pulls audio
-from YouTube, ForgeAssembler is the tool that takes finished clips
-and concatenates them — videos, every funscript channel, chapter
-markers — into one long output.</p>
-<hr />
-<h2 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
+<h1 id="debug-mode">Debug Mode<a class="headerlink" href="#debug-mode" title="Permanent link">&para;</a></h1>
+<p>Debug mode turns on lightweight instrumentation that records what
+you did in a session — project loads, forge clicks, forge completions
+or failures — and lets you mark specific moments when something
+looked wrong. The output is a single JSONL file you can attach to a
+bug report.</p>
+<h2 id="turning-it-on">Turning it on<a class="headerlink" href="#turning-it-on" title="Permanent link">&para;</a></h2>
+<p>Scroll to the bottom of the sidebar and tick <strong>🔧 Debug mode</strong>. An
+event panel expands below it.</p>
+<p>The panel shows:</p>
 <ul>
-<li>Concatenates videos into a single MP4 at your chosen resolution.</li>
-<li>Concatenates every funscript channel in lockstep: main, multi-axis,
-  3-phase estim, prostate, and more.</li>
-<li>Drops in joiners between sections: straight cuts, fade-to-black
-  with configurable hold and fade times, closing fade at the end.</li>
-<li>Writes chapter markers, one per section, into the MP4.</li>
-<li>Normalizes audio loudness to the YouTube standard (−16 LUFS).</li>
-<li>Per-section overlays: image (PNG/JPG with alpha), audio (music
-  beds / ambience), or text (system-font title cards).</li>
-<li>Renders a heatmap of the main funscript track alongside the output.</li>
-<li>Saves the whole project as a reusable JSON file — hand-edit it,
-  script it, version it.</li>
+<li>A running count of events captured this session</li>
+<li>A <strong>⚑ Mark this as an issue</strong> button</li>
+<li>An <strong>Export debug log</strong> button</li>
 </ul>
-<p>A full feature list lives on the <a href="FEATURES/">Features</a> page.</p>
-<hr />
-<h2 id="getting-started">Getting started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
-<p>New to ForgeAssembler? Start with <strong><a href="guide/getting-started/">Getting Started</a></strong> —
-install, first forge, and pointers into the rest of the guide. End-to-end
-in about ten minutes.</p>
-<p>Ready to go deeper? The <strong>User Guide</strong> covers
-<a href="guide/sections-and-segments/">sections &amp; segments</a>,
-<a href="guide/overlays/">overlays</a>,
-<a href="guide/joiners/">joiners</a>,
-<a href="guide/channels/">output channels</a>, and
-<a href="guide/debug-mode/">debug mode</a>.</p>
-<hr />
-<h2 id="download">Download<a class="headerlink" href="#download" title="Permanent link">&para;</a></h2>
-<p>Binaries land on the
-<a href="https://github.com/liquid-releasing/forgeassembler-releases">forgeassembler-releases</a>
-repository, one per platform (Windows, macOS, Linux). Watch that repo
-for new tags.</p>
-<hr />
-<h2 id="community">Community<a class="headerlink" href="#community" title="Permanent link">&para;</a></h2>
-<p>Questions, feedback, bug reports: join the
+<p>Debug mode is a no-op when off, so you can leave it on for a while
+without any performance cost.</p>
+<h2 id="what-gets-recorded">What gets recorded<a class="headerlink" href="#what-gets-recorded" title="Permanent link">&para;</a></h2>
+<p>Only these events — not keystrokes, not project contents, not media:</p>
+<ul>
+<li><code>project_load_json</code> — you loaded a project from a file</li>
+<li><code>new_project_clicked</code> — you started a fresh project</li>
+<li><code>forge_clicked</code> — you pressed Forge, with a hash of the project
+  state plus section count and channel list</li>
+<li><code>forge_funscripts_done</code> / <code>forge_video_done</code> — a pipeline stage
+  completed cleanly</li>
+<li><code>forge_funscripts_failed</code> / <code>forge_video_failed</code> — a pipeline
+  stage raised, with the exception message</li>
+</ul>
+<p>Each event has a timestamp and a simple payload. No file paths get
+stored verbatim — paths are hashed for privacy.</p>
+<h2 id="marking-a-specific-issue">Marking a specific issue<a class="headerlink" href="#marking-a-specific-issue" title="Permanent link">&para;</a></h2>
+<p>When you see something wrong (wrong volume, missing overlay, a UI
+glitch, anything), click <strong>⚑ Mark this as an issue</strong>. You'll be
+prompted for a one-line description.</p>
+<p>The mark becomes its own event in the log next to whatever you just
+did. When you're ready to report, the marks are the bookmarks that
+help us (or you) re-read the session.</p>
+<p>Rule of thumb: one ⚑ per observed problem, in the moment. Don't try
+to retroactively describe; let the nearby events carry the context.</p>
+<h2 id="exporting-the-log">Exporting the log<a class="headerlink" href="#exporting-the-log" title="Permanent link">&para;</a></h2>
+<p>Click <strong>Export debug log</strong>. You get a JSONL file in
+<code>~/.forgeassembler/debug_logs/</code> named with the session start time.
+Copy the file to wherever you're reporting the issue.</p>
+<p>JSONL is one-event-per-line JSON. Each line is human-readable.
+Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">&quot;t&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1713709200.112</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;event&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;forge_clicked&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;hash&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ab12…&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sections&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;channels&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;main&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;multi_axis&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;prostate&quot;</span><span class="p">]}</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="p">{</span><span class="nt">&quot;t&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1713709210.882</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;event&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mark&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Section 2 narration too quiet&quot;</span><span class="p">}</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">{</span><span class="nt">&quot;t&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1713709222.001</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;event&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;forge_video_done&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;duration_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">22.1</span><span class="p">}</span>
+</code></pre></div>
+<h2 id="what-to-include-in-a-bug-report">What to include in a bug report<a class="headerlink" href="#what-to-include-in-a-bug-report" title="Permanent link">&para;</a></h2>
+<ol>
+<li>The debug log JSONL (mandatory)</li>
+<li>A short description of what you expected vs what happened</li>
+<li>The project JSON if you're willing to share it (strip media
+   paths if you're paranoid; they're already hashed in the log)</li>
+<li>OS + app version (see About dialog → Help menu)</li>
+</ol>
+<p>File the report on
+<a href="https://github.com/liquid-releasing/forgeassembler/issues">the ForgeAssembler issue tracker</a>
+or drop it in the
 <a href="https://discord.gg/sZWCqgxY">Liquid Releasing Discord</a>.</p>
+<h2 id="when-not-to-use-debug-mode">When NOT to use debug mode<a class="headerlink" href="#when-not-to-use-debug-mode" title="Permanent link">&para;</a></h2>
+<p>If you already know the fix is a settings tweak (volume too low,
+wrong position, etc.), just fix it — you don't need to report every
+minor adjustment. Debug mode pays off when:</p>
+<ul>
+<li>Something unexpected happens and you want a second forge to
+  confirm it's reproducible</li>
+<li>You're about to report a crash, missing output, wrong output</li>
+<li>You want to keep a record of exactly what you tested during a
+  long session</li>
+</ul>
 <hr />
-<p><em>ForgeAssembler is free software under the
-<a href="https://github.com/liquid-releasing/forgeassembler/blob/main/LICENSE">MIT License</a>.
-© 2026 Liquid Releasing.</em></p>
+<p>That's the whole user guide. Come back to
+<strong><a href="../getting-started/">Getting Started</a></strong> if you need the
+quick-reference pointers.</p>
 
 
 
@@ -1132,15 +1205,31 @@ for new tags.</p>
       
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
+          
+          <a href="../channels/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Output Channels">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Output Channels
+              </div>
+            </div>
+          </a>
+        
         
           
-          <a href="guide/getting-started/" class="md-footer__link md-footer__link--next" aria-label="Next: Getting Started">
+          <a href="../title-cards/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Getting Started
+                Overview
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1203,10 +1292,10 @@ for new tags.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

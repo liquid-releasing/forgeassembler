@@ -10,29 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/">
+        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/guide/channels/">
       
       
+        <link rel="prev" href="../joiners/">
       
-        <link rel="next" href="guide/getting-started/">
+      
+        <link rel="next" href="../debug-mode/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>ForgeAssembler</title>
+        <title>Output Channels - ForgeAssembler</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,7 +53,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -76,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#forgeassembler" class="md-skip">
+        <a href="#output-channels" class="md-skip">
           Skip to content
         </a>
       
@@ -90,7 +92,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="ForgeAssembler" class="md-header__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
+    <a href="../.." title="ForgeAssembler" class="md-header__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -110,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              Output Channels
             
           </span>
         </div>
@@ -221,11 +223,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="." class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -244,7 +244,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="guide/getting-started/" class="md-tabs__link">
+      <a href="../getting-started/" class="md-tabs__link">
         
   
   
@@ -261,11 +261,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="guide/sections-and-segments/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../sections-and-segments/" class="md-tabs__link">
           
   
   
@@ -285,7 +287,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="guide/title-cards/" class="md-tabs__link">
+        <a href="../title-cards/" class="md-tabs__link">
           
   
   
@@ -303,7 +305,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="FEATURES/" class="md-tabs__link">
+      <a href="../../FEATURES/" class="md-tabs__link">
         
   
   
@@ -322,7 +324,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="ARCHITECTURE/" class="md-tabs__link">
+      <a href="../../ARCHITECTURE/" class="md-tabs__link">
         
   
   
@@ -357,7 +359,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="ForgeAssembler" class="md-nav__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
+    <a href="../.." title="ForgeAssembler" class="md-nav__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -384,37 +386,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -430,70 +405,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#what-it-does" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What it does
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#getting-started" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Getting started
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#download" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Download
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#community" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Community
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -505,7 +416,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/getting-started/" class="md-nav__link">
+      <a href="../getting-started/" class="md-nav__link">
         
   
   
@@ -529,28 +440,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
-        
-          
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -568,7 +482,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -586,7 +500,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/sections-and-segments/" class="md-nav__link">
+      <a href="../sections-and-segments/" class="md-nav__link">
         
   
   
@@ -614,7 +528,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/overlays/" class="md-nav__link">
+      <a href="../overlays/" class="md-nav__link">
         
   
   
@@ -642,7 +556,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/joiners/" class="md-nav__link">
+      <a href="../joiners/" class="md-nav__link">
         
   
   
@@ -667,10 +581,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="guide/channels/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Channels
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -686,6 +627,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-detection-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How detection works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-concatenation-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How concatenation works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#default-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default channels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-2-channels-not-yet-implemented" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase-2 channels (not yet implemented)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#produce-funscripts-without-producing-a-video" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Produce funscripts without producing a video
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heatmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heatmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -698,7 +725,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/debug-mode/" class="md-nav__link">
+      <a href="../debug-mode/" class="md-nav__link">
         
   
   
@@ -787,7 +814,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/title-cards/" class="md-nav__link">
+      <a href="../title-cards/" class="md-nav__link">
         
   
   
@@ -815,7 +842,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/title-cards/getting_started_white_on_transparent/" class="md-nav__link">
+      <a href="../title-cards/getting_started_white_on_transparent/" class="md-nav__link">
         
   
   
@@ -843,7 +870,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/title-cards/getting_started_black_cutout/" class="md-nav__link">
+      <a href="../title-cards/getting_started_black_cutout/" class="md-nav__link">
         
   
   
@@ -871,7 +898,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guide/title-cards/scifi_cockpit_example/" class="md-nav__link">
+      <a href="../title-cards/scifi_cockpit_example/" class="md-nav__link">
         
   
   
@@ -906,7 +933,7 @@
   
   
     <li class="md-nav__item">
-      <a href="FEATURES/" class="md-nav__link">
+      <a href="../../FEATURES/" class="md-nav__link">
         
   
   
@@ -933,7 +960,7 @@
   
   
     <li class="md-nav__item">
-      <a href="ARCHITECTURE/" class="md-nav__link">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
         
   
   
@@ -980,10 +1007,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-it-does" class="md-nav__link">
+  <a href="#how-detection-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it does
+        How detection works
       
     </span>
   </a>
@@ -991,10 +1018,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#getting-started" class="md-nav__link">
+  <a href="#how-concatenation-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Getting started
+        How concatenation works
       
     </span>
   </a>
@@ -1002,10 +1029,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#download" class="md-nav__link">
+  <a href="#default-channels" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Download
+        Default channels
       
     </span>
   </a>
@@ -1013,10 +1040,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#community" class="md-nav__link">
+  <a href="#phase-2-channels-not-yet-implemented" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Community
+        Phase-2 channels (not yet implemented)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#produce-funscripts-without-producing-a-video" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Produce funscripts without producing a video
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heatmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heatmap
       
     </span>
   </a>
@@ -1043,59 +1092,91 @@
   
 
 
-<h1 id="forgeassembler">ForgeAssembler<a class="headerlink" href="#forgeassembler" title="Permanent link">&para;</a></h1>
-<p><strong>Assemble many FunscriptForge clips into one long combined video and
-funscript bundle.</strong></p>
-<p><img alt="ForgeAssembler" src="/media/forgeassembler_horizontal.png" /></p>
-<p>ForgeAssembler is the third tool in the Liquid Releasing family.
-Where <a href="https://github.com/liquid-releasing/funscriptforge">FunscriptForge</a>
-shapes and polishes a single clip's funscripts and
-<a href="https://github.com/liquid-releasing/forgeyt">ForgeYT</a> pulls audio
-from YouTube, ForgeAssembler is the tool that takes finished clips
-and concatenates them — videos, every funscript channel, chapter
-markers — into one long output.</p>
-<hr />
-<h2 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
+<h1 id="output-channels">Output Channels<a class="headerlink" href="#output-channels" title="Permanent link">&para;</a></h1>
+<p>Funscripts come in flavours. Each flavour is a separate file with
+its own name suffix:</p>
+<table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Suffix</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main</td>
+<td><code>.funscript</code></td>
+<td>Standard linear devices (Handy, Kiiroo, etc.)</td>
+</tr>
+<tr>
+<td>Multi-axis</td>
+<td><code>.multi_axis.funscript</code></td>
+<td>SR6 / OSR2 and similar 6DOF rigs</td>
+</tr>
+<tr>
+<td>3-phase estim</td>
+<td><code>.e1.funscript</code>, <code>.e2.funscript</code>, <code>.e3.funscript</code></td>
+<td>RESTIM, 3-channel estim</td>
+</tr>
+<tr>
+<td>Prostate</td>
+<td><code>.prostate.funscript</code></td>
+<td>Prostate-specific devices</td>
+</tr>
+</tbody>
+</table>
+<p>The sidebar <strong>Output channels</strong> section lets you pick which channels
+get written for the combined output.</p>
+<h2 id="how-detection-works">How detection works<a class="headerlink" href="#how-detection-works" title="Permanent link">&para;</a></h2>
+<p>When you add a clip, ForgeAssembler looks for matching funscript
+files in:</p>
+<ol>
+<li>The same folder as the clip (<code>your_clip.mp4</code> →
+   <code>your_clip.funscript</code>, <code>your_clip.multi_axis.funscript</code>, …)</li>
+<li>Named sub-folders: <code>estim/</code>, <code>multi_axis/</code>, <code>prostate/</code>,
+   <code>audio_estim/</code> — matching the FunscriptForge output layout</li>
+</ol>
+<p>Root-level matches win over sub-folder dupes if the same name appears
+in both places.</p>
+<p>Detected channels show up on each segment card as
+<code>Funscripts: main, multi_axis, e1, e2, e3, prostate, …</code>.</p>
+<h2 id="how-concatenation-works">How concatenation works<a class="headerlink" href="#how-concatenation-works" title="Permanent link">&para;</a></h2>
+<p>For each enabled channel, ForgeAssembler walks every segment in
+playback order and stitches the funscript timelines back-to-back.
+Gaps (fade-to-black bridges) produce silent stretches in the
+funscript.</p>
+<p>If a specific clip is missing a channel you've enabled, the engine
+leaves that gap silent rather than failing — so a project with one
+clip that doesn't have multi-axis still produces a valid
+<code>&lt;project&gt;.multi_axis.funscript</code> with gaps for the missing stretch.</p>
+<h2 id="default-channels">Default channels<a class="headerlink" href="#default-channels" title="Permanent link">&para;</a></h2>
+<p>By default ForgeAssembler writes <strong>main</strong>, <strong>multi_axis</strong>,
+<strong>three_phase_estim</strong>, and <strong>prostate</strong>. Turn channels off in the
+sidebar if you want fewer files.</p>
+<h2 id="phase-2-channels-not-yet-implemented">Phase-2 channels (not yet implemented)<a class="headerlink" href="#phase-2-channels-not-yet-implemented" title="Permanent link">&para;</a></h2>
+<p>The sidebar also shows <strong>four_phase_estim</strong>, <strong>audio_estim</strong>, and
+<strong>pulse_frequency</strong>. These are off by default and greyed out because
+the concat logic isn't written yet. Safe to ignore until a future
+release lands them.</p>
+<h2 id="produce-funscripts-without-producing-a-video">Produce funscripts without producing a video<a class="headerlink" href="#produce-funscripts-without-producing-a-video" title="Permanent link">&para;</a></h2>
+<p>In the <strong>Output</strong> section of the sidebar, toggle:</p>
 <ul>
-<li>Concatenates videos into a single MP4 at your chosen resolution.</li>
-<li>Concatenates every funscript channel in lockstep: main, multi-axis,
-  3-phase estim, prostate, and more.</li>
-<li>Drops in joiners between sections: straight cuts, fade-to-black
-  with configurable hold and fade times, closing fade at the end.</li>
-<li>Writes chapter markers, one per section, into the MP4.</li>
-<li>Normalizes audio loudness to the YouTube standard (−16 LUFS).</li>
-<li>Per-section overlays: image (PNG/JPG with alpha), audio (music
-  beds / ambience), or text (system-font title cards).</li>
-<li>Renders a heatmap of the main funscript track alongside the output.</li>
-<li>Saves the whole project as a reusable JSON file — hand-edit it,
-  script it, version it.</li>
+<li><strong>Produce video</strong> — on by default</li>
+<li><strong>Produce funscripts</strong> — on by default</li>
 </ul>
-<p>A full feature list lives on the <a href="FEATURES/">Features</a> page.</p>
+<p>You can turn off <strong>Produce video</strong> if you only need the combined
+funscript bundle (faster, no ffmpeg encoding). Useful when
+iterating on funscript edits without re-rendering a long video.</p>
+<h2 id="heatmap">Heatmap<a class="headerlink" href="#heatmap" title="Permanent link">&para;</a></h2>
+<p>When <strong>Produce video</strong> is on, ForgeAssembler also writes a
+<code>.heatmap.png</code> alongside the output. It's a visual density map of
+the main funscript track across the whole combined output. Handy
+for a quick read of pacing — dense stretches, quiet stretches,
+spikes.</p>
 <hr />
-<h2 id="getting-started">Getting started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
-<p>New to ForgeAssembler? Start with <strong><a href="guide/getting-started/">Getting Started</a></strong> —
-install, first forge, and pointers into the rest of the guide. End-to-end
-in about ten minutes.</p>
-<p>Ready to go deeper? The <strong>User Guide</strong> covers
-<a href="guide/sections-and-segments/">sections &amp; segments</a>,
-<a href="guide/overlays/">overlays</a>,
-<a href="guide/joiners/">joiners</a>,
-<a href="guide/channels/">output channels</a>, and
-<a href="guide/debug-mode/">debug mode</a>.</p>
-<hr />
-<h2 id="download">Download<a class="headerlink" href="#download" title="Permanent link">&para;</a></h2>
-<p>Binaries land on the
-<a href="https://github.com/liquid-releasing/forgeassembler-releases">forgeassembler-releases</a>
-repository, one per platform (Windows, macOS, Linux). Watch that repo
-for new tags.</p>
-<hr />
-<h2 id="community">Community<a class="headerlink" href="#community" title="Permanent link">&para;</a></h2>
-<p>Questions, feedback, bug reports: join the
-<a href="https://discord.gg/sZWCqgxY">Liquid Releasing Discord</a>.</p>
-<hr />
-<p><em>ForgeAssembler is free software under the
-<a href="https://github.com/liquid-releasing/forgeassembler/blob/main/LICENSE">MIT License</a>.
-© 2026 Liquid Releasing.</em></p>
+<p>Next: <strong><a href="../debug-mode/">Debug mode</a></strong> — what to turn on when
+something goes wrong, and how to capture a clean bug report.</p>
 
 
 
@@ -1132,15 +1213,31 @@ for new tags.</p>
       
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
+          
+          <a href="../joiners/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Joiners">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Joiners
+              </div>
+            </div>
+          </a>
+        
         
           
-          <a href="guide/getting-started/" class="md-footer__link md-footer__link--next" aria-label="Next: Getting Started">
+          <a href="../debug-mode/" class="md-footer__link md-footer__link--next" aria-label="Next: Debug Mode">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Getting Started
+                Debug Mode
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1203,10 +1300,10 @@ for new tags.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>
