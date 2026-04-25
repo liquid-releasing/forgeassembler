@@ -643,13 +643,22 @@ def _render_add_clips_panel(
             "overlay": f"As an OVERLAY on {target_word} section",
             "text": f"As TEXT on {target_word} section",
         }
-        mode_options = [m for m in allowed_modes if m in all_mode_labels]
+        # Modes that require an existing section to target. Hide them
+        # entirely on an empty project — a fresh project should only
+        # offer "ONE NEW" and "SEPARATE NEW" so the radio doesn't
+        # advertise options the user can't actually use.
+        modes_needing_section = {"current_section", "overlay", "text"}
+        mode_options = [
+            m for m in allowed_modes
+            if m in all_mode_labels
+            and (project.sections or m not in modes_needing_section)
+        ]
         mode_labels = {m: all_mode_labels[m] for m in mode_options}
-        # When the project has no sections and we're at page bottom,
-        # only "new_section" is a valid target — snap the mode back so
-        # the radio isn't stuck on a disabled option after "New project".
-        if not project.sections and "new_section" in mode_options:
-            st.session_state["add_target_mode"] = "new_section"
+        # Snap the persisted choice back to a valid one if the user
+        # had previously selected a section-requiring mode and then
+        # cleared the project (or vice-versa).
+        if st.session_state["add_target_mode"] not in mode_options:
+            st.session_state["add_target_mode"] = mode_options[0]
         # If the persisted mode isn't in the allowed list (e.g. user
         # had "new_section" selected then entered edit mode), snap to
         # the first allowed mode so the radio doesn't crash.
@@ -657,13 +666,17 @@ def _render_add_clips_panel(
         if current_mode not in mode_options:
             st.session_state["add_target_mode"] = mode_options[0]
             current_mode = mode_options[0]
+        # On an empty project, only the new-section modes work, so
+        # disable the rest in the label rather than locking the whole
+        # radio. (Streamlit's st.radio doesn't support per-option
+        # disabling — we just gate via the Add button's disabled flag
+        # below, which already checks `project.sections`.)
         st.session_state["add_target_mode"] = st.radio(
             "Add target",
             options=mode_options,
             index=mode_options.index(current_mode),
             format_func=lambda k: mode_labels[k],
             label_visibility="collapsed",
-            disabled=not project.sections,
         )
     with target_cols[1]:
         _mode = st.session_state["add_target_mode"]
@@ -1148,6 +1161,37 @@ with tab_build:
                         st.session_state["editing_section_id"] = None
                     project.remove_section(sec.id)
                     st.rerun()
+
+            # ── Insert above / below (focused section only) ──────
+            # Inserts an empty Section at the chosen index with default
+            # "none" (Cut) leading joiner. Focus auto-jumps to the new
+            # section so the next user gesture (drop a title-card path
+            # in Add Clips) lands there immediately — matches the spec
+            # "add something here" intent.
+            if is_editing_this:
+                ins_cols = st.columns([2, 2, 6])
+                with ins_cols[0]:
+                    if st.button(
+                        "⬆ Insert above",
+                        key=f"insup_{sec.id}",
+                        help="Insert a new empty section before this one",
+                        use_container_width=True,
+                    ):
+                        new_sec = Section(id=new_id("sec"))
+                        project.sections.insert(sec_idx, new_sec)
+                        st.session_state["editing_section_id"] = new_sec.id
+                        st.rerun()
+                with ins_cols[1]:
+                    if st.button(
+                        "⬇ Insert below",
+                        key=f"insdn_{sec.id}",
+                        help="Insert a new empty section after this one",
+                        use_container_width=True,
+                    ):
+                        new_sec = Section(id=new_id("sec"))
+                        project.sections.insert(sec_idx + 1, new_sec)
+                        st.session_state["editing_section_id"] = new_sec.id
+                        st.rerun()
 
             sec_dur_ms = _section_duration_ms(sec, _ffmpeg_exe_for_ui)
             sec_dur_label = (
