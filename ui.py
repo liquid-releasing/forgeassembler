@@ -541,20 +541,30 @@ def _add_from_path(
         new_segments.append(Segment(id=new_id("seg"), video=str(clip.video)))
         kind = "video"
 
-    if mode == "new_section" or not project.sections:
+    if mode == "new_section":
+        # ONE new section containing all the clips together.
         project.add_section(Section(
             id=new_id("sec"), segments=new_segments,
         ))
     elif mode == "new_section_per_file":
         # One NEW section per segment. A folder with N clips yields N
-        # sections; a single file collapses to the same behavior as
-        # "new_section".
+        # sections; a single file collapses to one new section. Works
+        # the same on an empty project — the previous fallback that
+        # lumped everything into one section was a bug.
         for seg in new_segments:
             project.add_section(Section(
                 id=new_id("sec"), segments=[seg],
             ))
     else:
-        project.sections[target_section_idx].segments.extend(new_segments)
+        # current_section / overlay / text targets need an existing
+        # section. Fall back to creating one if the project is empty
+        # so the user's first add still does something useful.
+        if not project.sections:
+            project.add_section(Section(
+                id=new_id("sec"), segments=new_segments,
+            ))
+        else:
+            project.sections[target_section_idx].segments.extend(new_segments)
 
     return len(new_segments), kind
 
@@ -981,7 +991,22 @@ _OVERVIEW_ADD_MODES: list[str] = [
     "new_section", "new_section_per_file",
     "current_section", "overlay", "text",
 ]
-_EDIT_ADD_MODES: list[str] = ["current_section", "overlay", "text"]
+# In edit mode the spec called for ONLY the THIS-section / overlay /
+# text modes, but dogfood found that empty inserted sections want to
+# bulk-load too (e.g. drop a folder of 16 victoriaoats files as 16
+# new sections starting from this position). Allow all five — the
+# THIS-modes target the focused section as designed; the NEW-section
+# modes still append at the END of the project (the existing semantics
+# from page-bottom Add Clips). Trade-off: slight label inconsistency
+# (THIS vs LAST in the same panel) for full bulk-add flexibility from
+# inside edit mode.
+_EDIT_ADD_MODES: list[str] = [
+    "current_section",
+    "new_section",
+    "new_section_per_file",
+    "overlay",
+    "text",
+]
 
 
 def _render_collapsed_section_row(
@@ -1020,18 +1045,105 @@ def _render_collapsed_section_row(
                 st.rerun()
 
 
-def _split_section_here(section_idx: int, clip_idx: int) -> None:
+def _split_section_here(
+    section_idx: int, clip_idx: int, ffmpeg_exe: str | None = None,
+) -> None:
     """Split a section so everything AFTER `clip_idx` becomes a new
-    section (placed immediately after the current one in the project)
-    with a default cut leading joiner."""
+    section (placed immediately after the current one) with a default
+    cut leading joiner.
+
+    Overlays redistribute by their time window:
+      * Entirely within the top half → stays on the top section.
+      * Entirely within the bottom half → moves to the new section
+        with start_s shifted left by the split offset.
+      * Straddles the boundary → kept on top (clamped to top's new
+        duration) AND duplicated onto bottom (start_s = 0, duration =
+        whatever spilled over).
+      * Full-section (`duration_s == 0`) → kept on both halves as
+        full-section, since the user's intent was "covers the whole
+        section."
+
+    `ffmpeg_exe` is needed to probe the top half's duration when video
+    overlays straddle the boundary. When None (or probes fail), the
+    fallback is to keep all overlays on the top section unchanged.
+    """
+    import dataclasses  # noqa: PLC0415
+
     sec = project.sections[section_idx]
     if clip_idx + 1 >= len(sec.segments):
         return  # nothing to split off
+
+    # Compute the split offset in seconds — total duration of the
+    # clips that stay on the top section (segments[0..clip_idx]).
+    top_segments = sec.segments[: clip_idx + 1]
+    bottom_segments = sec.segments[clip_idx + 1:]
+
+    split_offset_ms = 0
+    probe_failed = False
+    for seg in top_segments:
+        d = _segment_duration_ms(seg, ffmpeg_exe)
+        if d is None:
+            probe_failed = True
+            break
+        split_offset_ms += d
+    split_offset_s = split_offset_ms / 1000.0 if not probe_failed else None
+
+    # Classify each overlay.
+    top_overlays: list[SectionOverlay] = []
+    bottom_overlays: list[SectionOverlay] = []
+    for ov in sec.overlays:
+        if split_offset_s is None:
+            # Can't compute boundary — keep everything on top, safe fallback.
+            top_overlays.append(ov)
+            continue
+
+        # Full-section overlay → covers both halves.
+        if ov.duration_s == 0:
+            top_overlays.append(ov)
+            bottom_copy = dataclasses.replace(
+                ov, id=new_id("ov"), start_s=0.0,
+            )
+            bottom_overlays.append(bottom_copy)
+            continue
+
+        ov_end_s = ov.start_s + ov.duration_s
+
+        if ov_end_s <= split_offset_s:
+            # Entirely in top half — unchanged.
+            top_overlays.append(ov)
+        elif ov.start_s >= split_offset_s:
+            # Entirely in bottom half — shift left by split offset.
+            bottom_overlays.append(dataclasses.replace(
+                ov,
+                id=new_id("ov"),
+                start_s=ov.start_s - split_offset_s,
+            ))
+        else:
+            # Straddles the boundary — clamp top, shift+trim bottom.
+            top_overlays.append(dataclasses.replace(
+                ov,
+                duration_s=split_offset_s - ov.start_s,
+                # The fade_out belongs to the bottom half now; zero it
+                # on the top so the visible content doesn't fade out
+                # mid-section unexpectedly.
+                fade_out_s=0.0,
+            ))
+            bottom_overlays.append(dataclasses.replace(
+                ov,
+                id=new_id("ov"),
+                start_s=0.0,
+                duration_s=ov_end_s - split_offset_s,
+                # Symmetrically, the fade_in already happened on top.
+                fade_in_s=0.0,
+            ))
+
+    sec.segments = top_segments
+    sec.overlays = top_overlays
     new_sec = Section(
         id=new_id("sec"),
-        segments=sec.segments[clip_idx + 1:],
+        segments=bottom_segments,
+        overlays=bottom_overlays,
     )
-    sec.segments = sec.segments[: clip_idx + 1]
     project.sections.insert(section_idx + 1, new_sec)
 
 
@@ -1204,11 +1316,17 @@ with tab_build:
                 f"_{sec.chapter_name()}_",
             )
 
-            # ── Clip rows ────────────────────────────────────────
+            # ── Clip rows (with split-here gaps between consecutive
+            # clips). The split affordance lives BETWEEN clips, not on
+            # them — splitting happens at a boundary, and putting the
+            # button on the clip row was easy to misread as "delete
+            # this clip" (✂ = cut = remove in many users' mental
+            # models). 🔪 + "Split here" + tooltip make the action
+            # explicit and the boundary visible.
             for clip_idx, seg in enumerate(sec.segments):
                 row = st.container(border=False)
                 with row:
-                    cols = st.columns([1, 6, 1, 1, 1])
+                    cols = st.columns([1, 6, 1, 1])
                     vpath = Path(seg.video)
                     mtime = vpath.stat().st_mtime if vpath.exists() else 0.0
 
@@ -1269,26 +1387,36 @@ with tab_build:
                             ))
 
                     with cols[3]:
-                        # Split-section icon (disabled for the last clip —
-                        # nothing after it to split off).
-                        can_split = clip_idx + 1 < len(sec.segments)
-                        if st.button(
-                            "✂️", key=f"split_{seg.id}",
-                            help=(
-                                "Split section here — clips after this one "
-                                "move to a new section"
-                            ),
-                            disabled=not can_split,
-                        ):
-                            _split_section_here(sec_idx, clip_idx)
-                            st.rerun()
-
-                    with cols[4]:
                         if st.button(
                             "✕", key=f"rm_{seg.id}",
                             help="Remove this clip",
                         ):
                             project.remove(seg.id)
+                            st.rerun()
+
+                # Inter-clip "Split here" affordance. Renders BETWEEN
+                # this clip and the next; never after the last clip
+                # (nothing to split off). The new section gets all
+                # clips from clip_idx+1 onward; this section keeps
+                # 0..clip_idx.
+                if clip_idx + 1 < len(sec.segments):
+                    split_cols = st.columns([2, 4, 6])
+                    with split_cols[1]:
+                        if st.button(
+                            "🔪 Split here",
+                            key=f"split_{seg.id}",
+                            help=(
+                                f"Split section into two between "
+                                f"`{Path(sec.segments[clip_idx].video).name}` "
+                                f"and `{Path(sec.segments[clip_idx + 1].video).name}`. "
+                                f"Clips below this point move to a new "
+                                f"section."
+                            ),
+                            use_container_width=True,
+                        ):
+                            _split_section_here(
+                                sec_idx, clip_idx, _ffmpeg_exe_for_ui,
+                            )
                             st.rerun()
 
             if not sec.segments:
