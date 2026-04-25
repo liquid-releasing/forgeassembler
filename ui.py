@@ -226,6 +226,8 @@ if "project" not in st.session_state:
     st.session_state["project"] = _initial_project()
 if "add_target_mode" not in st.session_state:
     st.session_state["add_target_mode"] = "new_section"
+if "editing_section_id" not in st.session_state:
+    st.session_state["editing_section_id"] = None
 
 # Transfer slot: Browse buttons write a picked path here before
 # calling st.rerun(). On the next run — BEFORE the text_input widget
@@ -261,6 +263,9 @@ with st.sidebar:
                     data = _json.loads(uploaded.read().decode("utf-8"))
                     st.session_state["project"] = Project.from_dict(data)
                     st.session_state["_last_loaded_file_id"] = uploaded.file_id
+                    # Auto-exit edit mode on load — the focused section ID
+                    # from the previous project won't exist in the new one.
+                    st.session_state["editing_section_id"] = None
                     try:
                         from forgeassembler_core.debug import log_event, hash_project
                         log_event(
@@ -306,6 +311,7 @@ with st.sidebar:
             # dropped file doesn't re-apply itself on the next rerun.
             st.session_state.pop("project_upload", None)
             st.session_state.pop("_last_loaded_file_id", None)
+            st.session_state["editing_section_id"] = None
             st.rerun()
 
     with st.expander("Produce", expanded=True):
@@ -547,6 +553,42 @@ def _add_from_path(path_str: str, mode: str) -> tuple[int, str]:
     return len(new_segments), kind
 
 
+def _render_collapsed_section_row(
+    sec: Section, sec_idx: int, ffmpeg_exe: str | None,
+) -> None:
+    """One-line summary card rendered for non-focused sections while
+    edit mode is active. ✏ switches focus to this section.
+
+    Spec: ✏ ONLY switches — don't make the whole row clickable.
+    Streamlit re-renders frequently; click-anywhere in a row could
+    catch a mis-click during a repaint.
+    """
+    sec_dur_ms = _section_duration_ms(sec, ffmpeg_exe)
+    dur_label = (
+        f" · {_fmt_duration(sec_dur_ms)}" if sec_dur_ms > 0 else ""
+    )
+    clip_label = (
+        f"{len(sec.segments)} clip" if len(sec.segments) == 1
+        else f"{len(sec.segments)} clips"
+    )
+    with st.container(border=True):
+        cols = st.columns([8, 1])
+        with cols[0]:
+            st.markdown(
+                f"**Section {sec_idx + 1}** · "
+                f"_{sec.chapter_name()}_ · "
+                f"{clip_label}{dur_label}",
+            )
+        with cols[1]:
+            if st.button(
+                "📝",
+                key=f"editbtn_{sec.id}",
+                help="Edit this section",
+            ):
+                st.session_state["editing_section_id"] = sec.id
+                st.rerun()
+
+
 def _split_section_here(section_idx: int, clip_idx: int) -> None:
     """Split a section so everything AFTER `clip_idx` becomes a new
     section (placed immediately after the current one in the project)
@@ -581,10 +623,21 @@ with tab_build:
         _ffmpeg_exe_for_ui = None
 
     # ── Existing sections, each rendered as a bordered card ───────
+    editing_section_id = st.session_state.get("editing_section_id")
     for sec_idx, sec in enumerate(project.sections):
+        # When edit mode is focused on a different section, render this
+        # one as a one-line summary instead of the full card. The
+        # focused section AND the no-edit-active default both fall
+        # through to the existing full-card rendering below.
+        if editing_section_id is not None and editing_section_id != sec.id:
+            _render_collapsed_section_row(sec, sec_idx, _ffmpeg_exe_for_ui)
+            continue
+
+        is_editing_this = editing_section_id == sec.id
         with st.container(border=True):
-            # Section header row: leading joiner / section name / remove
-            hcols = st.columns([2, 3, 3, 1])
+            # Section header row: leading joiner / fade params / name /
+            # ✏ edit (when not currently focused) / 🗑 remove
+            hcols = st.columns([2, 3, 3, 1, 1])
             with hcols[0]:
                 cur_jtype = sec.leading_joiner.joiner_type
                 if cur_jtype not in _JOINER_TYPES:
@@ -654,10 +707,27 @@ with tab_build:
                 ) or None
 
             with hcols[3]:
+                # ✏ enters edit mode by focusing this section. Hidden
+                # when this section is already focused (Done editing
+                # at the bottom is the exit affordance for that case).
+                if not is_editing_this:
+                    if st.button(
+                        "📝",
+                        key=f"editbtn_top_{sec.id}",
+                        help="Edit this section (collapses the others)",
+                    ):
+                        st.session_state["editing_section_id"] = sec.id
+                        st.rerun()
+
+            with hcols[4]:
                 if st.button(
-                    "🗑", key=f"rmsec_{sec.id}",
+                    "🗑️", key=f"rmsec_{sec.id}",
                     help="Remove this section (and its clips)",
                 ):
+                    # Auto-exit edit mode if we just deleted the
+                    # focused section.
+                    if st.session_state.get("editing_section_id") == sec.id:
+                        st.session_state["editing_section_id"] = None
                     project.remove_section(sec.id)
                     st.rerun()
 
@@ -741,7 +811,7 @@ with tab_build:
                         # nothing after it to split off).
                         can_split = clip_idx + 1 < len(sec.segments)
                         if st.button(
-                            "✂", key=f"split_{seg.id}",
+                            "✂️", key=f"split_{seg.id}",
                             help=(
                                 "Split section here — clips after this one "
                                 "move to a new section"
@@ -928,6 +998,19 @@ with tab_build:
                     )
             with tcols[2]:
                 st.caption(end_caption)
+
+            # ── Done editing button (focused section only) ──────
+            # Bottom-of-card placement matches the Liquid Releasing
+            # convention of putting primary CTAs at the bottom.
+            if is_editing_this:
+                if st.button(
+                    "Done editing",
+                    key=f"done_edit_{sec.id}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    st.session_state["editing_section_id"] = None
+                    st.rerun()
 
     # ── Add clips panel ───────────────────────────────────────────
     st.divider()
