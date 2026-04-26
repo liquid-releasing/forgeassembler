@@ -29,7 +29,24 @@ MULTI_AXIS = {"pitch", "roll", "surge", "sway", "twist"}
 # Estim channel suffixes.
 ESTIM_3PHASE = {"alpha", "beta"}
 PROSTATE = {"alpha-prostate", "beta-prostate"}
-AUDIO_ESTIM_SUFFIXES = {".stereostim.wav", ".legacy.wav", ".prostate.stereostim.wav"}
+
+# Real-world haptic audio is ALWAYS a single MP3 per video stem (or
+# WAV in rare cases). The per-channel split (`.stereostim.wav` etc.)
+# exists in restim's docs and PythonDancer's internal pipeline but
+# isn't what users have on disk. Detection tries the per-channel
+# split first (more specific naming wins when present), then falls
+# back to a single generic haptic audio file.
+AUDIO_ESTIM_PER_CHANNEL_SUFFIXES = (
+    ".stereostim.wav",
+    ".legacy.wav",
+    ".prostate.stereostim.wav",
+)
+AUDIO_ESTIM_GENERIC_SUFFIXES = (".mp3", ".wav")
+# Kept for back-compat with v0.0.4 callers / tests; superseded by
+# the two specific tuples above.
+AUDIO_ESTIM_SUFFIXES = (
+    set(AUDIO_ESTIM_PER_CHANNEL_SUFFIXES) | set(AUDIO_ESTIM_GENERIC_SUFFIXES)
+)
 
 __all__ = [
     "DetectedClip",
@@ -118,25 +135,77 @@ def funscripts_for_stem(folder: Path, stem: str) -> dict[str, Path]:
     return out
 
 
+_AUDIO_ESTIM_EXTS: frozenset[str] = frozenset({".mp3", ".wav"})
+
+
 def audio_estim_for_stem(folder: Path, stem: str) -> dict[str, Path]:
-    """Find .stereostim.wav / .legacy.wav / .prostate.stereostim.wav
-    siblings of `stem`. Scans the immediate folder AND well-known
-    channel sub-folders (parity with `funscripts_for_stem`) so a
-    FunscriptForge / restim output layout — video next to .mp4, channel
-    audio nested under `audio_estim/` or `estim/` — picks up cleanly.
+    """Find every haptic-estim audio file for `stem`.
+
+    Scans the immediate folder AND the well-known channel sub-folders
+    (parity with `funscripts_for_stem`) so a FunscriptForge / restim
+    output layout — video next to `.mp4`, audio nested under
+    `audio_estim/` or `estim/` — picks up cleanly.
+
+    A file matches if its name is `{stem}.mp3`, `{stem}.wav`, or
+    `{stem}.<channel>.<mp3|wav>` — where `<channel>` is any
+    period-separated label. The returned dict keys are the engine
+    channel keys (the part between the stem and the extension, with
+    the extension preserved):
+
+      `0.mp3`                       → key `"mp3"`
+      `0.prostate.mp3`              → key `"prostate.mp3"`
+      `0.alpha-prostate.mp3`        → key `"alpha-prostate.mp3"`
+      `0.stereostim.wav`            → key `"stereostim.wav"`
+      `0.prostate.stereostim.wav`   → key `"prostate.stereostim.wav"`
+      `0.legacy.wav`                → key `"legacy.wav"`
+
+    Every channel any segment carries gets surfaced. Forge time
+    emits all of them; the downstream player picks what its hardware
+    needs at playback time. Immediate-folder files shadow sub-folder
+    duplicates.
     """
     search_dirs: list[Path] = [folder]
     for sub in _CHANNEL_SUBFOLDERS:
         d = folder / sub
         if d.is_dir():
             search_dirs.append(d)
+
     out: dict[str, Path] = {}
     for d in search_dirs:
-        for suffix in AUDIO_ESTIM_SUFFIXES:
-            p = d / f"{stem}{suffix}"
-            if p.exists():
-                # First hit wins — immediate folder beats sub-folders.
-                out.setdefault(suffix.lstrip("."), p)
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for f in entries:
+            if not f.is_file():
+                continue
+            ext = f.suffix.lower()
+            if ext not in _AUDIO_ESTIM_EXTS:
+                continue
+            name = f.name
+            # Must start with `{stem}.` (period separator) OR be exactly
+            # `{stem}<ext>` for the bare-main case.
+            if name == f"{stem}{ext}":
+                channel = ""
+            elif name.startswith(f"{stem}."):
+                # Strip the stem prefix and the file extension; the
+                # remainder is the channel suffix (e.g. "prostate" or
+                # "alpha-prostate" or "stereostim").
+                channel = name[len(stem) + 1 : -len(ext)]
+                if not channel:
+                    continue  # malformed (shouldn't happen given the equality above)
+            else:
+                continue  # unrelated file
+            # Build engine channel key:
+            #   bare `0.mp3` → "mp3"
+            #   `0.prostate.mp3` → "prostate.mp3"
+            #   `0.stereostim.wav` → "stereostim.wav"
+            if channel:
+                key = f"{channel}{ext}"  # e.g. "prostate" + ".mp3"
+            else:
+                key = ext.lstrip(".")  # bare main: ".mp3" -> "mp3"
+            # First hit wins (immediate folder beats sub-folders).
+            out.setdefault(key, f)
     return out
 
 

@@ -33,25 +33,59 @@ __all__ = [
     "AUDIO_ESTIM_CHANNELS",
     "build_audio_estim_command",
     "channel_files_for_layout",
+    "discover_channels_in_layout",
     "forge_audio_estim",
 ]
 
-# Output suffix for the combined per-channel WAV. Mirrors detect.py's
-# AUDIO_ESTIM_SUFFIXES; the dict key is the engine-internal channel
-# name (`stereostim` etc.) and the value is the file suffix appended
-# to the project basename (e.g. "combined.stereostim.wav").
+# Discovery is dynamic. Detection (`audio_estim_for_stem`) returns
+# one entry per `{stem}.<channel>.<ext>` file it finds; the engine
+# emits one combined output WAV/MP3 per discovered channel. Channel
+# keys mirror the file suffix shape:
+#
+#   `0.mp3`                       → channel "mp3"           → `<basename>.mp3`
+#   `0.prostate.mp3`              → channel "prostate.mp3"  → `<basename>.prostate.mp3`
+#   `0.alpha-prostate.mp3`        → channel "alpha-prostate.mp3" → `<basename>.alpha-prostate.mp3`
+#   `0.stereostim.wav`            → channel "stereostim.wav"   → `<basename>.stereostim.wav`
+#   `0.prostate.stereostim.wav`   → channel "prostate.stereostim.wav" → `<basename>.prostate.stereostim.wav`
+#
+# `AUDIO_ESTIM_CHANNELS` is kept (pinned to the per-channel WAV
+# split) for back-compat with v0.0.4 callers / tests; new code uses
+# `discover_channels_in_layout()`.
 AUDIO_ESTIM_CHANNELS: tuple[tuple[str, str], ...] = (
     ("stereostim.wav", ".stereostim.wav"),
     ("legacy.wav", ".legacy.wav"),
     ("prostate.stereostim.wav", ".prostate.stereostim.wav"),
 )
 
-# Target rate / layout for every concat. 48 kHz stereo matches the
-# video pipeline's audio output, keeps cross-compatibility, and lets
-# silence-fill segments mix cleanly with real ones at different
+# Target rate / layout for the WAV concat path. 48 kHz stereo matches
+# the video pipeline's audio output, keeps cross-compatibility, and
+# lets silence-fill segments mix cleanly with real ones at different
 # source rates.
 TARGET_SAMPLE_RATE = 48000
 TARGET_CHANNEL_LAYOUT = "stereo"
+
+
+def _output_codec_args(output_path: str) -> list[str]:
+    """Pick output codec based on the output file extension.
+
+    `.mp3` → libmp3lame at 192 kbit/s 48 kHz stereo. Mirrors typical
+    haptic-audio bitrate so the round-trip from .mp3 → concat → .mp3
+    doesn't grossly inflate or compress the source. `.wav` (and
+    everything else) → 16-bit PCM at 48 kHz stereo. Same defaults
+    the engine uses inside the video pipeline's audio path.
+    """
+    if output_path.lower().endswith(".mp3"):
+        return [
+            "-c:a", "libmp3lame",
+            "-b:a", "192k",
+            "-ar", str(TARGET_SAMPLE_RATE),
+            "-ac", "2",
+        ]
+    return [
+        "-c:a", "pcm_s16le",
+        "-ar", str(TARGET_SAMPLE_RATE),
+        "-ac", "2",
+    ]
 
 
 def _resolve_channel_audio_path(
@@ -103,6 +137,39 @@ def channel_has_any_audio(
         path is not None
         for path in channel_files_for_layout(project, layout, channel_key)
     )
+
+
+def discover_channels_in_layout(
+    project: "Project", layout: "Layout",
+) -> list[str]:
+    """Walk every segment in `layout` and return every channel key
+    any of them carries — sorted, de-duplicated.
+
+    The engine emits one combined output per discovered channel.
+    Stills are skipped (no haptic audio). Joiners contribute nothing.
+    """
+    from .detect import audio_estim_for_stem
+    from .project import Segment as _Seg
+    channels: set[str] = set()
+    for li in layout.items:
+        item = li.item
+        if not isinstance(item, _Seg):
+            continue
+        if item.is_still():
+            continue
+        video_path = Path(item.video)
+        if not video_path.exists():
+            # Still try the parent's listing — the segment may be on
+            # a path that's been moved; we don't want to silently
+            # drop its audio just because of a stale Path object.
+            channels.update(
+                audio_estim_for_stem(video_path.parent, video_path.stem).keys(),
+            )
+            continue
+        channels.update(
+            audio_estim_for_stem(video_path.parent, video_path.stem).keys(),
+        )
+    return sorted(channels)
 
 
 def build_audio_estim_command(
@@ -182,11 +249,7 @@ def build_audio_estim_command(
         )
 
     filter_complex = ";\n".join(filter_parts)
-    output_args = [
-        "-c:a", "pcm_s16le",
-        "-ar", str(TARGET_SAMPLE_RATE),
-        "-ac", "2",
-    ]
+    output_args = _output_codec_args(output_path)
 
     return FfmpegCommand(
         inputs=inputs,
@@ -225,11 +288,14 @@ def forge_audio_estim(
     stem = basename or project.output.basename or "combined"
 
     written: list[Path] = []
-    for channel_key, file_suffix in AUDIO_ESTIM_CHANNELS:
-        if not channel_has_any_audio(project, layout, channel_key):
-            continue  # nothing real to write for this channel
-
-        out_path = folder / f"{stem}{file_suffix}"
+    for channel_key in discover_channels_in_layout(project, layout):
+        # Channel key already encodes the file extension:
+        #   "mp3"                       → out: <stem>.mp3
+        #   "prostate.mp3"              → out: <stem>.prostate.mp3
+        #   "alpha-prostate.mp3"        → out: <stem>.alpha-prostate.mp3
+        #   "stereostim.wav"            → out: <stem>.stereostim.wav
+        #   "prostate.stereostim.wav"   → out: <stem>.prostate.stereostim.wav
+        out_path = folder / f"{stem}.{channel_key}"
         cmd = build_audio_estim_command(
             project, layout, channel_key, str(out_path),
         )
