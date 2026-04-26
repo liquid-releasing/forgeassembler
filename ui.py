@@ -226,6 +226,8 @@ if "project" not in st.session_state:
     st.session_state["project"] = _initial_project()
 if "add_target_mode" not in st.session_state:
     st.session_state["add_target_mode"] = "new_section"
+if "editing_section_id" not in st.session_state:
+    st.session_state["editing_section_id"] = None
 
 # Transfer slot: Browse buttons write a picked path here before
 # calling st.rerun(). On the next run — BEFORE the text_input widget
@@ -261,6 +263,9 @@ with st.sidebar:
                     data = _json.loads(uploaded.read().decode("utf-8"))
                     st.session_state["project"] = Project.from_dict(data)
                     st.session_state["_last_loaded_file_id"] = uploaded.file_id
+                    # Auto-exit edit mode on load — the focused section ID
+                    # from the previous project won't exist in the new one.
+                    st.session_state["editing_section_id"] = None
                     try:
                         from forgeassembler_core.debug import log_event, hash_project
                         log_event(
@@ -306,6 +311,7 @@ with st.sidebar:
             # dropped file doesn't re-apply itself on the next rerun.
             st.session_state.pop("project_upload", None)
             st.session_state.pop("_last_loaded_file_id", None)
+            st.session_state["editing_section_id"] = None
             st.rerun()
 
     with st.expander("Produce", expanded=True):
@@ -491,12 +497,18 @@ _JOINER_LABELS = {
 }
 
 
-def _add_from_path(path_str: str, mode: str) -> tuple[int, str]:
+def _add_from_path(
+    path_str: str, mode: str, target_section_idx: int = -1,
+) -> tuple[int, str]:
     """Resolve a path into clips and add them to the project.
 
+    `target_section_idx` is where `current_section` mode appends. The
+    default `-1` (last section) preserves the page-bottom Add Clips
+    panel's historical behavior. Edit mode passes the focused section's
+    index so adds land in THIS section instead of LAST.
+
     Returns (added_count, kind) where `kind` is "video", "still", or
-    "folder". Raises FileNotFoundError / ValueError on bad input so
-    the caller can surface a clear error.
+    "folder". Raises FileNotFoundError / ValueError on bad input.
     """
     p = Path(path_str).expanduser()
     if not p.exists():
@@ -529,36 +541,609 @@ def _add_from_path(path_str: str, mode: str) -> tuple[int, str]:
         new_segments.append(Segment(id=new_id("seg"), video=str(clip.video)))
         kind = "video"
 
-    if mode == "new_section" or not project.sections:
+    if mode == "new_section":
+        # ONE new section containing all the clips together.
         project.add_section(Section(
             id=new_id("sec"), segments=new_segments,
         ))
     elif mode == "new_section_per_file":
         # One NEW section per segment. A folder with N clips yields N
-        # sections; a single file collapses to the same behavior as
-        # "new_section".
+        # sections; a single file collapses to one new section. Works
+        # the same on an empty project — the previous fallback that
+        # lumped everything into one section was a bug.
         for seg in new_segments:
             project.add_section(Section(
                 id=new_id("sec"), segments=[seg],
             ))
     else:
-        project.sections[-1].segments.extend(new_segments)
+        # current_section / overlay / text targets need an existing
+        # section. Fall back to creating one if the project is empty
+        # so the user's first add still does something useful.
+        if not project.sections:
+            project.add_section(Section(
+                id=new_id("sec"), segments=new_segments,
+            ))
+        else:
+            project.sections[target_section_idx].segments.extend(new_segments)
 
     return len(new_segments), kind
 
 
-def _split_section_here(section_idx: int, clip_idx: int) -> None:
+def _render_add_clips_panel(
+    target_section_idx: int,
+    allowed_modes: list[str],
+    in_edit_mode: bool,
+) -> None:
+    """Render the Add Clips form. Used in two contexts:
+
+    - **Overview** (no section focused): rendered at page bottom, all
+      five mode options available, target = LAST section.
+    - **Edit mode**: rendered inside the focused card just above the
+      Done editing button. Only the THIS-section / overlay / text
+      modes are shown; targets land on the focused section.
+
+    Widget keys are deliberately shared between both contexts so the
+    user's typed path / form values persist when entering or leaving
+    edit mode.
+    """
+    if not in_edit_mode:
+        st.divider()
+    st.subheader(
+        "Add clips to this section" if in_edit_mode else "Add clips",
+    )
+
+    acols = st.columns([5, 1, 1])
+    with acols[0]:
+        # Widget's own session_state key is `add_path_input`.
+        # Browse buttons stage picked values via `pending_add_path`
+        # which is consumed into this key at the top of the run.
+        st.text_input(
+            "Folder or file path",
+            key="add_path_input",
+            placeholder=r"C:\path\to\folder   or   C:\path\to\clip.mp4",
+            label_visibility="collapsed",
+        )
+
+    with acols[1]:
+        if st.button(
+            "📁 Folder", help="Browse for a folder (scans all videos in it)",
+            use_container_width=True,
+            key="add_folder_browse",
+        ):
+            picked = _bridge_url("folder")
+            if picked:
+                st.session_state["pending_add_path"] = picked
+                st.rerun()
+            elif os.environ.get("FORGEASSEMBLER_BRIDGE_PORT") is None:
+                st.info(
+                    "Native file picker is only available in the desktop app. "
+                    "Paste a path into the text box instead.",
+                )
+
+    with acols[2]:
+        if st.button(
+            "📄 File", help="Browse for a single video or PNG file",
+            use_container_width=True,
+            key="add_file_browse",
+        ):
+            picked = _bridge_url("file")
+            if picked:
+                st.session_state["pending_add_path"] = picked
+                st.rerun()
+            elif os.environ.get("FORGEASSEMBLER_BRIDGE_PORT") is None:
+                st.info(
+                    "Native file picker is only available in the desktop app. "
+                    "Paste a path into the text box instead.",
+                )
+
+    # Strip whitespace AND any surrounding quotes — Windows' "Copy as
+    # path" wraps the path in double quotes, so pasting that string
+    # would otherwise fail existence checks on the literal quoted path.
+    current_path = st.session_state.get("add_path_input", "").strip()
+    if len(current_path) >= 2 and current_path[0] == current_path[-1] and current_path[0] in ('"', "'"):
+        current_path = current_path[1:-1].strip()
+
+    target_word = "THIS" if in_edit_mode else "the LAST"
+    target_cols = st.columns([3, 2])
+    with target_cols[0]:
+        all_mode_labels = {
+            "new_section": "As ONE NEW section (all clips together)",
+            "new_section_per_file": "As SEPARATE NEW sections (one per file)",
+            "current_section": f"Into {target_word} section (cut-join)",
+            "overlay": f"As an OVERLAY on {target_word} section",
+            "text": f"As TEXT on {target_word} section",
+        }
+        # Modes that require an existing section to target. Hide them
+        # entirely on an empty project — a fresh project should only
+        # offer "ONE NEW" and "SEPARATE NEW" so the radio doesn't
+        # advertise options the user can't actually use.
+        modes_needing_section = {"current_section", "overlay", "text"}
+        mode_options = [
+            m for m in allowed_modes
+            if m in all_mode_labels
+            and (project.sections or m not in modes_needing_section)
+        ]
+        mode_labels = {m: all_mode_labels[m] for m in mode_options}
+        # Snap the persisted choice back to a valid one if the user
+        # had previously selected a section-requiring mode and then
+        # cleared the project (or vice-versa).
+        if st.session_state["add_target_mode"] not in mode_options:
+            st.session_state["add_target_mode"] = mode_options[0]
+        # If the persisted mode isn't in the allowed list (e.g. user
+        # had "new_section" selected then entered edit mode), snap to
+        # the first allowed mode so the radio doesn't crash.
+        current_mode = st.session_state["add_target_mode"]
+        if current_mode not in mode_options:
+            st.session_state["add_target_mode"] = mode_options[0]
+            current_mode = mode_options[0]
+        # On an empty project, only the new-section modes work, so
+        # disable the rest in the label rather than locking the whole
+        # radio. (Streamlit's st.radio doesn't support per-option
+        # disabling — we just gate via the Add button's disabled flag
+        # below, which already checks `project.sections`.)
+        st.session_state["add_target_mode"] = st.radio(
+            "Add target",
+            options=mode_options,
+            index=mode_options.index(current_mode),
+            format_func=lambda k: mode_labels[k],
+            label_visibility="collapsed",
+        )
+    with target_cols[1]:
+        _mode = st.session_state["add_target_mode"]
+        if _mode in ("overlay", "text"):
+            # Overlay and text modes each render a dedicated form
+            # below with their own primary button.
+            add_click = False
+        else:
+            add_click = st.button(
+                "Add clips to project",
+                type="primary",
+                use_container_width=True,
+                disabled=not current_path,
+                key="add_clips_btn",
+            )
+
+    target_label = (
+        "this section" if in_edit_mode else "the last section"
+    )
+
+    # ── Overlay-mode form ──────────────────────────────────────────
+    if st.session_state["add_target_mode"] == "overlay":
+        # Peek at the path extension so we can swap image-only
+        # controls (Position / Opacity / Scale) for the audio-only
+        # Mix slider when the user has an audio file loaded.
+        _audio_exts = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
+        _path_suffix = Path(current_path).suffix.lower() if current_path else ""
+        _is_audio_path = _path_suffix in _audio_exts
+
+        if _is_audio_path:
+            st.caption(
+                f"Audio overlay mixes into the assembled video during "
+                f"{target_label}'s time window. Mix % sets this "
+                "overlay's share of the audio — 50% splits it evenly "
+                "with the section's main audio; 20% leaves the main "
+                "audio mostly intact."
+            )
+        else:
+            st.caption(
+                f"Image overlays composite onto the assembled video "
+                f"during {target_label}'s time window. Pick a PNG / "
+                "JPG / WEBP file for image, MP3 / WAV / M4A for audio."
+            )
+        ov_cols = st.columns(4)
+        with ov_cols[0]:
+            ov_start = st.number_input(
+                "Start (s, from section start)",
+                min_value=0.0, max_value=3600.0, value=0.0, step=0.5,
+                key="ov_start",
+            )
+        with ov_cols[1]:
+            ov_duration = st.number_input(
+                "Duration (s) · 0 = full section",
+                min_value=0.0, max_value=3600.0, value=0.0, step=0.5,
+                key="ov_duration",
+            )
+        with ov_cols[2]:
+            ov_fade_in = st.number_input(
+                "Fade in (s)",
+                min_value=0.0, max_value=10.0, value=0.0, step=0.1,
+                key="ov_fade_in",
+            )
+        with ov_cols[3]:
+            ov_fade_out = st.number_input(
+                "Fade out (s)",
+                min_value=0.0, max_value=10.0, value=0.0, step=0.1,
+                key="ov_fade_out",
+            )
+
+        pos_cols = st.columns([2, 2, 2, 2])
+        with pos_cols[0]:
+            ov_position = st.selectbox(
+                "Position (image only)",
+                options=list(OVERLAY_POSITIONS),
+                index=0,
+                format_func=_POSITION_LABEL,
+                key="ov_position",
+                disabled=_is_audio_path,
+            )
+        with pos_cols[1]:
+            ov_opacity = st.slider(
+                "Opacity (image only)",
+                min_value=0.0, max_value=1.0, value=1.0, step=0.05,
+                key="ov_opacity",
+                disabled=_is_audio_path,
+            )
+        with pos_cols[2]:
+            if _is_audio_path:
+                ov_mix_pct = int(st.slider(
+                    "Mix % (audio only)",
+                    min_value=0, max_value=100, value=50, step=5,
+                    key="ov_mix_pct",
+                    help=(
+                        "This overlay's share of the audio mix. 50 = "
+                        "evenly blended with the section's main audio; "
+                        "20 = main audio dominates; 100 = main is muted "
+                        "during the overlay window."
+                    ),
+                ))
+                ov_scale_pct = 100
+            else:
+                ov_scale_pct = int(st.slider(
+                    "Scale % (image only)",
+                    min_value=10, max_value=200, value=100, step=5,
+                    key="ov_scale_pct",
+                    help="100 = native size. 50 = half. 200 = double.",
+                ))
+                ov_mix_pct = 50
+        with pos_cols[3]:
+            add_overlay_click = st.button(
+                "Add overlay",
+                type="primary",
+                use_container_width=True,
+                disabled=not (current_path and project.sections),
+                key="add_overlay_btn",
+            )
+
+        if add_overlay_click and current_path and project.sections:
+            ov_path = Path(current_path).expanduser()
+            if not ov_path.is_file():
+                st.error(f"Overlay file not found: {ov_path}")
+            else:
+                suffix = ov_path.suffix.lower()
+                image_exts = (".png", ".jpg", ".jpeg", ".webp")
+                audio_exts = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
+                kind: str | None
+                if suffix in image_exts:
+                    kind = "image"
+                elif suffix in audio_exts:
+                    kind = "audio"
+                else:
+                    st.error(
+                        f"Unsupported overlay extension: {suffix}. Use "
+                        "PNG/JPG/WEBP for image, MP3/WAV/M4A for audio.",
+                    )
+                    kind = None
+                if kind is not None:
+                    project.sections[target_section_idx].overlays.append(SectionOverlay(
+                        id=new_id("ov"),
+                        kind=kind,  # type: ignore[arg-type]
+                        file=str(ov_path),
+                        start_s=float(ov_start),
+                        duration_s=float(ov_duration),
+                        fade_in_s=float(ov_fade_in),
+                        fade_out_s=float(ov_fade_out),
+                        position=ov_position,  # type: ignore[arg-type]
+                        opacity=float(ov_opacity),
+                        scale_pct=ov_scale_pct,
+                        mix_pct=ov_mix_pct,
+                    ))
+                    label = (
+                        "Image overlay" if kind == "image"
+                        else f"Audio overlay (mix {ov_mix_pct}%)"
+                    )
+                    st.success(f"{label} added to {target_label}.")
+                    st.session_state["pending_add_path"] = ""
+                    st.rerun()
+
+    # ── Text-mode form ─────────────────────────────────────────────
+    if st.session_state["add_target_mode"] == "text":
+        st.caption(
+            f"Text overlays draw a string on top of the assembled video "
+            f"during {target_label}'s time window. Use `\\n` in the "
+            "text box for manual line breaks.",
+        )
+
+        # Enumerate system fonts once per render. Cheap enough — ~a
+        # few hundred entries max on a stock Windows install.
+        from forgeassembler_core.fonts import list_fonts
+        _fonts = list_fonts()
+        _font_stems = [stem for stem, _ in _fonts]
+        if not _font_stems:
+            st.warning(
+                "No system fonts were found. Text overlays need a "
+                ".ttf / .otf / .ttc font file installed on the machine."
+            )
+
+        tx_cols = st.columns(4)
+        with tx_cols[0]:
+            tx_start = st.number_input(
+                "Start (s, from section start)",
+                min_value=0.0, max_value=3600.0, value=0.0, step=0.5,
+                key="tx_start",
+            )
+        with tx_cols[1]:
+            tx_duration = st.number_input(
+                "Duration (s) · 0 = full section",
+                min_value=0.0, max_value=3600.0, value=5.0, step=0.5,
+                key="tx_duration",
+            )
+        with tx_cols[2]:
+            tx_fade_in = st.number_input(
+                "Fade in (s)",
+                min_value=0.0, max_value=10.0, value=0.5, step=0.1,
+                key="tx_fade_in",
+            )
+        with tx_cols[3]:
+            tx_fade_out = st.number_input(
+                "Fade out (s)",
+                min_value=0.0, max_value=10.0, value=0.5, step=0.1,
+                key="tx_fade_out",
+            )
+
+        tx_row2 = st.columns([2, 2, 2, 2])
+        with tx_row2[0]:
+            tx_position = st.selectbox(
+                "Position",
+                options=list(OVERLAY_POSITIONS),
+                index=list(OVERLAY_POSITIONS).index("center"),
+                format_func=_POSITION_LABEL,
+                key="tx_position",
+            )
+        with tx_row2[1]:
+            tx_font = st.selectbox(
+                "Font",
+                options=_font_stems if _font_stems else [""],
+                index=0,
+                key="tx_font",
+                disabled=not _font_stems,
+            )
+        with tx_row2[2]:
+            tx_font_size = int(st.number_input(
+                "Font size",
+                min_value=8, max_value=512, value=72, step=4,
+                key="tx_font_size",
+            ))
+        with tx_row2[3]:
+            tx_color = st.color_picker(
+                "Text color", value="#ffffff", key="tx_color",
+            )
+
+        tx_row3 = st.columns([5, 2])
+        with tx_row3[0]:
+            tx_text = st.text_area(
+                "Text",
+                value="",
+                key="tx_text",
+                placeholder="Liquid Releasing\npresents",
+                height=80,
+            )
+        with tx_row3[1]:
+            tx_opacity = st.slider(
+                "Opacity",
+                min_value=0.0, max_value=1.0, value=1.0, step=0.05,
+                key="tx_opacity",
+            )
+            add_text_click = st.button(
+                "Add text",
+                type="primary",
+                use_container_width=True,
+                disabled=not (tx_text.strip() and project.sections and _font_stems),
+                key="add_text_btn",
+            )
+
+        if tx_text.strip():
+            st.caption("Preview:")
+            st.code(tx_text, language=None)
+
+        if add_text_click and tx_text.strip() and project.sections and _font_stems:
+            project.sections[target_section_idx].overlays.append(SectionOverlay(
+                id=new_id("ov"),
+                kind="text",
+                file="",
+                start_s=float(tx_start),
+                duration_s=float(tx_duration),
+                fade_in_s=float(tx_fade_in),
+                fade_out_s=float(tx_fade_out),
+                position=tx_position,  # type: ignore[arg-type]
+                opacity=float(tx_opacity),
+                text=tx_text,
+                text_color=tx_color,
+                font_size=tx_font_size,
+                font_family=tx_font,
+            ))
+            st.success(f"Text overlay added to {target_label}.")
+            st.rerun()
+
+    if add_click and current_path:
+        try:
+            count, kind = _add_from_path(
+                current_path,
+                st.session_state["add_target_mode"],
+                target_section_idx=target_section_idx,
+            )
+            if kind == "folder":
+                st.success(
+                    f"Added {count} clip(s) from folder "
+                    f"`{Path(current_path).name}`.",
+                )
+            else:
+                st.success(f"Added {kind} clip.")
+            # Stage a blank path so the input clears on the next run.
+            st.session_state["pending_add_path"] = ""
+            st.rerun()
+        except (FileNotFoundError, ValueError) as exc:
+            st.error(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not add: {exc}")
+
+
+_OVERVIEW_ADD_MODES: list[str] = [
+    "new_section", "new_section_per_file",
+    "current_section", "overlay", "text",
+]
+# In edit mode the spec called for ONLY the THIS-section / overlay /
+# text modes, but dogfood found that empty inserted sections want to
+# bulk-load too (e.g. drop a folder of 16 victoriaoats files as 16
+# new sections starting from this position). Allow all five — the
+# THIS-modes target the focused section as designed; the NEW-section
+# modes still append at the END of the project (the existing semantics
+# from page-bottom Add Clips). Trade-off: slight label inconsistency
+# (THIS vs LAST in the same panel) for full bulk-add flexibility from
+# inside edit mode.
+_EDIT_ADD_MODES: list[str] = [
+    "current_section",
+    "new_section",
+    "new_section_per_file",
+    "overlay",
+    "text",
+]
+
+
+def _render_collapsed_section_row(
+    sec: Section, sec_idx: int, ffmpeg_exe: str | None,
+) -> None:
+    """One-line summary card rendered for non-focused sections while
+    edit mode is active. ✏ switches focus to this section.
+
+    Spec: ✏ ONLY switches — don't make the whole row clickable.
+    Streamlit re-renders frequently; click-anywhere in a row could
+    catch a mis-click during a repaint.
+    """
+    sec_dur_ms = _section_duration_ms(sec, ffmpeg_exe)
+    dur_label = (
+        f" · {_fmt_duration(sec_dur_ms)}" if sec_dur_ms > 0 else ""
+    )
+    clip_label = (
+        f"{len(sec.segments)} clip" if len(sec.segments) == 1
+        else f"{len(sec.segments)} clips"
+    )
+    with st.container(border=True):
+        cols = st.columns([8, 1])
+        with cols[0]:
+            st.markdown(
+                f"**Section {sec_idx + 1}** · "
+                f"_{sec.chapter_name()}_ · "
+                f"{clip_label}{dur_label}",
+            )
+        with cols[1]:
+            if st.button(
+                "📝",
+                key=f"editbtn_{sec.id}",
+                help="Edit this section",
+            ):
+                st.session_state["editing_section_id"] = sec.id
+                st.rerun()
+
+
+def _split_section_here(
+    section_idx: int, clip_idx: int, ffmpeg_exe: str | None = None,
+) -> None:
     """Split a section so everything AFTER `clip_idx` becomes a new
-    section (placed immediately after the current one in the project)
-    with a default cut leading joiner."""
+    section (placed immediately after the current one) with a default
+    cut leading joiner.
+
+    Overlays redistribute by their time window:
+      * Entirely within the top half → stays on the top section.
+      * Entirely within the bottom half → moves to the new section
+        with start_s shifted left by the split offset.
+      * Straddles the boundary → kept on top (clamped to top's new
+        duration) AND duplicated onto bottom (start_s = 0, duration =
+        whatever spilled over).
+      * Full-section (`duration_s == 0`) → kept on both halves as
+        full-section, since the user's intent was "covers the whole
+        section."
+
+    `ffmpeg_exe` is needed to probe the top half's duration when video
+    overlays straddle the boundary. When None (or probes fail), the
+    fallback is to keep all overlays on the top section unchanged.
+    """
+    import dataclasses  # noqa: PLC0415
+
     sec = project.sections[section_idx]
     if clip_idx + 1 >= len(sec.segments):
         return  # nothing to split off
+
+    # Compute the split offset in seconds — total duration of the
+    # clips that stay on the top section (segments[0..clip_idx]).
+    top_segments = sec.segments[: clip_idx + 1]
+    bottom_segments = sec.segments[clip_idx + 1:]
+
+    split_offset_ms = 0
+    probe_failed = False
+    for seg in top_segments:
+        d = _segment_duration_ms(seg, ffmpeg_exe)
+        if d is None:
+            probe_failed = True
+            break
+        split_offset_ms += d
+    split_offset_s = split_offset_ms / 1000.0 if not probe_failed else None
+
+    # Classify each overlay.
+    top_overlays: list[SectionOverlay] = []
+    bottom_overlays: list[SectionOverlay] = []
+    for ov in sec.overlays:
+        if split_offset_s is None:
+            # Can't compute boundary — keep everything on top, safe fallback.
+            top_overlays.append(ov)
+            continue
+
+        # Full-section overlay → covers both halves.
+        if ov.duration_s == 0:
+            top_overlays.append(ov)
+            bottom_copy = dataclasses.replace(
+                ov, id=new_id("ov"), start_s=0.0,
+            )
+            bottom_overlays.append(bottom_copy)
+            continue
+
+        ov_end_s = ov.start_s + ov.duration_s
+
+        if ov_end_s <= split_offset_s:
+            # Entirely in top half — unchanged.
+            top_overlays.append(ov)
+        elif ov.start_s >= split_offset_s:
+            # Entirely in bottom half — shift left by split offset.
+            bottom_overlays.append(dataclasses.replace(
+                ov,
+                id=new_id("ov"),
+                start_s=ov.start_s - split_offset_s,
+            ))
+        else:
+            # Straddles the boundary — clamp top, shift+trim bottom.
+            top_overlays.append(dataclasses.replace(
+                ov,
+                duration_s=split_offset_s - ov.start_s,
+                # The fade_out belongs to the bottom half now; zero it
+                # on the top so the visible content doesn't fade out
+                # mid-section unexpectedly.
+                fade_out_s=0.0,
+            ))
+            bottom_overlays.append(dataclasses.replace(
+                ov,
+                id=new_id("ov"),
+                start_s=0.0,
+                duration_s=ov_end_s - split_offset_s,
+                # Symmetrically, the fade_in already happened on top.
+                fade_in_s=0.0,
+            ))
+
+    sec.segments = top_segments
+    sec.overlays = top_overlays
     new_sec = Section(
         id=new_id("sec"),
-        segments=sec.segments[clip_idx + 1:],
+        segments=bottom_segments,
+        overlays=bottom_overlays,
     )
-    sec.segments = sec.segments[: clip_idx + 1]
     project.sections.insert(section_idx + 1, new_sec)
 
 
@@ -581,10 +1166,21 @@ with tab_build:
         _ffmpeg_exe_for_ui = None
 
     # ── Existing sections, each rendered as a bordered card ───────
+    editing_section_id = st.session_state.get("editing_section_id")
     for sec_idx, sec in enumerate(project.sections):
+        # When edit mode is focused on a different section, render this
+        # one as a one-line summary instead of the full card. The
+        # focused section AND the no-edit-active default both fall
+        # through to the existing full-card rendering below.
+        if editing_section_id is not None and editing_section_id != sec.id:
+            _render_collapsed_section_row(sec, sec_idx, _ffmpeg_exe_for_ui)
+            continue
+
+        is_editing_this = editing_section_id == sec.id
         with st.container(border=True):
-            # Section header row: leading joiner / section name / remove
-            hcols = st.columns([2, 3, 3, 1])
+            # Section header row: leading joiner / fade params / name /
+            # ✏ edit (when not currently focused) / 🗑 remove
+            hcols = st.columns([2, 3, 3, 1, 1])
             with hcols[0]:
                 cur_jtype = sec.leading_joiner.joiner_type
                 if cur_jtype not in _JOINER_TYPES:
@@ -654,12 +1250,60 @@ with tab_build:
                 ) or None
 
             with hcols[3]:
+                # ✏ enters edit mode by focusing this section. Hidden
+                # when this section is already focused (Done editing
+                # at the bottom is the exit affordance for that case).
+                if not is_editing_this:
+                    if st.button(
+                        "📝",
+                        key=f"editbtn_top_{sec.id}",
+                        help="Edit this section (collapses the others)",
+                    ):
+                        st.session_state["editing_section_id"] = sec.id
+                        st.rerun()
+
+            with hcols[4]:
                 if st.button(
-                    "🗑", key=f"rmsec_{sec.id}",
+                    "🗑️", key=f"rmsec_{sec.id}",
                     help="Remove this section (and its clips)",
                 ):
+                    # Auto-exit edit mode if we just deleted the
+                    # focused section.
+                    if st.session_state.get("editing_section_id") == sec.id:
+                        st.session_state["editing_section_id"] = None
                     project.remove_section(sec.id)
                     st.rerun()
+
+            # ── Insert above / below (focused section only) ──────
+            # Inserts an empty Section at the chosen index with default
+            # "none" (Cut) leading joiner. Focus auto-jumps to the new
+            # section so the next user gesture (drop a title-card path
+            # in Add Clips) lands there immediately — matches the spec
+            # "add something here" intent.
+            if is_editing_this:
+                ins_cols = st.columns([2, 2, 6])
+                with ins_cols[0]:
+                    if st.button(
+                        "⬆ Insert above",
+                        key=f"insup_{sec.id}",
+                        help="Insert a new empty section before this one",
+                        use_container_width=True,
+                    ):
+                        new_sec = Section(id=new_id("sec"))
+                        project.sections.insert(sec_idx, new_sec)
+                        st.session_state["editing_section_id"] = new_sec.id
+                        st.rerun()
+                with ins_cols[1]:
+                    if st.button(
+                        "⬇ Insert below",
+                        key=f"insdn_{sec.id}",
+                        help="Insert a new empty section after this one",
+                        use_container_width=True,
+                    ):
+                        new_sec = Section(id=new_id("sec"))
+                        project.sections.insert(sec_idx + 1, new_sec)
+                        st.session_state["editing_section_id"] = new_sec.id
+                        st.rerun()
 
             sec_dur_ms = _section_duration_ms(sec, _ffmpeg_exe_for_ui)
             sec_dur_label = (
@@ -672,7 +1316,13 @@ with tab_build:
                 f"_{sec.chapter_name()}_",
             )
 
-            # ── Clip rows ────────────────────────────────────────
+            # ── Clip rows (with split-here gaps between consecutive
+            # clips). The split affordance lives BETWEEN clips, not on
+            # them — splitting happens at a boundary, and putting the
+            # button on the clip row was easy to misread as "delete
+            # this clip" (✂ = cut = remove in many users' mental
+            # models). 🔪 + "Split here" + tooltip make the action
+            # explicit and the boundary visible.
             for clip_idx, seg in enumerate(sec.segments):
                 row = st.container(border=False)
                 with row:
@@ -737,19 +1387,44 @@ with tab_build:
                             ))
 
                     with cols[3]:
-                        # Split-section icon (disabled for the last clip —
-                        # nothing after it to split off).
-                        can_split = clip_idx + 1 < len(sec.segments)
+                        # 🔄 Replace — file-only swap. Keeps section
+                        # overlays, audio settings, joiner, etc. — only
+                        # the underlying video changes. Funscripts
+                        # auto_detect re-scans next render because the
+                        # vpath.stem (cache key) changed; explicit
+                        # mode keeps the existing map but warns the
+                        # user since channel layout likely won't line
+                        # up with the new file.
                         if st.button(
-                            "✂", key=f"split_{seg.id}",
+                            "🔄", key=f"replace_{seg.id}",
                             help=(
-                                "Split section here — clips after this one "
-                                "move to a new section"
+                                "Replace this clip's video file. "
+                                "Section overlays + audio settings stay; "
+                                "funscripts re-scan automatically."
                             ),
-                            disabled=not can_split,
                         ):
-                            _split_section_here(sec_idx, clip_idx)
-                            st.rerun()
+                            picked = _bridge_url("file")
+                            if picked:
+                                seg.video = picked
+                                if (
+                                    seg.funscripts_source == "explicit"
+                                    and seg.explicit_funscripts
+                                ):
+                                    st.toast(
+                                        "Replaced — explicit funscripts may "
+                                        "not line up with new video channels. "
+                                        "Review or switch to auto-detect.",
+                                        icon="⚠️",
+                                    )
+                                st.rerun()
+                            elif os.environ.get(
+                                "FORGEASSEMBLER_BRIDGE_PORT",
+                            ) is None:
+                                st.info(
+                                    "Replace needs the desktop app's native "
+                                    "file picker. Edit the project JSON "
+                                    "manually if running in the browser."
+                                )
 
                     with cols[4]:
                         if st.button(
@@ -759,11 +1434,47 @@ with tab_build:
                             project.remove(seg.id)
                             st.rerun()
 
+                # Inter-clip "Split here" affordance. Renders BETWEEN
+                # this clip and the next; never after the last clip
+                # (nothing to split off). The new section gets all
+                # clips from clip_idx+1 onward; this section keeps
+                # 0..clip_idx.
+                if clip_idx + 1 < len(sec.segments):
+                    split_cols = st.columns([2, 4, 6])
+                    with split_cols[1]:
+                        if st.button(
+                            "🔪 Split here",
+                            key=f"split_{seg.id}",
+                            help=(
+                                f"Split section into two between "
+                                f"`{Path(sec.segments[clip_idx].video).name}` "
+                                f"and `{Path(sec.segments[clip_idx + 1].video).name}`. "
+                                f"Clips below this point move to a new "
+                                f"section."
+                            ),
+                            use_container_width=True,
+                        ):
+                            _split_section_here(
+                                sec_idx, clip_idx, _ffmpeg_exe_for_ui,
+                            )
+                            st.rerun()
+
             if not sec.segments:
-                st.caption(
-                    "Empty section — add clips using the 'Add clips' "
-                    "panel below and switch target to 'Current section'.",
-                )
+                # Caption adapts: in edit mode the Add Clips panel is
+                # right inside this card with the radio already on the
+                # focused-section target, so just say "drop a clip
+                # below." In overview mode the panel is at page bottom
+                # and the radio needs to be switched.
+                if is_editing_this:
+                    st.caption(
+                        "Empty section — drop a path in the Add Clips "
+                        "form below to fill it.",
+                    )
+                else:
+                    st.caption(
+                        "Empty section — click 📝 to focus this section, "
+                        "then add clips inside it.",
+                    )
 
             # ── Section overlays list ───────────────────────────
             if sec.overlays:
@@ -929,384 +1640,43 @@ with tab_build:
             with tcols[2]:
                 st.caption(end_caption)
 
-    # ── Add clips panel ───────────────────────────────────────────
-    st.divider()
-    st.subheader("Add clips")
-
-    acols = st.columns([5, 1, 1])
-    with acols[0]:
-        # Widget's own session_state key is `add_path_input`.
-        # Browse buttons stage picked values via `pending_add_path`
-        # which is consumed into this key at the top of the run.
-        st.text_input(
-            "Folder or file path",
-            key="add_path_input",
-            placeholder=r"C:\path\to\folder   or   C:\path\to\clip.mp4",
-            label_visibility="collapsed",
-        )
-
-    with acols[1]:
-        if st.button(
-            "📁 Folder", help="Browse for a folder (scans all videos in it)",
-            use_container_width=True,
-        ):
-            picked = _bridge_url("folder")
-            if picked:
-                st.session_state["pending_add_path"] = picked
-                st.rerun()
-            elif os.environ.get("FORGEASSEMBLER_BRIDGE_PORT") is None:
-                st.info(
-                    "Native file picker is only available in the desktop app. "
-                    "Paste a path into the text box instead.",
+            # ── Add clips panel (in-card, focused section) ──────
+            # When this section is being edited, the Add Clips form
+            # lives here instead of at page bottom — keeps the user's
+            # eyes on the section they're operating on. Radio modes
+            # are filtered to operations that target an existing
+            # section (no "create NEW section" options).
+            if is_editing_this:
+                _render_add_clips_panel(
+                    target_section_idx=sec_idx,
+                    allowed_modes=_EDIT_ADD_MODES,
+                    in_edit_mode=True,
                 )
 
-    with acols[2]:
-        if st.button(
-            "📄 File", help="Browse for a single video or PNG file",
-            use_container_width=True,
-        ):
-            picked = _bridge_url("file")
-            if picked:
-                st.session_state["pending_add_path"] = picked
-                st.rerun()
-            elif os.environ.get("FORGEASSEMBLER_BRIDGE_PORT") is None:
-                st.info(
-                    "Native file picker is only available in the desktop app. "
-                    "Paste a path into the text box instead.",
-                )
-
-    # Strip whitespace AND any surrounding quotes — Windows' "Copy as
-    # path" wraps the path in double quotes, so pasting that string
-    # would otherwise fail existence checks on the literal quoted path.
-    current_path = st.session_state.get("add_path_input", "").strip()
-    if len(current_path) >= 2 and current_path[0] == current_path[-1] and current_path[0] in ('"', "'"):
-        current_path = current_path[1:-1].strip()
-
-    target_cols = st.columns([3, 2])
-    with target_cols[0]:
-        mode_options = [
-            "new_section", "new_section_per_file",
-            "current_section", "overlay", "text",
-        ]
-        mode_labels = {
-            "new_section": "As ONE NEW section (all clips together)",
-            "new_section_per_file": "As SEPARATE NEW sections (one per file)",
-            "current_section": "Into the LAST section (cut-join)",
-            "overlay": "As an OVERLAY on the LAST section",
-            "text": "As TEXT on the LAST section",
-        }
-        # When the project has no sections, only "new_section" is a
-        # valid target — snap the mode back so the radio isn't stuck
-        # on a disabled option after "New project".
-        if not project.sections:
-            st.session_state["add_target_mode"] = "new_section"
-        current_mode = st.session_state["add_target_mode"]
-        try:
-            m_idx = mode_options.index(current_mode)
-        except ValueError:
-            m_idx = 0
-        st.session_state["add_target_mode"] = st.radio(
-            "Add target",
-            options=mode_options,
-            index=m_idx,
-            format_func=lambda k: mode_labels[k],
-            label_visibility="collapsed",
-            disabled=not project.sections,
-        )
-    with target_cols[1]:
-        _mode = st.session_state["add_target_mode"]
-        if _mode in ("overlay", "text"):
-            # Overlay and text modes each render a dedicated form
-            # below with their own primary button.
-            add_click = False
-        else:
-            add_click = st.button(
-                "Add clips to project",
-                type="primary",
-                use_container_width=True,
-                disabled=not current_path,
-            )
-
-    # ── Overlay-mode form ──────────────────────────────────────────
-    if st.session_state["add_target_mode"] == "overlay":
-        # Peek at the path extension so we can swap image-only
-        # controls (Position / Opacity / Scale) for the audio-only
-        # Mix slider when the user has an audio file loaded.
-        _image_exts = (".png", ".jpg", ".jpeg", ".webp")
-        _audio_exts = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
-        _path_suffix = Path(current_path).suffix.lower() if current_path else ""
-        _is_audio_path = _path_suffix in _audio_exts
-
-        if _is_audio_path:
-            st.caption(
-                "Audio overlay mixes into the assembled video during "
-                "the last section's time window. Mix % sets this "
-                "overlay's share of the audio — 50% splits it evenly "
-                "with the section's main audio; 20% leaves the main "
-                "audio mostly intact."
-            )
-        else:
-            st.caption(
-                "Image overlays composite onto the assembled video "
-                "during the last section's time window. Pick a PNG / "
-                "JPG / WEBP file for image, MP3 / WAV / M4A for audio."
-            )
-        ov_cols = st.columns(4)
-        with ov_cols[0]:
-            ov_start = st.number_input(
-                "Start (s, from section start)",
-                min_value=0.0, max_value=3600.0, value=0.0, step=0.5,
-                key="ov_start",
-            )
-        with ov_cols[1]:
-            ov_duration = st.number_input(
-                "Duration (s) · 0 = full section",
-                min_value=0.0, max_value=3600.0, value=0.0, step=0.5,
-                key="ov_duration",
-            )
-        with ov_cols[2]:
-            ov_fade_in = st.number_input(
-                "Fade in (s)",
-                min_value=0.0, max_value=10.0, value=0.0, step=0.1,
-                key="ov_fade_in",
-            )
-        with ov_cols[3]:
-            ov_fade_out = st.number_input(
-                "Fade out (s)",
-                min_value=0.0, max_value=10.0, value=0.0, step=0.1,
-                key="ov_fade_out",
-            )
-
-        pos_cols = st.columns([2, 2, 2, 2])
-        # Image inputs get rendered regardless (keeps their keys
-        # alive in session_state even when the path is audio), but
-        # disabled for audio paths so their values are obviously
-        # inert. For audio paths the third slot becomes Mix %.
-        with pos_cols[0]:
-            ov_position = st.selectbox(
-                "Position (image only)",
-                options=list(OVERLAY_POSITIONS),
-                index=0,
-                format_func=_POSITION_LABEL,
-                key="ov_position",
-                disabled=_is_audio_path,
-            )
-        with pos_cols[1]:
-            ov_opacity = st.slider(
-                "Opacity (image only)",
-                min_value=0.0, max_value=1.0, value=1.0, step=0.05,
-                key="ov_opacity",
-                disabled=_is_audio_path,
-            )
-        with pos_cols[2]:
-            if _is_audio_path:
-                ov_mix_pct = int(st.slider(
-                    "Mix % (audio only)",
-                    min_value=0, max_value=100, value=50, step=5,
-                    key="ov_mix_pct",
-                    help=(
-                        "This overlay's share of the audio mix. 50 = "
-                        "evenly blended with the section's main audio; "
-                        "20 = main audio dominates; 100 = main is muted "
-                        "during the overlay window."
-                    ),
-                ))
-                ov_scale_pct = 100
-            else:
-                ov_scale_pct = int(st.slider(
-                    "Scale % (image only)",
-                    min_value=10, max_value=200, value=100, step=5,
-                    key="ov_scale_pct",
-                    help="100 = native size. 50 = half. 200 = double.",
-                ))
-                ov_mix_pct = 50
-        with pos_cols[3]:
-            add_overlay_click = st.button(
-                "Add overlay",
-                type="primary",
-                use_container_width=True,
-                disabled=not (current_path and project.sections),
-            )
-
-        if add_overlay_click and current_path and project.sections:
-            ov_path = Path(current_path).expanduser()
-            if not ov_path.is_file():
-                st.error(f"Overlay file not found: {ov_path}")
-            else:
-                suffix = ov_path.suffix.lower()
-                image_exts = (".png", ".jpg", ".jpeg", ".webp")
-                audio_exts = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
-                kind: str | None
-                if suffix in image_exts:
-                    kind = "image"
-                elif suffix in audio_exts:
-                    kind = "audio"
-                else:
-                    st.error(
-                        f"Unsupported overlay extension: {suffix}. Use "
-                        "PNG/JPG/WEBP for image, MP3/WAV/M4A for audio.",
-                    )
-                    kind = None
-                if kind is not None:
-                    project.sections[-1].overlays.append(SectionOverlay(
-                        id=new_id("ov"),
-                        kind=kind,  # type: ignore[arg-type]
-                        file=str(ov_path),
-                        start_s=float(ov_start),
-                        duration_s=float(ov_duration),
-                        fade_in_s=float(ov_fade_in),
-                        fade_out_s=float(ov_fade_out),
-                        position=ov_position,  # type: ignore[arg-type]
-                        opacity=float(ov_opacity),
-                        scale_pct=ov_scale_pct,
-                        mix_pct=ov_mix_pct,
-                    ))
-                    label = (
-                        "Image overlay" if kind == "image"
-                        else f"Audio overlay (mix {ov_mix_pct}%)"
-                    )
-                    st.success(f"{label} added to last section.")
-                    st.session_state["pending_add_path"] = ""
+            # ── Done editing button (focused section only) ──────
+            # Bottom-of-card placement matches the Liquid Releasing
+            # convention of putting primary CTAs at the bottom.
+            if is_editing_this:
+                if st.button(
+                    "Done editing",
+                    key=f"done_edit_{sec.id}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    st.session_state["editing_section_id"] = None
                     st.rerun()
 
-    # ── Text-mode form ─────────────────────────────────────────────
-    if st.session_state["add_target_mode"] == "text":
-        st.caption(
-            "Text overlays draw a string on top of the assembled video "
-            "during the last section's time window. Use `\\n` in the "
-            "text box for manual line breaks.",
+    # ── Add clips panel (overview / page bottom) ─────────────
+    # In edit mode the Add Clips form is rendered inside the
+    # focused section's card just above 'Done editing'. The
+    # page-bottom rendering here is the overview default.
+    if st.session_state.get("editing_section_id") is None:
+        _render_add_clips_panel(
+            target_section_idx=-1,
+            allowed_modes=_OVERVIEW_ADD_MODES,
+            in_edit_mode=False,
         )
 
-        # Enumerate system fonts once per render. Cheap enough — ~a
-        # few hundred entries max on a stock Windows install.
-        from forgeassembler_core.fonts import list_fonts
-        _fonts = list_fonts()
-        _font_stems = [stem for stem, _ in _fonts]
-        if not _font_stems:
-            st.warning(
-                "No system fonts were found. Text overlays need a "
-                ".ttf / .otf / .ttc font file installed on the machine."
-            )
-
-        tx_cols = st.columns(4)
-        with tx_cols[0]:
-            tx_start = st.number_input(
-                "Start (s, from section start)",
-                min_value=0.0, max_value=3600.0, value=0.0, step=0.5,
-                key="tx_start",
-            )
-        with tx_cols[1]:
-            tx_duration = st.number_input(
-                "Duration (s) · 0 = full section",
-                min_value=0.0, max_value=3600.0, value=5.0, step=0.5,
-                key="tx_duration",
-            )
-        with tx_cols[2]:
-            tx_fade_in = st.number_input(
-                "Fade in (s)",
-                min_value=0.0, max_value=10.0, value=0.5, step=0.1,
-                key="tx_fade_in",
-            )
-        with tx_cols[3]:
-            tx_fade_out = st.number_input(
-                "Fade out (s)",
-                min_value=0.0, max_value=10.0, value=0.5, step=0.1,
-                key="tx_fade_out",
-            )
-
-        tx_row2 = st.columns([2, 2, 2, 2])
-        with tx_row2[0]:
-            tx_position = st.selectbox(
-                "Position",
-                options=list(OVERLAY_POSITIONS),
-                index=list(OVERLAY_POSITIONS).index("center"),
-                format_func=_POSITION_LABEL,
-                key="tx_position",
-            )
-        with tx_row2[1]:
-            tx_font = st.selectbox(
-                "Font",
-                options=_font_stems if _font_stems else [""],
-                index=0,
-                key="tx_font",
-                disabled=not _font_stems,
-            )
-        with tx_row2[2]:
-            tx_font_size = int(st.number_input(
-                "Font size",
-                min_value=8, max_value=512, value=72, step=4,
-                key="tx_font_size",
-            ))
-        with tx_row2[3]:
-            tx_color = st.color_picker(
-                "Text color", value="#ffffff", key="tx_color",
-            )
-
-        tx_row3 = st.columns([5, 2])
-        with tx_row3[0]:
-            tx_text = st.text_area(
-                "Text",
-                value="",
-                key="tx_text",
-                placeholder="Liquid Releasing\npresents",
-                height=80,
-            )
-        with tx_row3[1]:
-            tx_opacity = st.slider(
-                "Opacity",
-                min_value=0.0, max_value=1.0, value=1.0, step=0.05,
-                key="tx_opacity",
-            )
-            add_text_click = st.button(
-                "Add text",
-                type="primary",
-                use_container_width=True,
-                disabled=not (tx_text.strip() and project.sections and _font_stems),
-            )
-
-        if tx_text.strip():
-            st.caption("Preview:")
-            st.code(tx_text, language=None)
-
-        if add_text_click and tx_text.strip() and project.sections and _font_stems:
-            project.sections[-1].overlays.append(SectionOverlay(
-                id=new_id("ov"),
-                kind="text",
-                file="",
-                start_s=float(tx_start),
-                duration_s=float(tx_duration),
-                fade_in_s=float(tx_fade_in),
-                fade_out_s=float(tx_fade_out),
-                position=tx_position,  # type: ignore[arg-type]
-                opacity=float(tx_opacity),
-                text=tx_text,
-                text_color=tx_color,
-                font_size=tx_font_size,
-                font_family=tx_font,
-            ))
-            st.success("Text overlay added to last section.")
-            st.rerun()
-
-    if add_click and current_path:
-        try:
-            count, kind = _add_from_path(
-                current_path,
-                st.session_state["add_target_mode"],
-            )
-            if kind == "folder":
-                st.success(
-                    f"Added {count} clip(s) from folder "
-                    f"`{Path(current_path).name}`.",
-                )
-            else:
-                st.success(f"Added {kind} clip.")
-            # Stage a blank path so the input clears on the next run.
-            st.session_state["pending_add_path"] = ""
-            st.rerun()
-        except (FileNotFoundError, ValueError) as exc:
-            st.error(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not add: {exc}")
 
     # ── Output folder + basename (kept on Build tab) ──────────────
     st.divider()
