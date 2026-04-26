@@ -225,7 +225,13 @@ jobs:
 
             Questions, bug reports, and feedback welcome in [our Discord](https://discord.gg/sZWCqgxY).
           append_body: true
-          generate_release_notes: false
+          # Auto-prepend the commit/PR list since the previous tag.
+          # Cheap per-version "what's new" without maintaining a
+          # changelog. Major/marketing releases override by pre-writing
+          # a CHANGELOG entry or rich annotated tag message and piping
+          # it via `body_path`. Cross-project policy — keep in sync with
+          # FunscriptForge / ForgeYT / ForgePlayer release workflows.
+          generate_release_notes: true
 
       - name: Notify forgeassembler-web to bump version badge
         env:

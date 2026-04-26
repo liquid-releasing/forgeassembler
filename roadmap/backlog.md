@@ -18,6 +18,10 @@
 
 - [ ] **Smoothing at section boundaries** — option to ease funscript actions across hard cuts so devices don't snap from one position to another at the boundary. Concat is currently raw "hold last position" (concat_funscript.py docstring). Design questions: configurable cushion window (e.g. 250ms), per-channel toggle vs project-wide, easing curve (linear / cosine), interaction with fade_to_black joiners (already softens via silent bridge — cushion may be redundant or additive). User can simulate today by using fade_to_black between sections.
 
+## v0.0.5 (queued)
+
+- [ ] **Audio across multiple sections** — let an audio overlay (music bed, narration, voiceover) span more than one section without copy-pasting it onto each. Today every audio overlay is anchored to a single Section, so a music bed playing across sections 2-5 has to be added four times with manual time math. Want a project-level "audio bed" with a section-range (or absolute time-range) and the same fade in/out / mix_pct controls. Connects to the "beat track that I can fade in and out" ask from yesterday's planning, and to the DemoForge narration story (a single narration that flows across slide + screencast sections without per-section duplication). Note: the Project model already declares `audio_beds: list[dict]` but the engine doesn't render it yet — wire it through.
+
 ## Later
 
 - [ ] Section preview panel/popup — thumbnail strip + duration timeline of a section, possibly with overlays drawn on it. Render preview without a full ffmpeg pass.
