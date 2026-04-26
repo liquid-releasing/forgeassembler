@@ -129,8 +129,19 @@ python cli.py forge ~/Videos/forgeassembler/combined.forgeproject.json
 
 ```
 python cli.py validate combined.forgeproject.json && \
-python cli.py forge combined.forgeproject.json --no-video
+python cli.py forge combined.forgeproject.json --no-video --no-audio-estim
 ```
+
+**Render only the haptic-estim WAVs (no video, no funscripts):**
+
+```
+python cli.py forge combined.forgeproject.json --no-video --no-funscripts
+```
+
+Useful when restim already gave you per-clip `.stereostim.wav` /
+`.legacy.wav` / `.prostate.stereostim.wav` files and you just want a
+single combined WAV per channel for ForgePlayer / direct device
+playback.
 
 **Bootstrap a project from a folder of pre-split clips:**
 
