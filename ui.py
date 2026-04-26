@@ -349,8 +349,25 @@ with st.sidebar:
         out.produce_funscripts = st.checkbox(
             "Funscripts", value=out.produce_funscripts,
         )
-        if not out.produce_video and not out.produce_funscripts:
-            st.error("At least one of Video or Funscripts must be on.")
+        out.produce_audio_estim = st.checkbox(
+            "Audio (haptic estim)",
+            value=out.produce_audio_estim,
+            help=(
+                "Concat per-channel haptic-estim audio "
+                "(.stereostim.wav / .legacy.wav / .prostate.stereostim.wav) "
+                "found alongside source clips. One output WAV per channel "
+                "in the project. Off-segments are silence-filled at "
+                "48 kHz stereo to keep lockstep with video."
+            ),
+        )
+        if (
+            not out.produce_video
+            and not out.produce_funscripts
+            and not out.produce_audio_estim
+        ):
+            st.error(
+                "At least one of Video / Funscripts / Audio must be on.",
+            )
         st.caption("Chapter markers are always written when video is on.")
 
     with st.expander("Output settings", expanded=False):
@@ -1849,7 +1866,9 @@ with tab_build:
         st.error(e.message)
 
     can_forge = (not errors) and bool(project.segments()) and (
-        project.output.produce_video or project.output.produce_funscripts
+        project.output.produce_video
+        or project.output.produce_funscripts
+        or project.output.produce_audio_estim
     )
     if st.button(
         "Forge", type="primary", use_container_width=True,
@@ -2008,6 +2027,50 @@ with tab_build:
                             st.info(
                                 "No funscripts written — no selected "
                                 "channel had any actions across the project.",
+                            )
+
+                if project.output.produce_audio_estim:
+                    status.write("Concatenating estim audio channels…")
+                    try:
+                        from forgeassembler_core.concat_audio_estim import (
+                            forge_audio_estim,
+                        )
+                        written_audio = forge_audio_estim(
+                            project, layout, ffmpeg_exe=ffmpeg_exe,
+                        )
+                    except Exception as aexc:  # noqa: BLE001
+                        st.error(f"Audio-estim concat failed: {aexc}")
+                        try:
+                            from forgeassembler_core.debug import log_event
+                            log_event(
+                                "forge_audio_estim_failed",
+                                f"Audio-estim concat raised: {aexc}",
+                                error_type=type(aexc).__name__,
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                    else:
+                        try:
+                            from forgeassembler_core.debug import log_event
+                            log_event(
+                                "forge_audio_estim_done",
+                                f"Wrote {len(written_audio)} audio file(s)",
+                                files=[p.name for p in written_audio],
+                                count=len(written_audio),
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        if written_audio:
+                            st.success(
+                                f"Wrote {len(written_audio)} estim audio "
+                                "file(s): "
+                                + ", ".join(p.name for p in written_audio),
+                            )
+                        else:
+                            st.info(
+                                "No estim audio written — no segment had a "
+                                ".stereostim.wav / .legacy.wav / "
+                                ".prostate.stereostim.wav sibling.",
                             )
             except Exception as exc:  # noqa: BLE001
                 import traceback as _tb

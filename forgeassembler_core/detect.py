@@ -119,12 +119,24 @@ def funscripts_for_stem(folder: Path, stem: str) -> dict[str, Path]:
 
 
 def audio_estim_for_stem(folder: Path, stem: str) -> dict[str, Path]:
-    """Find .stereostim.wav / .legacy.wav / etc. siblings of `stem`."""
+    """Find .stereostim.wav / .legacy.wav / .prostate.stereostim.wav
+    siblings of `stem`. Scans the immediate folder AND well-known
+    channel sub-folders (parity with `funscripts_for_stem`) so a
+    FunscriptForge / restim output layout — video next to .mp4, channel
+    audio nested under `audio_estim/` or `estim/` — picks up cleanly.
+    """
+    search_dirs: list[Path] = [folder]
+    for sub in _CHANNEL_SUBFOLDERS:
+        d = folder / sub
+        if d.is_dir():
+            search_dirs.append(d)
     out: dict[str, Path] = {}
-    for suffix in AUDIO_ESTIM_SUFFIXES:
-        p = folder / f"{stem}{suffix}"
-        if p.exists():
-            out[suffix.lstrip(".")] = p
+    for d in search_dirs:
+        for suffix in AUDIO_ESTIM_SUFFIXES:
+            p = d / f"{stem}{suffix}"
+            if p.exists():
+                # First hit wins — immediate folder beats sub-folders.
+                out.setdefault(suffix.lstrip("."), p)
     return out
 
 

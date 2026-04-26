@@ -208,9 +208,14 @@ def cmd_forge(args: argparse.Namespace) -> int:
     if not path.is_file():
         print(f"ERROR: project file not found: {path}", file=sys.stderr)
         return 2
-    if args.no_video and args.no_funscripts:
-        print("ERROR: --no-video and --no-funscripts cannot both be set.",
-              file=sys.stderr)
+    if (
+        args.no_video and args.no_funscripts and args.no_audio_estim
+    ):
+        print(
+            "ERROR: --no-video / --no-funscripts / --no-audio-estim "
+            "cannot all be set.",
+            file=sys.stderr,
+        )
         return 1
     project = Project.load(path)
     if args.output:
@@ -221,6 +226,8 @@ def cmd_forge(args: argparse.Namespace) -> int:
         project.output.produce_video = False
     if args.no_funscripts:
         project.output.produce_funscripts = False
+    if args.no_audio_estim:
+        project.output.produce_audio_estim = False
     issues = validate(project)
     errors = [i for i in issues if i.level == "error"]
     if errors:
@@ -322,6 +329,30 @@ def cmd_forge(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
 
+    if out.produce_audio_estim:
+        from forgeassembler_core.concat_audio_estim import forge_audio_estim
+        try:
+            written_audio = forge_audio_estim(
+                project, layout, ffmpeg_exe=ffmpeg_exe,
+            )
+        except Exception as e:  # noqa: BLE001
+            print(
+                f"ERROR: audio-estim concat failed: {e}",
+                file=sys.stderr,
+            )
+            return 3
+        if written_audio:
+            print(f"Wrote {len(written_audio)} estim audio file(s):")
+            for path in written_audio:
+                print(f"  {path}")
+        else:
+            print(
+                "No estim audio written (no segment had a "
+                ".stereostim.wav / .legacy.wav / .prostate.stereostim.wav "
+                "sibling).",
+                file=sys.stderr,
+            )
+
     return 0
 
 
@@ -338,6 +369,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="skip the video pipeline (funscripts only)")
     p_forge.add_argument("--no-funscripts", action="store_true",
                          help="skip the funscript pipeline (video only)")
+    p_forge.add_argument(
+        "--no-audio-estim", action="store_true",
+        help=(
+            "skip the haptic-estim audio pipeline (don't emit per-channel "
+            ".stereostim.wav / .legacy.wav / .prostate.stereostim.wav)"
+        ),
+    )
     p_forge.set_defaults(func=cmd_forge)
 
     p_new = sub.add_parser(

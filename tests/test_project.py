@@ -306,11 +306,13 @@ def test_validate_produce_cannot_be_all_false(tmp_path: Path):
             folder=str(tmp_path / "out"),
             produce_video=False,
             produce_funscripts=False,
+            produce_audio_estim=False,
         ),
     )
     issues = validate(p)
     assert any(
-        "At least one of produce_video / produce_funscripts" in i.message
+        "produce_video / produce_funscripts / produce_audio_estim"
+        in i.message
         for i in issues
     )
 
@@ -323,10 +325,11 @@ def test_validate_produce_one_of_is_ok(tmp_path: Path):
             folder=str(tmp_path / "out"),
             produce_video=True,
             produce_funscripts=False,
+            produce_audio_estim=False,
         ),
     )
     errors = [i for i in validate(p) if i.level == "error"]
-    assert not any("produce_video / produce_funscripts" in e.message for e in errors)
+    assert not any("produce_video" in e.message for e in errors)
 
 
 # ── Resolution ─────────────────────────────────────────────────────────
