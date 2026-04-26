@@ -57,21 +57,41 @@ directly to the section model:
 The first two are the workhorses for building a new project. The
 third is how you extend a section. The last two are for overlays.
 
-## Reordering
+## Editing a section (focus mode)
 
-Section cards are top-to-bottom. Drag isn't wired yet — reorder by
-editing the project JSON if you need to. The planned **Edit mode**
-(see [backlog](https://github.com/liquid-releasing/forgeassembler/issues))
-will give you an ✏ button and a move-up/move-down control on each
-section.
+Click the **📝** in any section's header to focus on it. The other
+sections collapse to one-line summary rows ("Section N · chapter ·
+M clips · duration") so you can keep your eye on the one you're
+working on. The focused section shows the full controls plus three
+extra affordances:
+
+- **⬆ Insert above** — insert a new empty section before this one,
+  focus auto-jumps to the new section so you can drop a clip in.
+- **⬇ Insert below** — same, but after.
+- **Add Clips form (in-card)** — drop a path right inside the
+  focused card and it lands in *this* section. Radio modes adapt:
+  "Into THIS section (cut-join)", overlay, text. The two NEW-section
+  modes are also available if you want to bulk-load from this point.
+
+When you're done, click the orange **Done editing** button at the
+bottom of the focused card. All sections expand again.
 
 ## Per-segment controls
 
 Each segment card exposes:
 
-- **✂ Split** — cut the clip at a timestamp into two segments
-- **✕ Remove** — drop the segment
-- **Thumbnail + duration + detected funscript channels** — read-only
+- **🔄 Replace** — swap this clip's video file for another via a
+  native file picker. Section overlays and joiner stay; funscripts
+  auto-rescan against the new file's siblings.
+- **✕ Remove** — drop the segment.
+- **Thumbnail + duration + detected funscript channels** — read-only.
+
+Between two consecutive segments inside a section, a small **🔪 Split
+here** button appears. Click it to split the section into two at
+that boundary — clips below the cut become a new section. Section
+overlays redistribute by their time window: anything entirely in the
+top half stays; anything entirely in the bottom half moves with
+adjusted timing; overlays straddling the boundary split into two.
 
 ## Section naming
 
