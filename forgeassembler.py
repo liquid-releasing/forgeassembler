@@ -201,8 +201,15 @@ def main() -> int:
     def _on_start() -> None:
         _start_bridge_server(bridge_port)
 
+    # Point pywebview at the FA icon; without it the window/taskbar
+    # falls back to the Python interpreter's icon when running from
+    # source. macOS reads the bundle's .icns at the BUNDLE level so
+    # `icon=` here is a no-op there — harmless but documented.
+    icon_path = _here / "media" / "forgeassembler_icon.png"
+    icon_arg = str(icon_path) if icon_path.exists() else None
+
     try:
-        webview.start(func=_on_start)
+        webview.start(func=_on_start, icon=icon_arg)
     finally:
         proc.terminate()
         try:

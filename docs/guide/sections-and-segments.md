@@ -84,6 +84,8 @@ Each segment card exposes:
   native file picker. Section overlays and joiner stay; funscripts
   auto-rescan against the new file's siblings.
 - **✕ Remove** — drop the segment.
+- **✂ Split clip at time…** — expand for a small form that splits a
+  single video at a timestamp from the source file (see below).
 - **Thumbnail + duration + detected funscript channels** — read-only.
 
 Between two consecutive segments inside a section, a small **🔪 Split
@@ -92,6 +94,47 @@ that boundary — clips below the cut become a new section. Section
 overlays redistribute by their time window: anything entirely in the
 top half stays; anything entirely in the bottom half moves with
 adjusted timing; overlays straddling the boundary split into two.
+
+## ✂ Splitting a clip at a timestamp
+
+For long source videos, you can cut INSIDE a single clip at any
+timestamp — no need to pre-split the file with ffmpeg first. The
+**✂ Split clip at time…** expander on each video segment lets you
+enter a timestamp and the clip becomes two pieces.
+
+The timestamp is **always interpreted as a position in the source
+video file**, not relative to where the piece starts in your
+project. The expander shows the source file's name and length, plus
+the current piece's bounds in source coordinates, so the math stays
+obvious as you slice further:
+
+> Source file: `bigvideo.mp4` (01:00:00.000 long)
+>
+> This piece plays **00:30:00.000 → 01:00:00.000** of the source file.
+>
+> Split at (timestamp in source file): `00:45:00.000`
+
+When you click **Split here (becomes new section)**:
+
+- The clip becomes two pieces. Both reference the same underlying
+  file; the trim window narrows on each side of the cut.
+- The second piece **auto-promotes to a new section** (= a new
+  chapter in the final MP4).
+- Section overlays redistribute the same way as the inter-clip 🔪
+  Split here (the two operations share the same engine).
+
+This single feature covers four use cases:
+
+| To do this… | …after the split |
+| --- | --- |
+| **Multi-chapter** in one long video | Keep both pieces |
+| **Trim the start** | Delete the first piece (✕ Remove the first new section) |
+| **Trim the end** | Delete the second piece |
+| **Mid-video fade-to-black** | Set the new section's leading joiner to fade-to-black |
+
+The timestamps you type **always refer to the original file**, no
+matter how many times you split. So you can slice top-down or
+bottom-up — same result either way. No mental arithmetic.
 
 ## Section naming
 

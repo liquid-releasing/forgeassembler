@@ -62,13 +62,20 @@ def _probe_video_ms(path: str, mtime: float, _ffmpeg_exe: str) -> int:
 
 
 @st.cache_data(show_spinner=False)
-def _thumbnail_bytes(path: str, mtime: float) -> bytes | None:
+def _thumbnail_bytes(
+    path: str, mtime: float, offset_s: float = 1.0,
+) -> bytes | None:
     """Return a small preview image for a clip.
 
     For PNG / still-image clips, returns the file bytes as-is (they're
-    already the visual). For videos, extracts a single frame at ~1s in
-    via ffmpeg, scaled to a 160px-wide JPG. Returns None if ffmpeg
-    isn't available or the file can't be decoded.
+    already the visual). For videos, extracts a single frame `offset_s`
+    seconds into the source file via ffmpeg, scaled to a 160px-wide
+    JPG. Returns None if ffmpeg isn't available or the file can't be
+    decoded.
+
+    `offset_s` is part of the cache key (via st.cache_data on args),
+    so trimmed segments that share a source file but start at
+    different points each get their own thumbnail.
     """
     from forgeassembler_core.project import is_still_image
     if is_still_image(path):
@@ -89,7 +96,7 @@ def _thumbnail_bytes(path: str, mtime: float) -> bytes | None:
         result = subprocess.run(
             [
                 ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-                "-ss", "1", "-i", path, "-vframes", "1",
+                "-ss", f"{offset_s:g}", "-i", path, "-vframes", "1",
                 "-vf", "scale=160:-2", "-q:v", "4", tmp.name,
             ],
             capture_output=True, timeout=15,
@@ -114,10 +121,15 @@ def _detect_channels_cached(folder: str, stem: str, mtime_hint: float) -> list[s
     return sorted(funscripts_for_stem(Path(folder), stem).keys())
 
 
-def _segment_duration_ms(seg: Segment, ffmpeg_exe: str | None) -> int | None:
-    """Best-effort duration for a single segment — ffmpeg probe for
-    videos (cached), declared still_duration for PNGs. Returns None if
-    ffmpeg isn't available or the file can't be probed."""
+def _segment_source_duration_ms(
+    seg: Segment, ffmpeg_exe: str | None,
+) -> int | None:
+    """Source video's full duration (ignoring any trim window).
+
+    Used by the split-at-time UI which needs to show the user the
+    full source bounds. Returns None if ffmpeg isn't available or the
+    file can't be probed.
+    """
     if seg.is_still():
         return int((seg.still_duration_s or 0) * 1000)
     if ffmpeg_exe is None:
@@ -129,6 +141,23 @@ def _segment_duration_ms(seg: Segment, ffmpeg_exe: str | None) -> int | None:
         return _probe_video_ms(str(p), p.stat().st_mtime, ffmpeg_exe)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _segment_duration_ms(seg: Segment, ffmpeg_exe: str | None) -> int | None:
+    """Best-effort *effective* duration for a single segment — what it
+    contributes to the final timeline after any trim window is applied.
+
+    Stills use their declared still_duration; videos are ffmpeg-probed
+    (cached) and then narrowed by `Segment.effective_duration_ms` when
+    `trim_start` / `trim_end` are set. Returns None if ffmpeg isn't
+    available or the file can't be probed.
+    """
+    source_ms = _segment_source_duration_ms(seg, ffmpeg_exe)
+    if source_ms is None:
+        return None
+    if seg.is_still():
+        return source_ms
+    return seg.effective_duration_ms(source_ms)
 
 
 def _section_duration_ms(sec: Section, ffmpeg_exe: str | None) -> int:
@@ -1045,6 +1074,103 @@ def _render_collapsed_section_row(
                 st.rerun()
 
 
+def _render_split_at_time(
+    sec: Section,
+    sec_idx: int,
+    seg: Segment,
+    clip_idx: int,
+    ffmpeg_exe: str | None,
+) -> None:
+    """Render the per-clip ✂ Split-at-time form below a segment row.
+
+    Lets the user enter a timestamp **in the source file's timeline**
+    and split the clip at that point. The second piece auto-promotes
+    to a new section (= new chapter), reusing `_split_section_here`'s
+    overlay-redistribution logic so any section overlays straddling
+    the cut also redistribute correctly.
+    """
+    from forgeassembler_core.project import (
+        format_hms_ms, parse_hms_ms, split_segment_at,
+    )
+
+    src_ms = _segment_source_duration_ms(seg, ffmpeg_exe)
+    cur_start = seg.trim_start_ms()
+    cur_end = seg.trim_end_ms()
+    if cur_end is None and src_ms is not None:
+        cur_end = src_ms
+
+    with st.expander("✂ Split clip at time…", expanded=False):
+        if src_ms is not None:
+            st.caption(
+                f"Source file: `{Path(seg.video).name}` "
+                f"({format_hms_ms(src_ms)} long)",
+            )
+            if cur_end is not None:
+                st.caption(
+                    f"This piece plays "
+                    f"**{format_hms_ms(cur_start)} → {format_hms_ms(cur_end)}** "
+                    f"of the source file.",
+                )
+        else:
+            st.caption(
+                f"Source file: `{Path(seg.video).name}` "
+                "(could not probe duration; bounds shown best-effort).",
+            )
+
+        split_input = st.text_input(
+            "Split at (timestamp in source file)",
+            placeholder="HH:MM:SS.mmm — e.g. 00:30:00.000",
+            key=f"split_at_{seg.id}",
+            help=(
+                "Enter the timestamp from the SOURCE video file where "
+                "you want to cut. The clip becomes two pieces; the "
+                "second piece becomes a new chapter (its own section)."
+            ),
+        )
+        if not st.button(
+            "Split here (becomes new section)",
+            key=f"split_apply_{seg.id}",
+            use_container_width=True,
+        ):
+            return
+
+        # ── Validate input ──────────────────────────────────────
+        try:
+            split_at_ms = parse_hms_ms(split_input)
+        except ValueError as exc:
+            st.error(f"Invalid timestamp: {exc}")
+            return
+        if split_at_ms <= cur_start:
+            st.error(
+                f"Split point must be later than this piece's start "
+                f"({format_hms_ms(cur_start)}).",
+            )
+            return
+        if cur_end is not None and split_at_ms >= cur_end:
+            st.error(
+                f"Split point must be earlier than this piece's end "
+                f"({format_hms_ms(cur_end)}).",
+            )
+            return
+
+        # ── Execute split + auto-promote tail to new section ───
+        try:
+            head, tail = split_segment_at(seg, split_at_ms)
+        except ValueError as exc:
+            st.error(f"Could not split: {exc}")
+            return
+        sec.segments[clip_idx] = head
+        sec.segments.insert(clip_idx + 1, tail)
+        # Reuse the existing inter-clip splitter to do the section
+        # promotion + section-overlay redistribution.
+        _split_section_here(sec_idx, clip_idx, ffmpeg_exe)
+        st.toast(
+            "Split — second piece is a new section (chapter).",
+            icon="✂️",
+        )
+        st.rerun()
+
+
 def _split_section_here(
     section_idx: int, clip_idx: int, ffmpeg_exe: str | None = None,
 ) -> None:
@@ -1331,7 +1457,15 @@ with tab_build:
                     mtime = vpath.stat().st_mtime if vpath.exists() else 0.0
 
                     with cols[0]:
-                        thumb = _thumbnail_bytes(str(vpath), mtime)
+                        # Extract the thumbnail 1s INTO this piece's
+                        # trim window (not into the source file). Two
+                        # halves of a split clip share `seg.video` but
+                        # have different `trim_start`s, so this is what
+                        # makes them visually distinct in the UI.
+                        thumb_offset_s = (seg.trim_start_ms() / 1000.0) + 1.0
+                        thumb = _thumbnail_bytes(
+                            str(vpath), mtime, thumb_offset_s,
+                        )
                         if thumb:
                             st.image(thumb, width=120)
                         else:
@@ -1433,6 +1567,19 @@ with tab_build:
                         ):
                             project.remove(seg.id)
                             st.rerun()
+
+                # ✂ Split-at-time form for video clips. Lets the user
+                # cut INSIDE a single video at a given source-file
+                # timestamp; the second piece auto-promotes to a new
+                # section (= new chapter). One feature, four uses:
+                # trim-start (split + delete head), trim-end (split +
+                # delete tail), multi-chapter (split + keep both),
+                # mid-video fade (split + set fade_to_black on the
+                # tail's leading joiner).
+                if not seg.is_still():
+                    _render_split_at_time(
+                        sec, sec_idx, seg, clip_idx, _ffmpeg_exe_for_ui,
+                    )
 
                 # Inter-clip "Split here" affordance. Renders BETWEEN
                 # this clip and the next; never after the last clip
