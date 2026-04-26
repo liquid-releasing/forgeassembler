@@ -136,11 +136,24 @@ in the combined bundle:
 - **3-phase estim** — alpha + beta (Tingler, EstimHero, ZC95).
 - **4-phase estim** — extra channels for 4-phase rigs *(Phase 2)*.
 - **Prostate channels** — alpha-prostate, beta-prostate.
-- **Audio estim** — stereostim.wav, legacy.wav *(Phase 2)*.
 - **Pulse frequency** — pulse_frequency.funscript *(Phase 2)*.
 
 If a channel is selected but missing from some segments, ForgeAssembler
 asks whether to drop the channel from the output or abort.
+
+## Haptic-estim audio
+
+A separate top-level **Produce → Audio (haptic estim)** toggle (default
+on) tells the engine to concatenate per-channel haptic-estim audio
+files (`.stereostim.wav`, `.legacy.wav`, `.prostate.stereostim.wav`)
+in lockstep with the video. One combined WAV per channel is written
+alongside the funscripts: `<basename>.stereostim.wav`,
+`<basename>.legacy.wav`, `<basename>.prostate.stereostim.wav`.
+
+Segments without an audio file for a given channel get silence-fill
+at 48 kHz stereo so the combined output stays lockstep. Channels with
+no audio in any segment are skipped. Per-segment trim windows propagate
+to the audio inputs (same `-ss` / `-t` semantics as the video pipeline).
 
 ## Project files
 

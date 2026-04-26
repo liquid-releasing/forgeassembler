@@ -31,6 +31,7 @@ python cli.py forge <project.json>
                     [--basename NAME]
                     [--no-video]
                     [--no-funscripts]
+                    [--no-audio-estim]
 ```
 
 Flags:
@@ -38,8 +39,11 @@ Flags:
 - `--output DIR` — override the project's `output.folder`.
 - `--basename NAME` — override `output.basename` (the file stem; the
   engine appends `.mp4`, `.funscript`, etc.).
-- `--no-video` — skip the video pipeline (funscripts only).
-- `--no-funscripts` — skip the funscript pipeline (video only).
+- `--no-video` — skip the video pipeline.
+- `--no-funscripts` — skip the funscript pipeline.
+- `--no-audio-estim` — skip per-channel haptic-estim audio concat
+  (otherwise emits one `.stereostim.wav` / `.legacy.wav` /
+  `.prostate.stereostim.wav` per channel found alongside source clips).
 
 Useful for preflighting a render to disk-only or audio-only without
 toggling settings in the UI.
@@ -125,8 +129,19 @@ python cli.py forge ~/Videos/forgeassembler/combined.forgeproject.json
 
 ```
 python cli.py validate combined.forgeproject.json && \
-python cli.py forge combined.forgeproject.json --no-video
+python cli.py forge combined.forgeproject.json --no-video --no-audio-estim
 ```
+
+**Render only the haptic-estim WAVs (no video, no funscripts):**
+
+```
+python cli.py forge combined.forgeproject.json --no-video --no-funscripts
+```
+
+Useful when restim already gave you per-clip `.stereostim.wav` /
+`.legacy.wav` / `.prostate.stereostim.wav` files and you just want a
+single combined WAV per channel for ForgePlayer / direct device
+playback.
 
 **Bootstrap a project from a folder of pre-split clips:**
 

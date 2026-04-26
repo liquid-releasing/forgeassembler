@@ -78,6 +78,7 @@ ForgeAssembler projects are JSON. Users can hand-edit them and reload.
     "normalize_audio": true,
     "produce_video": true,
     "produce_funscripts": true,
+    "produce_audio_estim": true,
     "bug": {
       "file": "C:/demo/branding/lr_bug.png",
       "corner": "bottom-right",
@@ -91,7 +92,6 @@ ForgeAssembler projects are JSON. Users can hand-edit them and reload.
     "three_phase_estim": false,
     "four_phase_estim": false,
     "prostate": false,
-    "audio_estim": false,
     "pulse_frequency": false
   },
   "items": [
@@ -164,12 +164,14 @@ Notes:
   `1080p`. See the vocabulary list above for pixel dimensions.
 - `output.normalize_audio` is a boolean. When true, the combined audio
   runs through ffmpeg `loudnorm` targeting −16 LUFS (single-pass).
-- `output.produce_video` and `output.produce_funscripts` are booleans
-  (default both `true`). **At least one must be true** — validator
-  rejects both-false. When `produce_video` is false the ffmpeg pipeline
-  is skipped entirely; when `produce_funscripts` is false the funscript
-  concat + heatmap previews are skipped. Chapter markers are written
-  whenever `produce_video` is true, regardless of `produce_funscripts`.
+- `output.produce_video`, `output.produce_funscripts`, and
+  `output.produce_audio_estim` are booleans (default all `true`).
+  **At least one must be true** — validator rejects all-false. Each
+  pipeline runs independently: turning `produce_video` off skips the
+  ffmpeg video pipeline entirely; `produce_funscripts` off skips
+  funscript concat + heatmap; `produce_audio_estim` off skips the
+  per-channel haptic-WAV concat. Chapter markers are written whenever
+  `produce_video` is true.
 - `output.bug` is optional. When present, the PNG is composited into
   every segment's video layer at the specified corner/margin/opacity.
   Per-segment override (e.g. hide bug on the outro) is Phase 2.
@@ -191,9 +193,10 @@ Notes:
 
 At forge time:
 
-1. **Validate project JSON** against schema (including:
-   `output.produce_video` OR `output.produce_funscripts` must be true).
-   Hard errors abort; warnings surface in the UI.
+1. **Validate project JSON** against schema (including: at least one
+   of `output.produce_video` / `output.produce_funscripts` /
+   `output.produce_audio_estim` must be true). Hard errors abort;
+   warnings surface in the UI.
 2. **Resolve each segment**: locate the video file, auto-detect
    associated funscripts in the segment's folder (main, multi-axis,
    estim channels). Probe duration via ffprobe. Funscript resolution
@@ -220,13 +223,22 @@ At forge time:
    segment's running start, and concat. Actions that fall in joiner
    gaps are dropped (v1: hold last position; Phase 2: synthesize via
    a FunscriptForge transform).
-7. **Write chapter markers**: one chapter per segment. Always written
+7. **Concatenate haptic-estim audio** *(skipped when
+   `output.produce_audio_estim` is false)*: for each estim audio
+   channel any segment carries (`stereostim.wav`, `legacy.wav`,
+   `prostate.stereostim.wav`), build an ffmpeg filter graph that
+   concatenates the per-segment audio with `-ss`/`-t` honoring trim
+   windows. Segments missing a channel get `anullsrc` of the matching
+   duration; channels missing in every segment are skipped (no
+   100%-silent files). Output is PCM 16-bit at 48 kHz stereo named
+   `<basename>.<channel>.wav`.
+8. **Write chapter markers**: one chapter per segment. Always written
    to the MP4 when video is produced (via ffmpeg `-metadata` chapters)
    and to each output funscript's `chapters` array when funscripts are
    produced. Chapter markers cost nothing and help every player.
-8. **Write project JSON** alongside output for reproducibility.
-9. **Generate heatmap + beatmap preview** PNGs per channel *(skipped
-   when `output.produce_funscripts` is false)*.
+9. **Write project JSON** alongside output for reproducibility.
+10. **Generate heatmap + beatmap preview** PNGs per channel *(skipped
+    when `output.produce_funscripts` is false)*.
 
 ## ffmpeg filter-complex approach
 
@@ -421,9 +433,9 @@ story we're selling.
 - Output resolution dropdown (16:9 1080p/1440p/4K, 21:9 ultrawide
   1080p/1440p, 4:3 HD, 3:4 vertical HD, 9:16 vertical HD, source).
   Always scale-and-pad in v1.
-- Produce-what toggles (`produce_video`, `produce_funscripts` — at
-  least one must be true). Enables "funscripts-only" and "video-only"
-  fast paths.
+- Produce-what toggles (`produce_video`, `produce_funscripts`,
+  `produce_audio_estim` — at least one must be true). Enables
+  "funscripts-only", "video-only", and "haptic-WAVs-only" fast paths.
 - Audio loudness normalize toggle (ffmpeg `loudnorm`, −16 LUFS)
 - Project-level bug overlay (PNG in a chosen corner)
 - Per-segment color temperature (4000–10000 K) with preview-frame button

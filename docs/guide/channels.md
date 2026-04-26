@@ -6,9 +6,10 @@ its own name suffix:
 | Channel | Suffix | Used by |
 |---|---|---|
 | Main | `.funscript` | Standard linear devices (Handy, Kiiroo, etc.) |
-| Multi-axis | `.multi_axis.funscript` | SR6 / OSR2 and similar 6DOF rigs |
-| 3-phase estim | `.e1.funscript`, `.e2.funscript`, `.e3.funscript` | RESTIM, 3-channel estim |
-| Prostate | `.prostate.funscript` | Prostate-specific devices |
+| Multi-axis | `.pitch.funscript`, `.roll.funscript`, `.surge.funscript`, `.sway.funscript`, `.twist.funscript` | SR6 / OSR2 and similar 6DOF rigs |
+| 3-phase estim | `.alpha.funscript`, `.beta.funscript` | restim 3-phase rigs |
+| Prostate | `.alpha-prostate.funscript`, `.beta-prostate.funscript` | restim prostate variants |
+| 4-phase estim *(Phase 2)* | `.e1.funscript`, `.e2.funscript`, `.e3.funscript` | restim 4-phase rigs — concat not yet wired |
 
 The sidebar **Output channels** section lets you pick which channels
 get written for the combined output.
@@ -49,21 +50,57 @@ sidebar if you want fewer files.
 
 ## Phase-2 channels (not yet implemented)
 
-The sidebar also shows **four_phase_estim**, **audio_estim**, and
-**pulse_frequency**. These are off by default and greyed out because
-the concat logic isn't written yet. Safe to ignore until a future
-release lands them.
+The sidebar also shows **four_phase_estim** and **pulse_frequency**.
+These are off by default because the concat logic isn't written yet.
+Safe to ignore until a future release lands them.
 
-## Produce funscripts without producing a video
+## Haptic-estim audio (per-channel WAVs)
 
-In the **Output** section of the sidebar, toggle:
+Some haptic toolchains generate audio files alongside the funscripts —
+restim, for example, can render `.stereostim.wav`, `.legacy.wav`, and
+`.prostate.stereostim.wav` from a funscript and a device profile.
+ForgeAssembler concatenates these in lockstep with the video.
 
-- **Produce video** — on by default
-- **Produce funscripts** — on by default
+When **Audio (haptic estim)** is on in the Produce panel, the engine:
 
-You can turn off **Produce video** if you only need the combined
-funscript bundle (faster, no ffmpeg encoding). Useful when
-iterating on funscript edits without re-rendering a long video.
+1. Walks each segment looking for `.stereostim.wav` / `.legacy.wav` /
+   `.prostate.stereostim.wav` siblings (immediate folder, plus the
+   same channel sub-folders that funscript detection scans).
+2. For each channel that any segment carries, concatenates the
+   per-segment audio into one combined output WAV named
+   `<basename>.stereostim.wav`, `<basename>.legacy.wav`, etc.
+3. Segments missing a channel get silence-filled at 48 kHz stereo so
+   the combined WAV stays lockstep with the video. This means a
+   project with one segment that has a `stereostim.wav` and three
+   that don't still produces a valid 48 kHz stereo
+   `<basename>.stereostim.wav` with silence in the gaps.
+4. Channels with no audio in any segment are skipped (no useless
+   100%-silent files).
+
+**By design, the engine emits every estim channel any segment carries
+— stereostim, legacy, and prostate — regardless of whether your
+current device needs them.** The downstream player (ForgePlayer, or
+whatever your setup uses) selects the right channel at playback time
+based on the user's hardware profile. Forge time produces all
+artifacts; playback time consumes only what's relevant. This keeps
+forged outputs portable across devices without re-rendering.
+
+Per-segment trim windows (Split clip at time…) propagate to the
+audio inputs the same way they do to video — `-ss <trim_start>` and
+`-t <effective_duration>`.
+
+## Produce video / funscripts / audio without the others
+
+In the **Produce** panel of the sidebar:
+
+- **Video (MP4)** — on by default
+- **Funscripts** — on by default
+- **Audio (haptic estim)** — on by default
+
+Each toggle is independent. You can turn off Video to render only
+the funscript bundle (faster — no ffmpeg encoding). You can turn off
+Funscripts and Audio to render only the long video. At least one of
+the three must be on.
 
 ## Heatmap
 

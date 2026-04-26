@@ -7,6 +7,11 @@ from .about import (
     VERSION,
     about_title,
 )
+from .concat_audio_estim import (
+    AUDIO_ESTIM_CHANNELS,
+    build_audio_estim_command,
+    forge_audio_estim,
+)
 from .concat_funscript import (
     FunscriptPart,
     concat_funscripts,
@@ -79,6 +84,7 @@ from .project import (
 __all__ = [
     "ABOUT_MARKDOWN",
     "APP_NAME",
+    "AUDIO_ESTIM_CHANNELS",
     "AudioLayer",
     "BugOverlay",
     "Chapter",
@@ -110,6 +116,7 @@ __all__ = [
     "about_title",
     "bug_overlay_filter",
     "bug_prepare_filter",
+    "build_audio_estim_command",
     "build_chapters",
     "build_ffmpeg_command",
     "categorize_channels",
@@ -122,6 +129,7 @@ __all__ = [
     "detect_folder_tree",
     "fade_to_black_audio_acrossfade",
     "fade_to_black_xfade",
+    "forge_audio_estim",
     "forge_funscripts",
     "forge_video",
     "heatmap_color",

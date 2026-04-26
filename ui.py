@@ -121,6 +121,17 @@ def _detect_channels_cached(folder: str, stem: str, mtime_hint: float) -> list[s
     return sorted(funscripts_for_stem(Path(folder), stem).keys())
 
 
+@st.cache_data(show_spinner=False)
+def _detect_audio_estim_cached(
+    folder: str, stem: str, mtime_hint: float,
+) -> list[str]:
+    """Return haptic-estim audio channel names found next to a clip
+    (`stereostim.wav`, `legacy.wav`, `prostate.stereostim.wav`).
+    Same caching pattern as `_detect_channels_cached`."""
+    from forgeassembler_core.detect import audio_estim_for_stem
+    return sorted(audio_estim_for_stem(Path(folder), stem).keys())
+
+
 def _segment_source_duration_ms(
     seg: Segment, ffmpeg_exe: str | None,
 ) -> int | None:
@@ -349,8 +360,25 @@ with st.sidebar:
         out.produce_funscripts = st.checkbox(
             "Funscripts", value=out.produce_funscripts,
         )
-        if not out.produce_video and not out.produce_funscripts:
-            st.error("At least one of Video or Funscripts must be on.")
+        out.produce_audio_estim = st.checkbox(
+            "Audio (haptic estim)",
+            value=out.produce_audio_estim,
+            help=(
+                "Concat per-channel haptic-estim audio "
+                "(.stereostim.wav / .legacy.wav / .prostate.stereostim.wav) "
+                "found alongside source clips. One output WAV per channel "
+                "in the project. Off-segments are silence-filled at "
+                "48 kHz stereo to keep lockstep with video."
+            ),
+        )
+        if (
+            not out.produce_video
+            and not out.produce_funscripts
+            and not out.produce_audio_estim
+        ):
+            st.error(
+                "At least one of Video / Funscripts / Audio must be on.",
+            )
         st.caption("Chapter markers are always written when video is on.")
 
     with st.expander("Output settings", expanded=False):
@@ -1494,11 +1522,14 @@ with tab_build:
                         else:
                             # Detected funscript channels next to the clip
                             folder = vpath.parent
+                            mtime = (
+                                folder.stat().st_mtime
+                                if folder.exists() else 0.0
+                            )
                             channels: list[str] = []
                             try:
                                 channels = _detect_channels_cached(
-                                    str(folder), vpath.stem,
-                                    folder.stat().st_mtime if folder.exists() else 0.0,
+                                    str(folder), vpath.stem, mtime,
                                 )
                             except Exception:  # noqa: BLE001
                                 pass
@@ -1508,6 +1539,31 @@ with tab_build:
                                 )
                             else:
                                 st.caption("No funscripts detected")
+
+                            # Detected haptic-estim audio next to the clip.
+                            # Shown only when something exists — silent
+                            # for the common "no estim audio" case so the
+                            # row doesn't grow a noisy "no audio" line on
+                            # every clip in non-haptic projects.
+                            audio_channels: list[str] = []
+                            try:
+                                audio_channels = _detect_audio_estim_cached(
+                                    str(folder), vpath.stem, mtime,
+                                )
+                            except Exception:  # noqa: BLE001
+                                pass
+                            if audio_channels:
+                                # `audio_estim_for_stem` returns keys like
+                                # "stereostim.wav" / "legacy.wav" /
+                                # "prostate.stereostim.wav" — strip the
+                                # ".wav" for compactness.
+                                pretty = [
+                                    k.replace(".wav", "")
+                                    for k in audio_channels
+                                ]
+                                st.caption(
+                                    "Audio (estim): " + ", ".join(pretty),
+                                )
 
                     with cols[2]:
                         # Still-image duration editor in-place
@@ -1849,7 +1905,9 @@ with tab_build:
         st.error(e.message)
 
     can_forge = (not errors) and bool(project.segments()) and (
-        project.output.produce_video or project.output.produce_funscripts
+        project.output.produce_video
+        or project.output.produce_funscripts
+        or project.output.produce_audio_estim
     )
     if st.button(
         "Forge", type="primary", use_container_width=True,
@@ -2008,6 +2066,50 @@ with tab_build:
                             st.info(
                                 "No funscripts written — no selected "
                                 "channel had any actions across the project.",
+                            )
+
+                if project.output.produce_audio_estim:
+                    status.write("Concatenating estim audio channels…")
+                    try:
+                        from forgeassembler_core.concat_audio_estim import (
+                            forge_audio_estim,
+                        )
+                        written_audio = forge_audio_estim(
+                            project, layout, ffmpeg_exe=ffmpeg_exe,
+                        )
+                    except Exception as aexc:  # noqa: BLE001
+                        st.error(f"Audio-estim concat failed: {aexc}")
+                        try:
+                            from forgeassembler_core.debug import log_event
+                            log_event(
+                                "forge_audio_estim_failed",
+                                f"Audio-estim concat raised: {aexc}",
+                                error_type=type(aexc).__name__,
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                    else:
+                        try:
+                            from forgeassembler_core.debug import log_event
+                            log_event(
+                                "forge_audio_estim_done",
+                                f"Wrote {len(written_audio)} audio file(s)",
+                                files=[p.name for p in written_audio],
+                                count=len(written_audio),
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        if written_audio:
+                            st.success(
+                                f"Wrote {len(written_audio)} estim audio "
+                                "file(s): "
+                                + ", ".join(p.name for p in written_audio),
+                            )
+                        else:
+                            st.info(
+                                "No estim audio written — no segment had a "
+                                ".stereostim.wav / .legacy.wav / "
+                                ".prostate.stereostim.wav sibling.",
                             )
             except Exception as exc:  # noqa: BLE001
                 import traceback as _tb

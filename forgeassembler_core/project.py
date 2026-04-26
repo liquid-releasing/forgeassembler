@@ -338,6 +338,13 @@ class Output:
     normalize_audio: bool = True
     produce_video: bool = True
     produce_funscripts: bool = True
+    # Concat per-channel haptic-estim audio (`.stereostim.wav`,
+    # `.legacy.wav`, `.prostate.stereostim.wav`) emitted by restim
+    # alongside source clips. One output WAV per channel found in the
+    # project. Off-segments silence-filled at 48 kHz stereo to keep
+    # lock-step with video. Supersedes the Phase-2
+    # `OutputChannels.audio_estim` flag (which was never wired through).
+    produce_audio_estim: bool = True
     bug: Optional[BugOverlay] = None
     metadata: Metadata = field(default_factory=Metadata)
     # Closing transition for the whole output. When `closing_joiner` is
@@ -372,6 +379,7 @@ class Output:
             "normalize_audio": self.normalize_audio,
             "produce_video": self.produce_video,
             "produce_funscripts": self.produce_funscripts,
+            "produce_audio_estim": self.produce_audio_estim,
         }
         if self.bug is not None:
             d["bug"] = self.bug.to_dict()
@@ -397,6 +405,7 @@ class Output:
             normalize_audio=bool(d.get("normalize_audio", True)),
             produce_video=bool(d.get("produce_video", True)),
             produce_funscripts=bool(d.get("produce_funscripts", True)),
+            produce_audio_estim=bool(d.get("produce_audio_estim", True)),
             bug=BugOverlay.from_dict(bug_dict) if bug_dict else None,
             metadata=Metadata.from_dict(d.get("metadata")),
             closing_joiner=(
@@ -533,8 +542,11 @@ class OutputChannels:
     three_phase_estim: bool = True
     four_phase_estim: bool = False  # Phase 2
     prostate: bool = True
-    audio_estim: bool = False  # Phase 2
     pulse_frequency: bool = False  # Phase 2
+    # NOTE: `audio_estim` was a Phase-2 placeholder here that never got
+    # wired through. It moved to `Output.produce_audio_estim` in v0.0.4
+    # since it controls a top-level artifact (one WAV per channel),
+    # not a sub-channel of the funscript output.
 
     def to_dict(self) -> dict:
         return {
@@ -543,7 +555,6 @@ class OutputChannels:
             "three_phase_estim": self.three_phase_estim,
             "four_phase_estim": self.four_phase_estim,
             "prostate": self.prostate,
-            "audio_estim": self.audio_estim,
             "pulse_frequency": self.pulse_frequency,
         }
 
@@ -557,7 +568,6 @@ class OutputChannels:
             three_phase_estim=d.get("three_phase_estim", False),
             four_phase_estim=d.get("four_phase_estim", False),
             prostate=d.get("prostate", False),
-            audio_estim=d.get("audio_estim", False),
             pulse_frequency=d.get("pulse_frequency", False),
         )
 
@@ -1294,10 +1304,15 @@ def validate(project: Project) -> list[ValidationIssue]:
             f"output.frame_rate '{out.frame_rate}' is not one of "
             f"{', '.join(FRAME_RATE_KEYS)}.",
         ))
-    if not out.produce_video and not out.produce_funscripts:
+    if (
+        not out.produce_video
+        and not out.produce_funscripts
+        and not out.produce_audio_estim
+    ):
         issues.append(ValidationIssue(
             "error",
-            "At least one of produce_video / produce_funscripts must be true.",
+            "At least one of produce_video / produce_funscripts / "
+            "produce_audio_estim must be true.",
         ))
     if out.bug is not None:
         bug = out.bug

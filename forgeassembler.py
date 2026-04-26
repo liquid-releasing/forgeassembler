@@ -203,13 +203,59 @@ def main() -> int:
 
     # Point pywebview at the FA icon; without it the window/taskbar
     # falls back to the Python interpreter's icon when running from
-    # source. macOS reads the bundle's .icns at the BUNDLE level so
-    # `icon=` here is a no-op there — harmless but documented.
-    icon_path = _here / "media" / "forgeassembler_icon.png"
+    # source. Per-platform format: Windows pywebview routes through
+    # .NET System.Drawing.Icon, which insists on a real .ico (a PNG
+    # raises 'Argument picture must be a picture that can be used as
+    # an Icon'). macOS reads the bundle's .icns at the BUNDLE level
+    # so `icon=` here is a no-op there. Linux pywebview is happy with
+    # PNG.
+    if sys.platform == "win32":
+        icon_path = _here / "media" / "forgeassembler.ico"
+    else:
+        icon_path = _here / "media" / "forgeassembler_icon.png"
     icon_arg = str(icon_path) if icon_path.exists() else None
 
+    # Native window-level Help menu. Each item opens a URL in the
+    # user's default browser via `webbrowser.open` so the FA window
+    # stays on the app. macOS gets full Cocoa menu bar integration;
+    # Windows + Linux backend support varies — wrap in try/except so
+    # an unsupported backend just renders without a menu instead of
+    # crashing the launcher.
+    menu_items: list = []
     try:
-        webview.start(func=_on_start, icon=icon_arg)
+        import webbrowser  # noqa: PLC0415
+        from webview.menu import Menu, MenuAction  # noqa: PLC0415
+
+        def _open(url: str) -> "callable":
+            return lambda: webbrowser.open(url)
+
+        menu_items = [
+            Menu("Help", [
+                MenuAction(
+                    "Documentation",
+                    _open("https://liquid-releasing.github.io/forgeassembler/"),
+                ),
+                MenuAction(
+                    "Discord (community)",
+                    _open("https://discord.gg/sZWCqgxY"),
+                ),
+                MenuAction(
+                    "GitHub repo",
+                    _open("https://github.com/liquid-releasing/forgeassembler"),
+                ),
+                MenuAction(
+                    "Report a bug",
+                    _open("https://github.com/liquid-releasing/forgeassembler/issues/new"),
+                ),
+            ]),
+        ]
+    except Exception:  # noqa: BLE001
+        # Older pywebview / unsupported backend — skip the menu. The
+        # in-app Help / About dialog already covers the essentials.
+        menu_items = []
+
+    try:
+        webview.start(func=_on_start, icon=icon_arg, menu=menu_items)
     finally:
         proc.terminate()
         try:

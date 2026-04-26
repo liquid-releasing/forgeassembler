@@ -119,12 +119,24 @@ def funscripts_for_stem(folder: Path, stem: str) -> dict[str, Path]:
 
 
 def audio_estim_for_stem(folder: Path, stem: str) -> dict[str, Path]:
-    """Find .stereostim.wav / .legacy.wav / etc. siblings of `stem`."""
+    """Find .stereostim.wav / .legacy.wav / .prostate.stereostim.wav
+    siblings of `stem`. Scans the immediate folder AND well-known
+    channel sub-folders (parity with `funscripts_for_stem`) so a
+    FunscriptForge / restim output layout — video next to .mp4, channel
+    audio nested under `audio_estim/` or `estim/` — picks up cleanly.
+    """
+    search_dirs: list[Path] = [folder]
+    for sub in _CHANNEL_SUBFOLDERS:
+        d = folder / sub
+        if d.is_dir():
+            search_dirs.append(d)
     out: dict[str, Path] = {}
-    for suffix in AUDIO_ESTIM_SUFFIXES:
-        p = folder / f"{stem}{suffix}"
-        if p.exists():
-            out[suffix.lstrip(".")] = p
+    for d in search_dirs:
+        for suffix in AUDIO_ESTIM_SUFFIXES:
+            p = d / f"{stem}{suffix}"
+            if p.exists():
+                # First hit wins — immediate folder beats sub-folders.
+                out.setdefault(suffix.lstrip("."), p)
     return out
 
 
@@ -151,6 +163,15 @@ def detect_folder(folder_path: str | Path) -> list[DetectedClip]:
     Files are sorted by name so multi-clip folders (video1, video2, ...)
     come out in a predictable order. Works for both single-clip folders
     and many-clips-in-one-folder layouts.
+
+    Falls back to the well-known channel subfolders (`estim/`,
+    `audio_estim/`, etc.) when the immediate folder has no videos. This
+    handles the restim workflow where users move video files into
+    `estim/` so restim can pair them with the funscripts that already
+    live there. The video's siblings (funscripts, audio_estim WAVs)
+    are then discovered via `funscripts_for_stem` /
+    `audio_estim_for_stem`, which already scan the same channel
+    subfolders.
     """
     folder = Path(folder_path).resolve()
     if not folder.is_dir():
@@ -160,6 +181,19 @@ def detect_folder(folder_path: str | Path) -> list[DetectedClip]:
         if not f.is_file() or f.suffix.lower() not in VIDEO_EXTS:
             continue
         clips.append(detect_file(f))
+    if clips:
+        return clips
+    # No videos in the immediate folder — try the channel subfolders.
+    # Returns videos in deterministic order (subfolder name asc, then
+    # filename asc).
+    for sub in _CHANNEL_SUBFOLDERS:
+        d = folder / sub
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if not f.is_file() or f.suffix.lower() not in VIDEO_EXTS:
+                continue
+            clips.append(detect_file(f))
     return clips
 
 

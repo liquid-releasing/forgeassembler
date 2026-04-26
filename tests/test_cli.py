@@ -172,7 +172,7 @@ def test_new_project_error_when_no_clips(tmp_path: Path):
     assert "no clips detected" in r.stderr.lower()
 
 
-def test_forge_rejects_no_video_and_no_funscripts_together(tmp_path: Path):
+def test_forge_rejects_all_produce_flags_off_together(tmp_path: Path):
     vid = tmp_path / "a.mp4"
     vid.write_bytes(b"")
     p = tmp_path / "p.forgeproject.json"
@@ -184,6 +184,9 @@ def test_forge_rejects_no_video_and_no_funscripts_together(tmp_path: Path):
         }),
         encoding="utf-8",
     )
-    r = run("forge", str(p), "--no-video", "--no-funscripts")
+    r = run(
+        "forge", str(p),
+        "--no-video", "--no-funscripts", "--no-audio-estim",
+    )
     assert r.returncode != 0
-    assert "cannot both be set" in r.stderr
+    assert "cannot all be set" in r.stderr
