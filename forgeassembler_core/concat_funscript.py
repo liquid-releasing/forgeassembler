@@ -136,6 +136,36 @@ def _resolve_funscript_path_for_segment(
     return funscripts_for_stem(folder, video_path.stem).get(channel)
 
 
+def _trim_funscript_window(
+    fs: dict, trim_start_ms: int, trim_end_ms: Optional[int],
+) -> dict:
+    """Return a funscript whose actions are restricted to
+    `[trim_start_ms, trim_end_ms)` and shifted so the window starts at 0.
+
+    Untrimmed segments (start=0, end=None) get a no-op return with the
+    original dict. Used so a trimmed segment contributes only the
+    actions inside its visible window — otherwise actions outside the
+    trim would land at wrong absolute times after concat.
+    """
+    if trim_start_ms == 0 and trim_end_ms is None:
+        return fs
+    actions = fs.get("actions") or []
+    out_actions: list[dict] = []
+    for a in actions:
+        try:
+            at = int(a["at"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if at < trim_start_ms:
+            continue
+        if trim_end_ms is not None and at >= trim_end_ms:
+            continue
+        out_actions.append({"at": at - trim_start_ms, "pos": int(a["pos"])})
+    new_fs = dict(fs)
+    new_fs["actions"] = out_actions
+    return new_fs
+
+
 def _build_parts_for_channel(
     project: "Project", layout: "Layout", channel: str,
 ) -> list[FunscriptPart]:
@@ -156,6 +186,12 @@ def _build_parts_for_channel(
                     fs = {"actions": []}
             else:
                 fs = {"actions": []}
+            # Trim narrows the funscript to the segment's visible window
+            # and shifts its actions back to 0 (so concat's running
+            # offset puts them at the right absolute time).
+            fs = _trim_funscript_window(
+                fs, item.trim_start_ms(), item.trim_end_ms(),
+            )
             parts.append(FunscriptPart(
                 funscript=fs,
                 duration_ms=li.duration_ms,

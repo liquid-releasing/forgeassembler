@@ -109,6 +109,60 @@ def prettify_filename_stem(stem: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+# ── Time-format helpers (HH:MM:SS.mmm <-> ms) ─────────────────────────
+def parse_hms_ms(text: str) -> int:
+    """Parse a HH:MM:SS.mmm / MM:SS.mmm / SS.mmm timestamp into ms.
+
+    Accepts any of:
+      "HH:MM:SS"        e.g. "01:23:45"
+      "HH:MM:SS.mmm"    e.g. "01:23:45.678"
+      "MM:SS"           e.g. "23:45"
+      "MM:SS.mmm"       e.g. "23:45.678"
+      "SS"              e.g. "45"
+      "SS.mmm"          e.g. "45.678"
+
+    Empty / whitespace-only input raises ValueError. Negative results
+    are also a ValueError (no "-1.5" — use 0 to mean "from start").
+    """
+    s = text.strip()
+    if not s:
+        raise ValueError("empty timestamp")
+    parts = s.split(":")
+    if len(parts) > 3:
+        raise ValueError(f"too many ':' in timestamp: {text!r}")
+    try:
+        if len(parts) == 3:
+            h, m, sec = int(parts[0]), int(parts[1]), float(parts[2])
+        elif len(parts) == 2:
+            h, m, sec = 0, int(parts[0]), float(parts[1])
+        else:
+            h, m, sec = 0, 0, float(parts[0])
+    except ValueError as exc:
+        raise ValueError(f"could not parse timestamp {text!r}: {exc}") from exc
+    if h < 0 or m < 0 or sec < 0:
+        raise ValueError(f"timestamp must be non-negative: {text!r}")
+    if m >= 60 or sec >= 60:
+        raise ValueError(
+            f"minutes and seconds must each be < 60: {text!r}",
+        )
+    total_ms = ((h * 3600) + (m * 60)) * 1000 + int(round(sec * 1000))
+    return total_ms
+
+
+def format_hms_ms(ms: int) -> str:
+    """Format a non-negative ms value as `HH:MM:SS.mmm`.
+
+    Always pads to the full HH:MM:SS.mmm shape for UI consistency, so
+    a list of timestamps lines up visually regardless of magnitude.
+    """
+    if ms < 0:
+        raise ValueError(f"ms must be non-negative: {ms}")
+    total_seconds, millis = divmod(ms, 1000)
+    h, rem = divmod(total_seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}.{millis:03d}"
+
+
 # ── Layers ────────────────────────────────────────────────────────────
 @dataclass
 class AudioLayer:
@@ -371,6 +425,29 @@ class Segment:
 
     def is_still(self) -> bool:
         return is_still_image(self.video)
+
+    # ── Trim accessors (Phase 2 fields, now live) ─────────────────
+    def trim_start_ms(self) -> int:
+        """Trim-start in ms; 0 when unset (= play from the source's start)."""
+        return parse_hms_ms(self.trim_start) if self.trim_start else 0
+
+    def trim_end_ms(self) -> Optional[int]:
+        """Trim-end in ms, or None when unset (= play to the source's end)."""
+        return parse_hms_ms(self.trim_end) if self.trim_end else None
+
+    def effective_duration_ms(self, source_duration_ms: int) -> int:
+        """Duration the segment actually contributes to the timeline,
+        given the source video's full duration in ms.
+
+        For untrimmed segments this is just `source_duration_ms`. For
+        trimmed segments it's `(trim_end or source) - trim_start`,
+        clamped to non-negative.
+        """
+        start = self.trim_start_ms()
+        end = self.trim_end_ms()
+        if end is None:
+            end = source_duration_ms
+        return max(0, end - start)
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {
@@ -641,6 +718,75 @@ class Section:
             ],
             name=d.get("name"),
         )
+
+
+def split_segment_at(
+    segment: Segment,
+    split_at_ms: int,
+    new_segment_id: Optional[str] = None,
+) -> tuple[Segment, Segment]:
+    """Split `segment` into two at `split_at_ms` (absolute time in the
+    original source video, in ms).
+
+    The first returned segment keeps the original id and runs from the
+    segment's current `trim_start_ms()` to `split_at_ms`. The second
+    gets `new_segment_id` (auto-generated when None) and runs from
+    `split_at_ms` to the segment's current `trim_end_ms()` (None = "to
+    the end of the source").
+
+    Raises:
+        ValueError: when called on a still image, or when `split_at_ms`
+            is not strictly between the segment's effective bounds.
+    """
+    if segment.is_still():
+        raise ValueError("cannot split a still-image segment")
+    start = segment.trim_start_ms()
+    end = segment.trim_end_ms()  # None = open
+    if split_at_ms <= start:
+        raise ValueError(
+            f"split_at_ms ({split_at_ms}) must be > trim_start ({start})",
+        )
+    if end is not None and split_at_ms >= end:
+        raise ValueError(
+            f"split_at_ms ({split_at_ms}) must be < trim_end ({end})",
+        )
+
+    from dataclasses import replace as _dc_replace
+    head = Segment(
+        id=segment.id,
+        video=segment.video,
+        audio=segment.audio,
+        # Per-segment overlays travel with the head; cloned so that
+        # later edits to the head don't reach back into whatever the
+        # caller still holds. Section-level overlays are unaffected
+        # (they live on Section, not Segment).
+        overlays=[_dc_replace(o) for o in segment.overlays],
+        funscripts_source=segment.funscripts_source,
+        funscripts_folder=segment.funscripts_folder,
+        explicit_funscripts=dict(segment.explicit_funscripts),
+        still_duration_s=segment.still_duration_s,
+        color_temperature_k=segment.color_temperature_k,
+        background=segment.background,
+        bookmark=segment.bookmark,
+        trim_start=segment.trim_start,
+        trim_end=format_hms_ms(split_at_ms),
+    )
+    tail = Segment(
+        id=new_segment_id or new_id("seg"),
+        video=segment.video,
+        audio=segment.audio,
+        overlays=[],
+        funscripts_source=segment.funscripts_source,
+        funscripts_folder=segment.funscripts_folder,
+        explicit_funscripts=dict(segment.explicit_funscripts),
+        still_duration_s=segment.still_duration_s,
+        color_temperature_k=segment.color_temperature_k,
+        background=segment.background,
+        bookmark=None,  # the tail starts a new beat; let the user name it
+        trim_start=format_hms_ms(split_at_ms),
+        trim_end=segment.trim_end,
+    )
+    return head, tail
 
 
 def _migrate_items_to_sections(items: list) -> list[Section]:
@@ -1016,6 +1162,48 @@ def validate(project: Project) -> list[ValidationIssue]:
                 issues.append(ValidationIssue(
                     "error",
                     "color_temperature_k must be between 4000 and 10000.",
+                    item_id=seg.id,
+                ))
+
+        # Trim bounds. Don't probe for source duration here — that's a
+        # forge-time check (too expensive at validation). Just make sure
+        # the strings parse and trim_start < trim_end when both are set,
+        # and stills can't be trimmed (their duration is set elsewhere).
+        if seg.trim_start or seg.trim_end:
+            if seg.is_still():
+                issues.append(ValidationIssue(
+                    "error",
+                    "Still-image segments cannot be trimmed; use "
+                    "still_duration_s instead.",
+                    item_id=seg.id,
+                ))
+            try:
+                start_ms = seg.trim_start_ms()
+            except ValueError as exc:
+                issues.append(ValidationIssue(
+                    "error",
+                    f"Invalid trim_start: {exc}",
+                    item_id=seg.id,
+                ))
+                start_ms = None
+            try:
+                end_ms = seg.trim_end_ms()
+            except ValueError as exc:
+                issues.append(ValidationIssue(
+                    "error",
+                    f"Invalid trim_end: {exc}",
+                    item_id=seg.id,
+                ))
+                end_ms = None
+            if (
+                start_ms is not None
+                and end_ms is not None
+                and start_ms >= end_ms
+            ):
+                issues.append(ValidationIssue(
+                    "error",
+                    f"trim_start ({seg.trim_start}) must be less than "
+                    f"trim_end ({seg.trim_end}).",
                     item_id=seg.id,
                 ))
 

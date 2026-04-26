@@ -66,7 +66,10 @@ def lay_out(project: Project, probe: DurationProbe) -> Layout:
             if item.is_still():
                 duration = int(round((item.still_duration_s or 0) * 1000))
             else:
-                duration = probe(Path(item.video))
+                source_ms = probe(Path(item.video))
+                # Trim windows narrow the segment's contribution; an
+                # untrimmed segment still gets the full source duration.
+                duration = item.effective_duration_ms(source_ms)
             out.append(LaidOutItem(item=item, start_ms=t, end_ms=t + duration))
             t += duration
         elif isinstance(item, ProjectJoiner):

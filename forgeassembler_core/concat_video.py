@@ -286,7 +286,16 @@ def build_ffmpeg_command(
         seg = li.item
         assert isinstance(seg, Segment)
         dur_s = li.duration_ms / 1000.0
-        pre = ["-loop", "1", "-t", f"{dur_s:g}"] if seg.is_still() else []
+        if seg.is_still():
+            pre = ["-loop", "1", "-t", f"{dur_s:g}"]
+        elif seg.trim_start or seg.trim_end:
+            # Trimmed video: -ss seeks the input to the trim-start; -t
+            # caps the read at the effective (trimmed) duration. Both
+            # before -i so they're INPUT options (fast seek + read cap).
+            trim_start_s = seg.trim_start_ms() / 1000.0
+            pre = ["-ss", f"{trim_start_s:g}", "-t", f"{dur_s:g}"]
+        else:
+            pre = []
         seg_vi[seg.id] = len(inputs)
         inputs.append(FfmpegInput(path=seg.video, pre_args=pre))
         # previous_last_frame segments add a second looped PNG input — the
