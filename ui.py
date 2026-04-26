@@ -1460,10 +1460,21 @@ with tab_build:
                             st.rerun()
 
             if not sec.segments:
-                st.caption(
-                    "Empty section — add clips using the 'Add clips' "
-                    "panel below and switch target to 'Current section'.",
-                )
+                # Caption adapts: in edit mode the Add Clips panel is
+                # right inside this card with the radio already on the
+                # focused-section target, so just say "drop a clip
+                # below." In overview mode the panel is at page bottom
+                # and the radio needs to be switched.
+                if is_editing_this:
+                    st.caption(
+                        "Empty section — drop a path in the Add Clips "
+                        "form below to fill it.",
+                    )
+                else:
+                    st.caption(
+                        "Empty section — click 📝 to focus this section, "
+                        "then add clips inside it.",
+                    )
 
             # ── Section overlays list ───────────────────────────
             if sec.overlays:
