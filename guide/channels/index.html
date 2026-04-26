@@ -688,10 +688,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#produce-funscripts-without-producing-a-video" class="md-nav__link">
+  <a href="#haptic-estim-audio-per-channel-wavs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Produce funscripts without producing a video
+        Haptic-estim audio (per-channel WAVs)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#produce-video-funscripts-audio-without-the-others" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Produce video / funscripts / audio without the others
       
     </span>
   </a>
@@ -1079,10 +1090,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#produce-funscripts-without-producing-a-video" class="md-nav__link">
+  <a href="#haptic-estim-audio-per-channel-wavs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Produce funscripts without producing a video
+        Haptic-estim audio (per-channel WAVs)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#produce-video-funscripts-audio-without-the-others" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Produce video / funscripts / audio without the others
       
     </span>
   </a>
@@ -1139,18 +1161,23 @@ its own name suffix:</p>
 </tr>
 <tr>
 <td>Multi-axis</td>
-<td><code>.multi_axis.funscript</code></td>
+<td><code>.pitch.funscript</code>, <code>.roll.funscript</code>, <code>.surge.funscript</code>, <code>.sway.funscript</code>, <code>.twist.funscript</code></td>
 <td>SR6 / OSR2 and similar 6DOF rigs</td>
 </tr>
 <tr>
 <td>3-phase estim</td>
-<td><code>.e1.funscript</code>, <code>.e2.funscript</code>, <code>.e3.funscript</code></td>
-<td>RESTIM, 3-channel estim</td>
+<td><code>.alpha.funscript</code>, <code>.beta.funscript</code></td>
+<td>restim 3-phase rigs</td>
 </tr>
 <tr>
 <td>Prostate</td>
-<td><code>.prostate.funscript</code></td>
-<td>Prostate-specific devices</td>
+<td><code>.alpha-prostate.funscript</code>, <code>.beta-prostate.funscript</code></td>
+<td>restim prostate variants</td>
+</tr>
+<tr>
+<td>4-phase estim <em>(Phase 2)</em></td>
+<td><code>.e1.funscript</code>, <code>.e2.funscript</code>, <code>.e3.funscript</code></td>
+<td>restim 4-phase rigs — concat not yet wired</td>
 </tr>
 </tbody>
 </table>
@@ -1183,19 +1210,51 @@ clip that doesn't have multi-axis still produces a valid
 <strong>three_phase_estim</strong>, and <strong>prostate</strong>. Turn channels off in the
 sidebar if you want fewer files.</p>
 <h2 id="phase-2-channels-not-yet-implemented">Phase-2 channels (not yet implemented)<a class="headerlink" href="#phase-2-channels-not-yet-implemented" title="Permanent link">&para;</a></h2>
-<p>The sidebar also shows <strong>four_phase_estim</strong>, <strong>audio_estim</strong>, and
-<strong>pulse_frequency</strong>. These are off by default and greyed out because
-the concat logic isn't written yet. Safe to ignore until a future
-release lands them.</p>
-<h2 id="produce-funscripts-without-producing-a-video">Produce funscripts without producing a video<a class="headerlink" href="#produce-funscripts-without-producing-a-video" title="Permanent link">&para;</a></h2>
-<p>In the <strong>Output</strong> section of the sidebar, toggle:</p>
+<p>The sidebar also shows <strong>four_phase_estim</strong> and <strong>pulse_frequency</strong>.
+These are off by default because the concat logic isn't written yet.
+Safe to ignore until a future release lands them.</p>
+<h2 id="haptic-estim-audio-per-channel-wavs">Haptic-estim audio (per-channel WAVs)<a class="headerlink" href="#haptic-estim-audio-per-channel-wavs" title="Permanent link">&para;</a></h2>
+<p>Some haptic toolchains generate audio files alongside the funscripts —
+restim, for example, can render <code>.stereostim.wav</code>, <code>.legacy.wav</code>, and
+<code>.prostate.stereostim.wav</code> from a funscript and a device profile.
+ForgeAssembler concatenates these in lockstep with the video.</p>
+<p>When <strong>Audio (haptic estim)</strong> is on in the Produce panel, the engine:</p>
+<ol>
+<li>Walks each segment looking for <code>.stereostim.wav</code> / <code>.legacy.wav</code> /
+   <code>.prostate.stereostim.wav</code> siblings (immediate folder, plus the
+   same channel sub-folders that funscript detection scans).</li>
+<li>For each channel that any segment carries, concatenates the
+   per-segment audio into one combined output WAV named
+   <code>&lt;basename&gt;.stereostim.wav</code>, <code>&lt;basename&gt;.legacy.wav</code>, etc.</li>
+<li>Segments missing a channel get silence-filled at 48 kHz stereo so
+   the combined WAV stays lockstep with the video. This means a
+   project with one segment that has a <code>stereostim.wav</code> and three
+   that don't still produces a valid 48 kHz stereo
+   <code>&lt;basename&gt;.stereostim.wav</code> with silence in the gaps.</li>
+<li>Channels with no audio in any segment are skipped (no useless
+   100%-silent files).</li>
+</ol>
+<p><strong>By design, the engine emits every estim channel any segment carries
+— stereostim, legacy, and prostate — regardless of whether your
+current device needs them.</strong> The downstream player (ForgePlayer, or
+whatever your setup uses) selects the right channel at playback time
+based on the user's hardware profile. Forge time produces all
+artifacts; playback time consumes only what's relevant. This keeps
+forged outputs portable across devices without re-rendering.</p>
+<p>Per-segment trim windows (Split clip at time…) propagate to the
+audio inputs the same way they do to video — <code>-ss &lt;trim_start&gt;</code> and
+<code>-t &lt;effective_duration&gt;</code>.</p>
+<h2 id="produce-video-funscripts-audio-without-the-others">Produce video / funscripts / audio without the others<a class="headerlink" href="#produce-video-funscripts-audio-without-the-others" title="Permanent link">&para;</a></h2>
+<p>In the <strong>Produce</strong> panel of the sidebar:</p>
 <ul>
-<li><strong>Produce video</strong> — on by default</li>
-<li><strong>Produce funscripts</strong> — on by default</li>
+<li><strong>Video (MP4)</strong> — on by default</li>
+<li><strong>Funscripts</strong> — on by default</li>
+<li><strong>Audio (haptic estim)</strong> — on by default</li>
 </ul>
-<p>You can turn off <strong>Produce video</strong> if you only need the combined
-funscript bundle (faster, no ffmpeg encoding). Useful when
-iterating on funscript edits without re-rendering a long video.</p>
+<p>Each toggle is independent. You can turn off Video to render only
+the funscript bundle (faster — no ffmpeg encoding). You can turn off
+Funscripts and Audio to render only the long video. At least one of
+the three must be on.</p>
 <h2 id="heatmap">Heatmap<a class="headerlink" href="#heatmap" title="Permanent link">&para;</a></h2>
 <p>When <strong>Produce video</strong> is on, ForgeAssembler also writes a
 <code>.heatmap.png</code> alongside the output. It's a visual density map of

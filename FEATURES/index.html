@@ -1016,6 +1016,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#haptic-estim-audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Haptic-estim audio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#project-files" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1254,6 +1265,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#haptic-estim-audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Haptic-estim audio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#project-files" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1463,11 +1485,21 @@ in the combined bundle:</p>
 <li><strong>3-phase estim</strong> — alpha + beta (Tingler, EstimHero, ZC95).</li>
 <li><strong>4-phase estim</strong> — extra channels for 4-phase rigs <em>(Phase 2)</em>.</li>
 <li><strong>Prostate channels</strong> — alpha-prostate, beta-prostate.</li>
-<li><strong>Audio estim</strong> — stereostim.wav, legacy.wav <em>(Phase 2)</em>.</li>
 <li><strong>Pulse frequency</strong> — pulse_frequency.funscript <em>(Phase 2)</em>.</li>
 </ul>
 <p>If a channel is selected but missing from some segments, ForgeAssembler
 asks whether to drop the channel from the output or abort.</p>
+<h2 id="haptic-estim-audio">Haptic-estim audio<a class="headerlink" href="#haptic-estim-audio" title="Permanent link">&para;</a></h2>
+<p>A separate top-level <strong>Produce → Audio (haptic estim)</strong> toggle (default
+on) tells the engine to concatenate per-channel haptic-estim audio
+files (<code>.stereostim.wav</code>, <code>.legacy.wav</code>, <code>.prostate.stereostim.wav</code>)
+in lockstep with the video. One combined WAV per channel is written
+alongside the funscripts: <code>&lt;basename&gt;.stereostim.wav</code>,
+<code>&lt;basename&gt;.legacy.wav</code>, <code>&lt;basename&gt;.prostate.stereostim.wav</code>.</p>
+<p>Segments without an audio file for a given channel get silence-fill
+at 48 kHz stereo so the combined output stays lockstep. Channels with
+no audio in any segment are skipped. Per-segment trim windows propagate
+to the audio inputs (same <code>-ss</code> / <code>-t</code> semantics as the video pipeline).</p>
 <h2 id="project-files">Project files<a class="headerlink" href="#project-files" title="Permanent link">&para;</a></h2>
 <p>Every forge writes a <code>.forgeproject.json</code> alongside the output. Users
 can reload it (iterate quickly), hand-edit it (reorder items, tweak
