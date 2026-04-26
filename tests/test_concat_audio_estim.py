@@ -285,7 +285,10 @@ class TestEmptyLayout:
 
 # ── channel suffix mapping ─────────────────────────────────────────────
 class TestChannelSuffixes:
-    def test_three_channels_in_canonical_order(self):
+    def test_back_compat_per_channel_wav_constants(self):
+        """`AUDIO_ESTIM_CHANNELS` is kept (pinned to the per-channel WAV
+        split) for back-compat with v0.0.4 callers / tests. New code
+        uses `discover_channels_in_layout()` to enumerate dynamically."""
         keys = [k for k, _ in AUDIO_ESTIM_CHANNELS]
         suffixes = [s for _, s in AUDIO_ESTIM_CHANNELS]
         assert keys == [
@@ -298,3 +301,89 @@ class TestChannelSuffixes:
             ".legacy.wav",
             ".prostate.stereostim.wav",
         ]
+
+
+# ── MP3 / generic detection (v0.0.5 fix) ──────────────────────────────
+class TestMp3Detection:
+    def test_segment_with_mp3_only_resolves(self, tmp_path: Path):
+        """The real-world case: only `{stem}.mp3` exists alongside the
+        video. v0.0.5 fix — detection now finds it."""
+        v = _mp4(tmp_path, "clip")
+        (tmp_path / "clip.mp3").write_bytes(b"")
+        p = _project(tmp_path, Segment(id="s", video=str(v)))
+        layout = lay_out(p, probe=lambda _p: 5000)
+        files = channel_files_for_layout(p, layout, "mp3")
+        assert files == [tmp_path / "clip.mp3"]
+
+    def test_mp3_in_estim_subfolder_resolves(self, tmp_path: Path):
+        """Restim workflow: video moved into estim/, mp3 lives there too."""
+        estim = tmp_path / "estim"
+        estim.mkdir()
+        v = _mp4(estim, "0")
+        (estim / "0.mp3").write_bytes(b"")
+        # When detect_folder is called on tmp_path, it falls back to
+        # the subfolder for the video and audio_estim_for_stem also
+        # scans subfolders — but here we test the channel resolution
+        # directly with the segment pointing at the moved video.
+        p = _project(tmp_path, Segment(id="s", video=str(v)))
+        layout = lay_out(p, probe=lambda _p: 5000)
+        files = channel_files_for_layout(p, layout, "mp3")
+        assert files == [estim / "0.mp3"]
+
+    def test_multi_channel_mp3_detected(self, tmp_path: Path):
+        """FunscriptForge emits per-channel MP3 (`0.mp3` for main,
+        `0.prostate.mp3` for prostate). v0.0.5 detection picks up
+        every channel; the engine emits one combined output per."""
+        v = _mp4(tmp_path, "0")
+        (tmp_path / "0.mp3").write_bytes(b"")
+        (tmp_path / "0.prostate.mp3").write_bytes(b"")
+        (tmp_path / "0.alpha-prostate.mp3").write_bytes(b"")
+        p = _project(tmp_path, Segment(id="s", video=str(v)))
+        layout = lay_out(p, probe=lambda _p: 1000)
+        from forgeassembler_core.concat_audio_estim import (
+            discover_channels_in_layout,
+        )
+        channels = discover_channels_in_layout(p, layout)
+        # Sorted, with the channel suffix preserved.
+        assert "mp3" in channels
+        assert "prostate.mp3" in channels
+        assert "alpha-prostate.mp3" in channels
+
+    def test_both_per_channel_wav_and_mp3_emit_independently(self, tmp_path: Path):
+        """When BOTH `clip.stereostim.wav` and `clip.mp3` exist, BOTH
+        get emitted as independent channels. Forge produces every
+        channel any segment carries; the downstream player picks what
+        its hardware needs at playback time."""
+        v = _mp4(tmp_path, "clip")
+        _stim(tmp_path, "clip", ".stereostim.wav")
+        (tmp_path / "clip.mp3").write_bytes(b"")
+        p = _project(tmp_path, Segment(id="s", video=str(v)))
+        layout = lay_out(p, probe=lambda _p: 1000)
+        # Both resolve.
+        assert channel_has_any_audio(p, layout, "stereostim.wav")
+        assert channel_has_any_audio(p, layout, "mp3")
+
+
+# ── Output codec depends on output file extension ─────────────────────
+class TestOutputCodec:
+    def test_mp3_output_uses_libmp3lame(self, tmp_path: Path):
+        v = _mp4(tmp_path, "clip")
+        (tmp_path / "clip.mp3").write_bytes(b"")
+        p = _project(tmp_path, Segment(id="s", video=str(v)))
+        layout = lay_out(p, probe=lambda _p: 1000)
+        out = str(tmp_path / "combined.mp3")
+        cmd = build_audio_estim_command(p, layout, "mp3", out)
+        assert "libmp3lame" in cmd.output_args
+        # Bitrate is set; PCM args (which are wav-only) are absent.
+        assert "-b:a" in cmd.output_args
+        assert "pcm_s16le" not in cmd.output_args
+
+    def test_wav_output_uses_pcm(self, tmp_path: Path):
+        v = _mp4(tmp_path, "clip")
+        _stim(tmp_path, "clip", ".stereostim.wav")
+        p = _project(tmp_path, Segment(id="s", video=str(v)))
+        layout = lay_out(p, probe=lambda _p: 1000)
+        out = str(tmp_path / "combined.stereostim.wav")
+        cmd = build_audio_estim_command(p, layout, "stereostim.wav", out)
+        assert "pcm_s16le" in cmd.output_args
+        assert "libmp3lame" not in cmd.output_args
