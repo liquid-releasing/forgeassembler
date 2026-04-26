@@ -615,6 +615,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#splitting-a-clip-at-a-timestamp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ✂ Splitting a clip at a timestamp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#section-naming" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1101,6 +1112,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#splitting-a-clip-at-a-timestamp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ✂ Splitting a clip at a timestamp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#section-naming" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1236,6 +1258,8 @@ bottom of the focused card. All sections expand again.</p>
   native file picker. Section overlays and joiner stay; funscripts
   auto-rescan against the new file's siblings.</li>
 <li><strong>✕ Remove</strong> — drop the segment.</li>
+<li><strong>✂ Split clip at time…</strong> — expand for a small form that splits a
+  single video at a timestamp from the source file (see below).</li>
 <li><strong>Thumbnail + duration + detected funscript channels</strong> — read-only.</li>
 </ul>
 <p>Between two consecutive segments inside a section, a small <strong>🔪 Split
@@ -1244,6 +1268,60 @@ that boundary — clips below the cut become a new section. Section
 overlays redistribute by their time window: anything entirely in the
 top half stays; anything entirely in the bottom half moves with
 adjusted timing; overlays straddling the boundary split into two.</p>
+<h2 id="splitting-a-clip-at-a-timestamp">✂ Splitting a clip at a timestamp<a class="headerlink" href="#splitting-a-clip-at-a-timestamp" title="Permanent link">&para;</a></h2>
+<p>For long source videos, you can cut INSIDE a single clip at any
+timestamp — no need to pre-split the file with ffmpeg first. The
+<strong>✂ Split clip at time…</strong> expander on each video segment lets you
+enter a timestamp and the clip becomes two pieces.</p>
+<p>The timestamp is <strong>always interpreted as a position in the source
+video file</strong>, not relative to where the piece starts in your
+project. The expander shows the source file's name and length, plus
+the current piece's bounds in source coordinates, so the math stays
+obvious as you slice further:</p>
+<blockquote>
+<p>Source file: <code>bigvideo.mp4</code> (01:00:00.000 long)</p>
+<p>This piece plays <strong>00:30:00.000 → 01:00:00.000</strong> of the source file.</p>
+<p>Split at (timestamp in source file): <code>00:45:00.000</code></p>
+</blockquote>
+<p>When you click <strong>Split here (becomes new section)</strong>:</p>
+<ul>
+<li>The clip becomes two pieces. Both reference the same underlying
+  file; the trim window narrows on each side of the cut.</li>
+<li>The second piece <strong>auto-promotes to a new section</strong> (= a new
+  chapter in the final MP4).</li>
+<li>Section overlays redistribute the same way as the inter-clip 🔪
+  Split here (the two operations share the same engine).</li>
+</ul>
+<p>This single feature covers four use cases:</p>
+<table>
+<thead>
+<tr>
+<th>To do this…</th>
+<th>…after the split</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Multi-chapter</strong> in one long video</td>
+<td>Keep both pieces</td>
+</tr>
+<tr>
+<td><strong>Trim the start</strong></td>
+<td>Delete the first piece (✕ Remove the first new section)</td>
+</tr>
+<tr>
+<td><strong>Trim the end</strong></td>
+<td>Delete the second piece</td>
+</tr>
+<tr>
+<td><strong>Mid-video fade-to-black</strong></td>
+<td>Set the new section's leading joiner to fade-to-black</td>
+</tr>
+</tbody>
+</table>
+<p>The timestamps you type <strong>always refer to the original file</strong>, no
+matter how many times you split. So you can slice top-down or
+bottom-up — same result either way. No mental arithmetic.</p>
 <h2 id="section-naming">Section naming<a class="headerlink" href="#section-naming" title="Permanent link">&para;</a></h2>
 <p>Each section has a name input at the top. The name becomes the MP4
 chapter title, and it shows in VLC / File Explorer / Plex. Use short,
