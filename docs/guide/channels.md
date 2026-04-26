@@ -6,9 +6,10 @@ its own name suffix:
 | Channel | Suffix | Used by |
 |---|---|---|
 | Main | `.funscript` | Standard linear devices (Handy, Kiiroo, etc.) |
-| Multi-axis | `.multi_axis.funscript` | SR6 / OSR2 and similar 6DOF rigs |
-| 3-phase estim | `.e1.funscript`, `.e2.funscript`, `.e3.funscript` | RESTIM, 3-channel estim |
-| Prostate | `.prostate.funscript` | Prostate-specific devices |
+| Multi-axis | `.pitch.funscript`, `.roll.funscript`, `.surge.funscript`, `.sway.funscript`, `.twist.funscript` | SR6 / OSR2 and similar 6DOF rigs |
+| 3-phase estim | `.alpha.funscript`, `.beta.funscript` | restim 3-phase rigs |
+| Prostate | `.alpha-prostate.funscript`, `.beta-prostate.funscript` | restim prostate variants |
+| 4-phase estim *(Phase 2)* | `.e1.funscript`, `.e2.funscript`, `.e3.funscript` | restim 4-phase rigs — concat not yet wired |
 
 The sidebar **Output channels** section lets you pick which channels
 get written for the combined output.
