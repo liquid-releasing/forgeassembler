@@ -1326,7 +1326,7 @@ with tab_build:
             for clip_idx, seg in enumerate(sec.segments):
                 row = st.container(border=False)
                 with row:
-                    cols = st.columns([1, 6, 1, 1])
+                    cols = st.columns([1, 6, 1, 1, 1])
                     vpath = Path(seg.video)
                     mtime = vpath.stat().st_mtime if vpath.exists() else 0.0
 
@@ -1387,6 +1387,46 @@ with tab_build:
                             ))
 
                     with cols[3]:
+                        # 🔄 Replace — file-only swap. Keeps section
+                        # overlays, audio settings, joiner, etc. — only
+                        # the underlying video changes. Funscripts
+                        # auto_detect re-scans next render because the
+                        # vpath.stem (cache key) changed; explicit
+                        # mode keeps the existing map but warns the
+                        # user since channel layout likely won't line
+                        # up with the new file.
+                        if st.button(
+                            "🔄", key=f"replace_{seg.id}",
+                            help=(
+                                "Replace this clip's video file. "
+                                "Section overlays + audio settings stay; "
+                                "funscripts re-scan automatically."
+                            ),
+                        ):
+                            picked = _bridge_url("file")
+                            if picked:
+                                seg.video = picked
+                                if (
+                                    seg.funscripts_source == "explicit"
+                                    and seg.explicit_funscripts
+                                ):
+                                    st.toast(
+                                        "Replaced — explicit funscripts may "
+                                        "not line up with new video channels. "
+                                        "Review or switch to auto-detect.",
+                                        icon="⚠️",
+                                    )
+                                st.rerun()
+                            elif os.environ.get(
+                                "FORGEASSEMBLER_BRIDGE_PORT",
+                            ) is None:
+                                st.info(
+                                    "Replace needs the desktop app's native "
+                                    "file picker. Edit the project JSON "
+                                    "manually if running in the browser."
+                                )
+
+                    with cols[4]:
                         if st.button(
                             "✕", key=f"rm_{seg.id}",
                             help="Remove this clip",
