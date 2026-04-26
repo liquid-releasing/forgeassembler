@@ -68,6 +68,7 @@ nav:
     - Joiners: guide/joiners.md
     - Output Channels: guide/channels.md
     - Debug Mode: guide/debug-mode.md
+    - CLI: guide/cli.md
   - Title Cards:
     - Overview: guide/title-cards/index.md
     - White on Transparent: guide/title-cards/getting_started_white_on_transparent.md
