@@ -84,7 +84,12 @@ def cmd_detect(args: argparse.Namespace) -> int:
                 if channels:
                     print(f"  {group}: {', '.join(sorted(channels))}")
         if clip.audio_estim:
-            print(f"  audio_estim: {', '.join(sorted(clip.audio_estim.keys()))}")
+            # Strip .wav for compactness; matches the UI segment-card
+            # caption format ("Audio (estim): stereostim, legacy, ...").
+            pretty = sorted(
+                k.replace(".wav", "") for k in clip.audio_estim
+            )
+            print(f"  audio (estim): {', '.join(pretty)}")
         if not clip.funscripts and not clip.audio_estim:
             print("  (no associated funscripts or audio)")
     return 0

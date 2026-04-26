@@ -121,6 +121,17 @@ def _detect_channels_cached(folder: str, stem: str, mtime_hint: float) -> list[s
     return sorted(funscripts_for_stem(Path(folder), stem).keys())
 
 
+@st.cache_data(show_spinner=False)
+def _detect_audio_estim_cached(
+    folder: str, stem: str, mtime_hint: float,
+) -> list[str]:
+    """Return haptic-estim audio channel names found next to a clip
+    (`stereostim.wav`, `legacy.wav`, `prostate.stereostim.wav`).
+    Same caching pattern as `_detect_channels_cached`."""
+    from forgeassembler_core.detect import audio_estim_for_stem
+    return sorted(audio_estim_for_stem(Path(folder), stem).keys())
+
+
 def _segment_source_duration_ms(
     seg: Segment, ffmpeg_exe: str | None,
 ) -> int | None:
@@ -1511,11 +1522,14 @@ with tab_build:
                         else:
                             # Detected funscript channels next to the clip
                             folder = vpath.parent
+                            mtime = (
+                                folder.stat().st_mtime
+                                if folder.exists() else 0.0
+                            )
                             channels: list[str] = []
                             try:
                                 channels = _detect_channels_cached(
-                                    str(folder), vpath.stem,
-                                    folder.stat().st_mtime if folder.exists() else 0.0,
+                                    str(folder), vpath.stem, mtime,
                                 )
                             except Exception:  # noqa: BLE001
                                 pass
@@ -1525,6 +1539,31 @@ with tab_build:
                                 )
                             else:
                                 st.caption("No funscripts detected")
+
+                            # Detected haptic-estim audio next to the clip.
+                            # Shown only when something exists — silent
+                            # for the common "no estim audio" case so the
+                            # row doesn't grow a noisy "no audio" line on
+                            # every clip in non-haptic projects.
+                            audio_channels: list[str] = []
+                            try:
+                                audio_channels = _detect_audio_estim_cached(
+                                    str(folder), vpath.stem, mtime,
+                                )
+                            except Exception:  # noqa: BLE001
+                                pass
+                            if audio_channels:
+                                # `audio_estim_for_stem` returns keys like
+                                # "stereostim.wav" / "legacy.wav" /
+                                # "prostate.stereostim.wav" — strip the
+                                # ".wav" for compactness.
+                                pretty = [
+                                    k.replace(".wav", "")
+                                    for k in audio_channels
+                                ]
+                                st.caption(
+                                    "Audio (estim): " + ", ".join(pretty),
+                                )
 
                     with cols[2]:
                         # Still-image duration editor in-place
