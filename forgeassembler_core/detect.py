@@ -163,6 +163,15 @@ def detect_folder(folder_path: str | Path) -> list[DetectedClip]:
     Files are sorted by name so multi-clip folders (video1, video2, ...)
     come out in a predictable order. Works for both single-clip folders
     and many-clips-in-one-folder layouts.
+
+    Falls back to the well-known channel subfolders (`estim/`,
+    `audio_estim/`, etc.) when the immediate folder has no videos. This
+    handles the restim workflow where users move video files into
+    `estim/` so restim can pair them with the funscripts that already
+    live there. The video's siblings (funscripts, audio_estim WAVs)
+    are then discovered via `funscripts_for_stem` /
+    `audio_estim_for_stem`, which already scan the same channel
+    subfolders.
     """
     folder = Path(folder_path).resolve()
     if not folder.is_dir():
@@ -172,6 +181,19 @@ def detect_folder(folder_path: str | Path) -> list[DetectedClip]:
         if not f.is_file() or f.suffix.lower() not in VIDEO_EXTS:
             continue
         clips.append(detect_file(f))
+    if clips:
+        return clips
+    # No videos in the immediate folder — try the channel subfolders.
+    # Returns videos in deterministic order (subfolder name asc, then
+    # filename asc).
+    for sub in _CHANNEL_SUBFOLDERS:
+        d = folder / sub
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if not f.is_file() or f.suffix.lower() not in VIDEO_EXTS:
+                continue
+            clips.append(detect_file(f))
     return clips
 
 

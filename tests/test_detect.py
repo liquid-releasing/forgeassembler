@@ -43,6 +43,41 @@ def test_single_folder_clip(tmp_path: Path):
     assert "alpha" in c.funscripts
 
 
+def test_detect_folder_falls_back_to_estim_subfolder(tmp_path: Path):
+    """Restim workflow: video file is moved into `estim/` so restim can
+    pair it with the funscripts already living there. detect_folder
+    falls back to scanning the channel subfolders when the immediate
+    folder has no videos."""
+    estim = tmp_path / "estim"
+    estim.mkdir()
+    _touch(estim / "0.mp4")
+    _stub_funscript(estim / "0.alpha.funscript")
+    _stub_funscript(estim / "0.beta.funscript")
+
+    clips = detect_folder(tmp_path)
+    assert len(clips) == 1
+    c = clips[0]
+    assert c.stem == "0"
+    # Video and funscripts in same `estim/` folder; funscripts_for_stem
+    # already scans channel subfolders so they're picked up.
+    assert "alpha" in c.funscripts
+    assert "beta" in c.funscripts
+
+
+def test_detect_folder_immediate_videos_win_over_subfolder(tmp_path: Path):
+    """When videos exist BOTH at the immediate level and in `estim/`,
+    the immediate-level wins and the subfolder scan is skipped (avoids
+    double-counting)."""
+    _touch(tmp_path / "main.mp4")
+    estim = tmp_path / "estim"
+    estim.mkdir()
+    _touch(estim / "extra.mp4")
+
+    clips = detect_folder(tmp_path)
+    assert len(clips) == 1
+    assert clips[0].stem == "main"
+
+
 def test_many_clips_same_folder(tmp_path: Path):
     _touch(tmp_path / "video1.mp4")
     _stub_funscript(tmp_path / "video1.funscript")
