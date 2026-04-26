@@ -593,10 +593,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#reordering" class="md-nav__link">
+  <a href="#editing-a-section-focus-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reordering
+        Editing a section (focus mode)
       
     </span>
   </a>
@@ -1051,10 +1051,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#reordering" class="md-nav__link">
+  <a href="#editing-a-section-focus-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reordering
+        Editing a section (focus mode)
       
     </span>
   </a>
@@ -1184,19 +1184,38 @@ directly to the section model:</p>
 </table>
 <p>The first two are the workhorses for building a new project. The
 third is how you extend a section. The last two are for overlays.</p>
-<h2 id="reordering">Reordering<a class="headerlink" href="#reordering" title="Permanent link">&para;</a></h2>
-<p>Section cards are top-to-bottom. Drag isn't wired yet — reorder by
-editing the project JSON if you need to. The planned <strong>Edit mode</strong>
-(see <a href="https://github.com/liquid-releasing/forgeassembler/issues">backlog</a>)
-will give you an ✏ button and a move-up/move-down control on each
-section.</p>
+<h2 id="editing-a-section-focus-mode">Editing a section (focus mode)<a class="headerlink" href="#editing-a-section-focus-mode" title="Permanent link">&para;</a></h2>
+<p>Click the <strong>📝</strong> in any section's header to focus on it. The other
+sections collapse to one-line summary rows ("Section N · chapter ·
+M clips · duration") so you can keep your eye on the one you're
+working on. The focused section shows the full controls plus three
+extra affordances:</p>
+<ul>
+<li><strong>⬆ Insert above</strong> — insert a new empty section before this one,
+  focus auto-jumps to the new section so you can drop a clip in.</li>
+<li><strong>⬇ Insert below</strong> — same, but after.</li>
+<li><strong>Add Clips form (in-card)</strong> — drop a path right inside the
+  focused card and it lands in <em>this</em> section. Radio modes adapt:
+  "Into THIS section (cut-join)", overlay, text. The two NEW-section
+  modes are also available if you want to bulk-load from this point.</li>
+</ul>
+<p>When you're done, click the orange <strong>Done editing</strong> button at the
+bottom of the focused card. All sections expand again.</p>
 <h2 id="per-segment-controls">Per-segment controls<a class="headerlink" href="#per-segment-controls" title="Permanent link">&para;</a></h2>
 <p>Each segment card exposes:</p>
 <ul>
-<li><strong>✂ Split</strong> — cut the clip at a timestamp into two segments</li>
-<li><strong>✕ Remove</strong> — drop the segment</li>
-<li><strong>Thumbnail + duration + detected funscript channels</strong> — read-only</li>
+<li><strong>🔄 Replace</strong> — swap this clip's video file for another via a
+  native file picker. Section overlays and joiner stay; funscripts
+  auto-rescan against the new file's siblings.</li>
+<li><strong>✕ Remove</strong> — drop the segment.</li>
+<li><strong>Thumbnail + duration + detected funscript channels</strong> — read-only.</li>
 </ul>
+<p>Between two consecutive segments inside a section, a small <strong>🔪 Split
+here</strong> button appears. Click it to split the section into two at
+that boundary — clips below the cut become a new section. Section
+overlays redistribute by their time window: anything entirely in the
+top half stays; anything entirely in the bottom half moves with
+adjusted timing; overlays straddling the boundary split into two.</p>
 <h2 id="section-naming">Section naming<a class="headerlink" href="#section-naming" title="Permanent link">&para;</a></h2>
 <p>Each section has a name input at the top. The name becomes the MP4
 chapter title, and it shows in VLC / File Explorer / Plex. Use short,
