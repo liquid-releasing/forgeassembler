@@ -77,6 +77,14 @@ When **Audio (haptic estim)** is on in the Produce panel, the engine:
 4. Channels with no audio in any segment are skipped (no useless
    100%-silent files).
 
+**By design, the engine emits every estim channel any segment carries
+— stereostim, legacy, and prostate — regardless of whether your
+current device needs them.** The downstream player (ForgePlayer, or
+whatever your setup uses) selects the right channel at playback time
+based on the user's hardware profile. Forge time produces all
+artifacts; playback time consumes only what's relevant. This keeps
+forged outputs portable across devices without re-rendering.
+
 Per-segment trim windows (Split clip at time…) propagate to the
 audio inputs the same way they do to video — `-ss <trim_start>` and
 `-t <effective_duration>`.
