@@ -62,13 +62,20 @@ def _probe_video_ms(path: str, mtime: float, _ffmpeg_exe: str) -> int:
 
 
 @st.cache_data(show_spinner=False)
-def _thumbnail_bytes(path: str, mtime: float) -> bytes | None:
+def _thumbnail_bytes(
+    path: str, mtime: float, offset_s: float = 1.0,
+) -> bytes | None:
     """Return a small preview image for a clip.
 
     For PNG / still-image clips, returns the file bytes as-is (they're
-    already the visual). For videos, extracts a single frame at ~1s in
-    via ffmpeg, scaled to a 160px-wide JPG. Returns None if ffmpeg
-    isn't available or the file can't be decoded.
+    already the visual). For videos, extracts a single frame `offset_s`
+    seconds into the source file via ffmpeg, scaled to a 160px-wide
+    JPG. Returns None if ffmpeg isn't available or the file can't be
+    decoded.
+
+    `offset_s` is part of the cache key (via st.cache_data on args),
+    so trimmed segments that share a source file but start at
+    different points each get their own thumbnail.
     """
     from forgeassembler_core.project import is_still_image
     if is_still_image(path):
@@ -89,7 +96,7 @@ def _thumbnail_bytes(path: str, mtime: float) -> bytes | None:
         result = subprocess.run(
             [
                 ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-                "-ss", "1", "-i", path, "-vframes", "1",
+                "-ss", f"{offset_s:g}", "-i", path, "-vframes", "1",
                 "-vf", "scale=160:-2", "-q:v", "4", tmp.name,
             ],
             capture_output=True, timeout=15,
@@ -1450,7 +1457,15 @@ with tab_build:
                     mtime = vpath.stat().st_mtime if vpath.exists() else 0.0
 
                     with cols[0]:
-                        thumb = _thumbnail_bytes(str(vpath), mtime)
+                        # Extract the thumbnail 1s INTO this piece's
+                        # trim window (not into the source file). Two
+                        # halves of a split clip share `seg.video` but
+                        # have different `trim_start`s, so this is what
+                        # makes them visually distinct in the UI.
+                        thumb_offset_s = (seg.trim_start_ms() / 1000.0) + 1.0
+                        thumb = _thumbnail_bytes(
+                            str(vpath), mtime, thumb_offset_s,
+                        )
                         if thumb:
                             st.image(thumb, width=120)
                         else:
