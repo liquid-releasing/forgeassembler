@@ -1,25 +1,40 @@
 /* @esm-converted */
 import React from 'react';
+import { icons as LucideIcons } from 'lucide-react';
 import { Section } from './TitleEditor';
 
 // Reusable primitives — all named with `ff` prefix to avoid global collisions.
-// Loaded as a Babel script. Components attached to window at the bottom.
 
 const { useState, useEffect, useRef, useMemo } = React;
 
 // ─── Icon ─────────────────────────────────────────────────────────
+// The extracted UI passes kebab-case lucide names ("layout-grid"). lucide-react
+// keys its registry by PascalCase ("LayoutGrid"), so we convert and render the
+// real React SVG component — no DOM mutation, unlike the prototype's
+// createIcons() sweep (which fought React's reconciler).
+const _iconCache = {};
+function lucideComponent(name) {
+  if (name in _iconCache) return _iconCache[name];
+  const pascal = String(name || '')
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((s) => s[0].toUpperCase() + s.slice(1))
+    .join('');
+  const Cmp = LucideIcons[pascal] || LucideIcons.Square;
+  _iconCache[name] = Cmp;
+  return Cmp;
+}
+
 function Icon({ name, size = 16, stroke = 1.75, style = {}, className = "" }) {
-  // Lucide pattern: render an <i data-lucide> and let lucide.createIcons() sweep on mount.
-  // For React lifecycle safety we re-run after each render.
-  const ref = useRef();
-  useEffect(() => {
-    if (window.lucide && ref.current) {
-      ref.current.setAttribute("data-lucide", name);
-      ref.current.innerHTML = "";
-      window.lucide.createIcons({ icons: window.lucide.icons, attrs: { "stroke-width": stroke }, nameAttr: "data-lucide", root: ref.current.parentElement });
-    }
-  }, [name, stroke]);
-  return <i ref={ref} data-lucide={name} style={{ width: size, height: size, display: "inline-flex", ...style }} className={className} />;
+  const Cmp = lucideComponent(name);
+  return (
+    <Cmp
+      size={size}
+      strokeWidth={stroke}
+      className={className}
+      style={{ display: "inline-flex", flexShrink: 0, ...style }}
+    />
+  );
 }
 
 // ─── Button ───────────────────────────────────────────────────────
