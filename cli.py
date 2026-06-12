@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -46,12 +48,63 @@ from forgeassembler_core.layout import lay_out
 from forgeassembler_core.probe import probe_duration_ms
 
 
+# ── Helpers shared by the JSON-emitting subcommands (Tauri bridge) ─────
+def _clip_to_dict(clip) -> dict:
+    """Serialize a DetectedClip for `detect --format json`. Paths become
+    absolute strings; channels keep their key→path mapping plus the
+    grouped view the UI renders."""
+    return {
+        "video": str(clip.video),
+        "stem": clip.stem,
+        "funscripts": {k: str(v) for k, v in clip.funscripts.items()},
+        "audio_estim": {k: str(v) for k, v in clip.audio_estim.items()},
+        "channel_groups": {
+            g: sorted(chs)
+            for g, chs in categorize_channels(clip.funscripts).items()
+            if chs
+        },
+    }
+
+
+def _progress_writer():
+    """Return a callback that appends progress lines to the file named by
+    FORGEASSEMBLER_PROGRESS_FILE (the Tauri shell tails it and re-emits each
+    line as an `fa:progress` event) AND mirrors them to stderr. When the env
+    var is unset (plain CLI use) it just writes stderr."""
+    path = os.environ.get("FORGEASSEMBLER_PROGRESS_FILE")
+
+    def emit(line: str) -> None:
+        print(line, file=sys.stderr)
+        if path:
+            try:
+                with open(path, "a", encoding="utf-8") as fh:
+                    fh.write(line.rstrip("\n") + "\n")
+            except OSError:
+                pass
+
+    return emit
+
+
 def cmd_version(_args: argparse.Namespace) -> int:
     print(f"{APP_NAME} {VERSION}")
     return 0
 
 
-def cmd_list_joiners(_args: argparse.Namespace) -> int:
+def cmd_list_joiners(args: argparse.Namespace) -> int:
+    if getattr(args, "format", "text") == "json":
+        payload = {
+            "joiners": [
+                {
+                    "joiner_type": spec.joiner_type,
+                    "display_name": spec.display_name,
+                    "description": spec.description,
+                    "params_schema": spec.params_schema,
+                }
+                for spec in joiner_specs()
+            ]
+        }
+        print(json.dumps(payload))
+        return 0
     for spec in joiner_specs():
         print(f"{spec.joiner_type}")
         print(f"  name: {spec.display_name}")
@@ -73,6 +126,9 @@ def cmd_detect(args: argparse.Namespace) -> int:
         print(f"ERROR: not a directory: {folder}", file=sys.stderr)
         return 2
     clips = detect_folder(folder)
+    if getattr(args, "format", "text") == "json":
+        print(json.dumps({"clips": [_clip_to_dict(c) for c in clips]}))
+        return 0
     if not clips:
         print(f"No video files found in {folder}.")
         return 0
@@ -97,15 +153,47 @@ def cmd_detect(args: argparse.Namespace) -> int:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     path = Path(args.project)
+    as_json = getattr(args, "format", "text") == "json"
     if not path.is_file():
+        if as_json:
+            print(json.dumps({
+                "ok": False,
+                "errors": [{"level": "error",
+                            "message": f"project file not found: {path}",
+                            "item_id": None}],
+                "warnings": [],
+            }))
+            return 2
         print(f"ERROR: project file not found: {path}", file=sys.stderr)
         return 2
     try:
         project = Project.load(path)
     except (json.JSONDecodeError, ValueError, KeyError) as exc:
+        if as_json:
+            print(json.dumps({
+                "ok": False,
+                "errors": [{"level": "error",
+                            "message": f"could not parse project: {exc}",
+                            "item_id": None}],
+                "warnings": [],
+            }))
+            return 1
         print(f"ERROR: could not parse project: {exc}", file=sys.stderr)
         return 1
     issues = validate(project)
+    if as_json:
+        errors = [i for i in issues if i.level == "error"]
+        warnings = [i for i in issues if i.level == "warning"]
+        print(json.dumps({
+            "ok": not errors,
+            "errors": [{"level": i.level, "message": i.message,
+                        "item_id": i.item_id} for i in errors],
+            "warnings": [{"level": i.level, "message": i.message,
+                          "item_id": i.item_id} for i in warnings],
+            "segment_count": len(project.segments()),
+            "joiner_count": len(project.joiners()),
+        }))
+        return 1 if errors else 0
     if not issues:
         print(f"OK — project has {len(project.segments())} segment(s), "
               f"{len(project.joiners())} joiner(s).")
@@ -119,6 +207,52 @@ def cmd_validate(args: argparse.Namespace) -> int:
         loc = f" [{e.item_id}]" if e.item_id else ""
         print(f"ERROR{loc}: {e.message}", file=sys.stderr)
     return 1 if errors else 0
+
+
+def cmd_probe(args: argparse.Namespace) -> int:
+    """Print a media file's duration in milliseconds (one integer to stdout)."""
+    path = Path(args.video)
+    if not path.is_file():
+        print(f"ERROR: file not found: {path}", file=sys.stderr)
+        return 2
+    try:
+        ffmpeg_exe = _resolve_ffmpeg_exe()
+        ms = probe_duration_ms(path, ffmpeg_exe)
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 3
+    print(int(ms))
+    return 0
+
+
+def cmd_thumbnail(args: argparse.Namespace) -> int:
+    """Extract a single frame at `--at <ms>` to `--out <png>`."""
+    video = Path(args.video)
+    if not video.is_file():
+        print(f"ERROR: file not found: {video}", file=sys.stderr)
+        return 2
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        ffmpeg_exe = _resolve_ffmpeg_exe()
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 3
+    seconds = max(0.0, args.at / 1000.0)
+    result = subprocess.run(
+        [
+            ffmpeg_exe, "-hide_banner", "-loglevel", "error",
+            "-ss", f"{seconds:.3f}", "-i", str(video),
+            "-frames:v", "1", "-vf", "scale=320:-2", "-update", "1",
+            "-y", str(out),
+        ],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result.returncode != 0:
+        print(f"ERROR: ffmpeg thumbnail failed: {result.stderr}", file=sys.stderr)
+        return 3
+    print(str(out))
+    return 0
 
 
 def _natural_key(path: Path) -> tuple:
@@ -241,6 +375,14 @@ def cmd_forge(args: argparse.Namespace) -> int:
             print(f"ERROR{loc}: {e.message}", file=sys.stderr)
         return 1
 
+    # JSON mode: human chatter goes to stderr (via `say`), stdout carries only
+    # the final summary object. `emit` mirrors progress to the Tauri progress
+    # file. Text mode keeps the legacy human stdout output.
+    as_json = getattr(args, "format", "text") == "json"
+    emit = _progress_writer()
+    say = (lambda m: print(m, file=sys.stderr)) if as_json else print
+    summary: dict = {"video": None, "funscripts": [], "audio_estim": []}
+
     out = project.output
 
     # Resolve ffmpeg + build layout (probes duration via ffmpeg for real
@@ -303,38 +445,40 @@ def cmd_forge(args: argparse.Namespace) -> int:
             )
 
     if out.produce_video:
-        print(f"Forging video at {out.resolution} → {out.folder}/{out.basename}.mp4")
+        emit(f"progress: forging video at {out.resolution}")
+        say(f"Forging video at {out.resolution} → {out.folder}/{out.basename}.mp4")
         try:
             output = forge_video(
                 project, layout,
                 ffmpeg_exe=ffmpeg_exe,
                 resolution_override=resolution_override,
                 frame_rate_override=frame_rate_override,
-                log_callback=lambda line: print(line, file=sys.stderr),
+                log_callback=emit,
             )
-            print(f"Wrote {output}")
+            summary["video"] = str(output)
+            say(f"Wrote {output}")
         except RuntimeError as e:
             print(f"ERROR: {e}", file=sys.stderr)
             return 3
 
     if out.produce_funscripts:
+        emit("progress: forging funscripts")
         try:
             written = forge_funscripts(project, layout)
         except Exception as e:  # noqa: BLE001
             print(f"ERROR: funscript forge failed: {e}", file=sys.stderr)
             return 3
         if written:
-            print(f"Wrote {len(written)} funscript file(s):")
+            summary["funscripts"] = [str(p) for p in written]
+            say(f"Wrote {len(written)} funscript file(s):")
             for path in written:
-                print(f"  {path}")
+                say(f"  {path}")
         else:
-            print(
-                "No funscripts written (no selected channel had any "
-                "actions across the project).",
-                file=sys.stderr,
-            )
+            say("No funscripts written (no selected channel had any "
+                "actions across the project).")
 
     if out.produce_audio_estim:
+        emit("progress: forging haptic-estim audio")
         from forgeassembler_core.concat_audio_estim import forge_audio_estim
         try:
             written_audio = forge_audio_estim(
@@ -347,17 +491,18 @@ def cmd_forge(args: argparse.Namespace) -> int:
             )
             return 3
         if written_audio:
-            print(f"Wrote {len(written_audio)} estim audio file(s):")
+            summary["audio_estim"] = [str(p) for p in written_audio]
+            say(f"Wrote {len(written_audio)} estim audio file(s):")
             for path in written_audio:
-                print(f"  {path}")
+                say(f"  {path}")
         else:
-            print(
-                "No estim audio written (no segment had a "
+            say("No estim audio written (no segment had a "
                 ".stereostim.wav / .legacy.wav / .prostate.stereostim.wav "
-                "sibling).",
-                file=sys.stderr,
-            )
+                "sibling).")
 
+    emit("progress: done")
+    if as_json:
+        print(json.dumps(summary))
     return 0
 
 
@@ -381,6 +526,8 @@ def build_parser() -> argparse.ArgumentParser:
             ".stereostim.wav / .legacy.wav / .prostate.stereostim.wav)"
         ),
     )
+    p_forge.add_argument("--format", choices=("text", "json"), default="text",
+                         help="json: stream progress to stderr, print a summary object to stdout")
     p_forge.set_defaults(func=cmd_forge)
 
     p_new = sub.add_parser(
@@ -400,14 +547,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_detect = sub.add_parser("detect", help="show what auto-detects in a folder")
     p_detect.add_argument("folder", help="folder to scan")
+    p_detect.add_argument("--format", choices=("text", "json"), default="text",
+                          help="json: emit a {clips:[...]} object for the UI")
     p_detect.set_defaults(func=cmd_detect)
 
     p_validate = sub.add_parser("validate", help="check a project without forging")
     p_validate.add_argument("project", help="path to project JSON")
+    p_validate.add_argument("--format", choices=("text", "json"), default="text",
+                            help="json: emit an {ok, errors, warnings} object")
     p_validate.set_defaults(func=cmd_validate)
 
     p_list = sub.add_parser("list-joiners", help="list available joiner types")
+    p_list.add_argument("--format", choices=("text", "json"), default="text",
+                        help="json: emit a {joiners:[...]} object")
     p_list.set_defaults(func=cmd_list_joiners)
+
+    p_probe = sub.add_parser("probe", help="print a media file's duration in ms")
+    p_probe.add_argument("video", help="path to a video/audio file")
+    p_probe.set_defaults(func=cmd_probe)
+
+    p_thumb = sub.add_parser("thumbnail", help="extract one frame to a PNG")
+    p_thumb.add_argument("video", help="path to a video file")
+    p_thumb.add_argument("--at", type=int, default=0, help="timestamp in ms (default 0)")
+    p_thumb.add_argument("--out", required=True, help="output PNG path")
+    p_thumb.set_defaults(func=cmd_thumbnail)
 
     return parser
 

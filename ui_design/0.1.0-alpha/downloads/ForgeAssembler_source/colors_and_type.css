@@ -1,0 +1,118 @@
+/* FunscriptForge — design tokens + base type
+ * © 2026 Liquid Releasing — MIT
+ */
+
+/* ─── Webfonts (substitution flag — see README) ───────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* ── Colors ─────────────────────────────────────────────────────── */
+  --bg:            #0e1117;
+  --surface:       #1a1d27;
+  --surface-2:     #12151e;
+  --surface-3:     #232735;
+  --border:        #2d3148;
+  --border-strong: #3a3f5c;
+
+  --text:          #fafafa;
+  --text-muted:    #9ba3c4;
+  --text-dim:      #6b7390;
+
+  --accent:        #ff4b4b;
+  --accent-2:      #ff7b7b;
+  --accent-warm:   #ff8c42;
+  --accent-deep:   #c93535;
+
+  --success:       #3ed598;
+  --warn:          #ffb547;
+  --danger:        #ff5470;
+  --info:          #4dabf7;
+
+  /* Funscript chart velocity gradient (perceptual) */
+  --chart-v0: #1f3a8a;  /* deepest blue — slowest / shallowest */
+  --chart-v1: #2563eb;
+  --chart-v2: #06b6d4;
+  --chart-v3: #22c55e;
+  --chart-v4: #eab308;
+  --chart-v5: #f97316;
+  --chart-v6: #ef4444;  /* hottest red — fastest / deepest */
+
+  /* ── Type ───────────────────────────────────────────────────────── */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --t-display:  56px; --lh-display: 1.05; --tk-display: -0.02em;
+  --t-h1:       32px; --lh-h1:      1.15; --tk-h1:      -0.02em;
+  --t-h2:       22px; --lh-h2:      1.25; --tk-h2:      -0.01em;
+  --t-h3:       16px; --lh-h3:      1.35;
+  --t-body:     14px; --lh-body:    1.5;
+  --t-label:    13px; --lh-label:   1.4;
+  --t-caption:  12px; --lh-caption: 1.4;
+  --t-mono:     13px; --lh-mono:    1.4;
+
+  /* ── Spacing (8px grid w/ 4 step at bottom) ─────────────────────── */
+  --s-1:  4px;  --s-2:  8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 24px;  --s-6: 32px;  --s-8: 48px; --s-10: 64px; --s-12: 96px;
+
+  /* ── Radii ──────────────────────────────────────────────────────── */
+  --r-1: 4px; --r-2: 6px; --r-3: 8px; --r-4: 10px; --r-5: 12px;
+  --r-pill: 999px;
+
+  /* ── Shadows / elevation ────────────────────────────────────────── */
+  --elev-1: 0 2px 6px rgba(0,0,0,0.4);
+  --elev-2: 0 6px 20px rgba(0,0,0,0.4);
+  --elev-3: 0 12px 40px rgba(0,0,0,0.55);
+  --glow-accent: 0 0 0 3px rgba(255,75,75,0.25);
+
+  /* ── Easing & motion ────────────────────────────────────────────── */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emph:     cubic-bezier(0.3, 0, 0, 1);
+  --dur-fast:   100ms;
+  --dur-base:   180ms;
+  --dur-slow:   320ms;
+
+  /* ── The one approved gradient (CTA bar) ────────────────────────── */
+  --grad-cta: linear-gradient(135deg, #1a0e1e 0%, #1a1d27 60%, #0e1117 100%);
+}
+
+/* ─── Base ────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--accent); color: #fff; }
+
+/* ─── Semantic type ───────────────────────────────────────────────────── */
+.t-display, h1.display {
+  font-size: var(--t-display); line-height: var(--lh-display);
+  letter-spacing: var(--tk-display); font-weight: 800;
+}
+h1, .t-h1 {
+  font-size: var(--t-h1); line-height: var(--lh-h1);
+  letter-spacing: var(--tk-h1); font-weight: 700; margin: 0;
+}
+h2, .t-h2 {
+  font-size: var(--t-h2); line-height: var(--lh-h2);
+  letter-spacing: var(--tk-h2); font-weight: 700; margin: 0;
+}
+h3, .t-h3 {
+  font-size: var(--t-h3); line-height: var(--lh-h3);
+  font-weight: 600; margin: 0;
+}
+p, .t-body  { font-size: var(--t-body);    line-height: var(--lh-body);    margin: 0; }
+.t-label    { font-size: var(--t-label);   line-height: var(--lh-label);   font-weight: 500; color: var(--text-muted); }
+.t-caption  { font-size: var(--t-caption); line-height: var(--lh-caption); color: var(--text-muted); }
+.t-mono, code, pre, .num {
+  font-family: var(--font-mono);
+  font-size: var(--t-mono); line-height: var(--lh-mono);
+  font-variant-numeric: tabular-nums;
+}

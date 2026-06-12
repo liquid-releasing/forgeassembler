@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ForgeAssembler — User guide</title>
+<meta name="viewport" content="width=900, initial-scale=1" />
+<link rel="stylesheet" href="colors_and_type.css" />
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<style>
+  body { margin: 0; background: var(--bg); color: var(--text); }
+  .doc {
+    max-width: 880px; margin: 0 auto; padding: 72px 32px 120px;
+    font-size: 15px; line-height: 1.65;
+  }
+  .doc > * + * { margin-top: 18px; }
+  .doc h1 { font-size: 48px; line-height: 1.05; letter-spacing: -0.025em; font-weight: 800;
+            margin: 0 0 8px; }
+  .doc h2 { font-size: 26px; line-height: 1.2; letter-spacing: -0.015em; font-weight: 700;
+            margin: 56px 0 14px; }
+  .doc h3 { font-size: 17px; font-weight: 700; margin: 28px 0 8px; }
+  .doc p { margin: 0; }
+  .doc p + p { margin-top: 12px; }
+  .doc strong { color: var(--text); font-weight: 600; }
+  .doc code, .doc .mono { font-family: var(--font-mono); font-size: 0.85em;
+                          background: var(--surface-2); border: 1px solid var(--border);
+                          padding: 1px 6px; border-radius: 4px; color: var(--text); }
+  .doc ul, .doc ol { padding-left: 22px; margin: 8px 0 0; }
+  .doc li { margin: 4px 0; }
+  .doc a { color: var(--accent-2); text-decoration: none; border-bottom: 1px dotted var(--accent-2); }
+  .doc a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .lede { font-size: 18px; color: var(--text-muted); max-width: 64ch; line-height: 1.5; }
+  .eyebrow { font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+              letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); }
+
+  .hr { height: 1px; background: var(--border); border: 0; margin: 56px 0; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+           background: rgba(255,140,66,0.12); color: var(--accent-warm);
+           border: 1px solid rgba(255,140,66,0.3); border-radius: 999px;
+           font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+           letter-spacing: 0.04em; vertical-align: 1px; }
+  .pill.success { background: rgba(62,213,152,0.12); color: var(--success);
+                    border-color: rgba(62,213,152,0.3); }
+  .pill.accent { background: rgba(255,75,75,0.12); color: var(--accent-2);
+                  border-color: rgba(255,75,75,0.3); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px; margin-top: 18px;
+  }
+  .card h3:first-child, .card h2:first-child { margin-top: 0; }
+  .card.tip { border-left: 3px solid var(--accent-warm); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.callout { border-left: 3px solid var(--accent); }
+
+  .ill {
+    margin: 24px 0; padding: 20px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  .ill .label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  .pipe { display: flex; align-items: stretch; gap: 0;
+           background: var(--surface-2); border-radius: 8px; padding: 4px;
+           overflow-x: auto; }
+  .pipe .tab {
+    display: flex; align-items: center; gap: 6px; padding: 9px 14px;
+    color: var(--text-muted); font-size: 12.5px; font-weight: 600;
+    border-bottom: 2px solid transparent;
+  }
+  .pipe .tab .n { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+  .pipe .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .pipe .tab.done .dot { width: 6px; height: 6px; border-radius: 50%;
+                           background: var(--success); box-shadow: 0 0 6px rgba(62,213,152,0.6); }
+  .pipe .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 6px; }
+
+  .clip-row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px;
+  }
+  .clip-row .grip { color: var(--text-dim); }
+  .clip-row .accent-bar { width: 3px; height: 42px; border-radius: 2px; background: var(--accent); opacity: 0.55; }
+  .clip-row .thumb {
+    width: 76px; height: 43px; border-radius: 4px;
+    background: linear-gradient(135deg, #2a1810, #0a0a0a);
+    border: 1px solid var(--border); flex-shrink: 0;
+    position: relative;
+  }
+  .clip-row .thumb .dur {
+    position: absolute; bottom: 3px; right: 3px;
+    padding: 1px 4px; font-family: var(--font-mono); font-size: 9px;
+    background: rgba(0,0,0,0.7); color: #fff; border-radius: 2px;
+  }
+  .clip-row .meta { flex: 1; min-width: 0; }
+  .clip-row .title-line { font-weight: 600; }
+  .clip-row .sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+  .joiner-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px;
+    background: rgba(255,140,66,0.12); color: var(--accent-warm);
+    border: 1px solid rgba(255,140,66,0.3);
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .joiner-row {
+    display: flex; justify-content: center; padding: 8px 0;
+    border-top: 1px dashed var(--border-strong);
+    border-bottom: 1px dashed var(--border-strong);
+    background: rgba(255,140,66,0.03);
+  }
+
+  .timing {
+    display: flex; height: 28px; border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--border); margin-top: 6px;
+  }
+  .timing-labels { display: flex; justify-content: space-between;
+                     font-family: var(--font-mono); font-size: 10.5px;
+                     color: var(--text-muted); margin-top: 4px; }
+  .timing-labels .mid { color: var(--text); }
+
+  .audiobed {
+    position: relative; height: 36px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+    margin-top: 10px; overflow: hidden;
+  }
+  .audiobed .bed {
+    position: absolute; top: 4px; bottom: 4px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, rgba(255,140,66,0.4), rgba(255,140,66,0.2));
+    border: 1px solid rgba(255,140,66,0.55);
+    display: flex; align-items: center; padding: 0 8px;
+    font-family: var(--font-mono); font-size: 10.5px; color: #fff; font-weight: 600;
+  }
+  .audiobed .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.06); }
+
+  table.ref { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  table.ref th, table.ref td { padding: 8px 12px; text-align: left;
+                                  border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.ref th { color: var(--text-dim); font-size: 11px; font-weight: 700;
+                  text-transform: uppercase; letter-spacing: 0.08em; }
+  table.ref td .mono { font-size: 12px; }
+
+  .toc {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px;
+    columns: 2; column-gap: 32px;
+    font-size: 13px;
+  }
+  .toc a { display: block; padding: 3px 0; border: 0;
+             color: var(--text-muted); break-inside: avoid; }
+  .toc a:hover { color: var(--text); }
+  .toc .group { color: var(--text-dim); font-family: var(--font-mono);
+                  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+                  margin-top: 10px; }
+  .toc .group:first-child { margin-top: 0; }
+
+  .footer {
+    margin-top: 96px; padding-top: 32px; border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--text-dim);
+  }
+
+  /* Lucide icon sizing */
+  [data-lucide] { width: 14px; height: 14px; stroke-width: 1.75;
+                   display: inline-flex; vertical-align: -2px; }
+</style>
+</head>
+<body>
+<main class="doc">
+
+  <div class="eyebrow">ForgeAssembler · alpha 0.2 · user guide</div>
+  <h1>Assemble.</h1>
+  <p class="lede">
+    ForgeAssembler turns a folder of short haptic videos into one long one — with chosen transitions,
+    a single audio layer that survives every cut, optional title cards, and every funscript channel
+    concatenated in lockstep. This guide walks the new desktop UI tab-by-tab and explains the
+    pieces that don't appear in any video editor: <strong>joiners</strong>, <strong>audio beds</strong>,
+    and <strong>funscript channel coverage</strong>.
+  </p>
+
+  <div class="card" style="margin-top: 32px;">
+    <strong>One pass, four steps:</strong>
+    <span class="mono" style="margin-left: 8px;">Project → Build → Output → Forge</span>
+    <span style="color: var(--text-muted);"> · plus a Joiners library for transitions, and a Tweaks panel for layout preferences.</span>
+  </div>
+
+  <!-- ──────────── TOC ──────────── -->
+  <nav class="toc">
+    <div class="group">Orientation</div>
+    <a href="#what">What ForgeAssembler does</a>
+    <a href="#interface">The interface at a glance</a>
+    <a href="#data-model">Sections, segments, joiners</a>
+
+    <div class="group">Pipeline</div>
+    <a href="#project">01 · Project</a>
+    <a href="#build">02 · Build</a>
+    <a href="#output">03 · Output</a>
+    <a href="#forge">04 · Forge</a>
+
+    <div class="group">Deep dives</div>
+    <a href="#joiners">Joiners (transitions)</a>
+    <a href="#audio-beds">Audio beds (cross-clip audio)</a>
+    <a href="#titles">Title cards &amp; overlays</a>
+    <a href="#dnd">Drag &amp; drop reference</a>
+    <a href="#channels">Funscript channel handling</a>
+
+    <div class="group">Reference</div>
+    <a href="#tweaks">Tweaks panel</a>
+    <a href="#glossary">Glossary</a>
+  </nav>
+
+  <!-- ──────────── WHAT ──────────── -->
+  <h2 id="what">What ForgeAssembler does</h2>
+  <p>
+    ForgeAssembler is a local desktop tool — Windows, macOS, Linux. No account, no cloud, no telemetry.
+    Pre-release software. You give it a list of short videos and their adjacent funscripts; it gives
+    you back one combined video plus one combined funscript per channel, with chapter markers at every
+    section boundary and a reusable <span class="mono">.forgeproject.json</span> sidecar.
+  </p>
+  <p>
+    It is <strong>not a video editor</strong>. There's no per-clip cutting, no compositing, no colour
+    grading beyond a single temperature nudge per clip. Author your clips in FunscriptForge (or
+    elsewhere), then point ForgeAssembler at the folder.
+  </p>
+
+  <!-- ──────────── INTERFACE ──────────── -->
+  <h2 id="interface">The interface at a glance</h2>
+
+  <div class="ill">
+    <div class="label">Pipeline tab strip</div>
+    <div class="pipe">
+      <div class="tab done"><span class="n">01</span> Project <span class="dot"></span></div>
+      <div class="tab active"><span class="n">02</span> Build</div>
+      <div class="tab"><span class="n">03</span> Output</div>
+      <div class="tab"><span class="n">04</span> Forge</div>
+      <div class="sep"></div>
+      <div class="tab"><i data-lucide="library"></i> Joiners</div>
+    </div>
+  </div>
+
+  <p>
+    The pipeline runs left-to-right. Each step writes a chain file the next step reads. A green dot on
+    a tab means that step has been <strong>Accepted</strong> — locked in for downstream tabs. Tabs whose
+    upstream isn't accepted dim slightly to signal "you can visit, but the work upstream isn't ready
+    yet." You can move backwards at any time; re-accepting an earlier step propagates forward.
+  </p>
+  <p>
+    <strong>Top bar</strong> — project name, total duration, segment count, resolution. Buttons for
+    open / save / undo / redo. <strong>Status bar</strong> — sync state, current tab, chain file
+    written, ffmpeg version, app version.
+  </p>
+
+  <!-- ──────────── DATA MODEL ──────────── -->
+  <h2 id="data-model">Sections, segments, joiners</h2>
+  <p>
+    ForgeAssembler's data model has three nouns. Learning them once unlocks everything else.
+  </p>
+  <ul>
+    <li><strong>Segment</strong> — one clip in the timeline. A video file, a still image (PNG title
+        card), or in the future a generated card. Every segment has a duration, an audio mode
+        (<span class="mono">keep · replace · silence</span>), optional overlays, an optional colour
+        temperature offset, and the funscript channels detected next to it.</li>
+    <li><strong>Section</strong> — a named group of segments. Sections become <strong>chapters</strong>
+        in the output MP4. Inside a section, segments are joined with straight cuts. Between sections
+        you choose the transition.</li>
+    <li><strong>Joiner</strong> — a transition. Each section has a <em>leading joiner</em> that
+        describes how it transitions in from the previous section. The first section's joiner is
+        always <span class="mono">cut</span>.</li>
+  </ul>
+  <p>
+    There's a fourth concept that doesn't fit in those three: <strong>audio beds</strong>. A bed is a
+    continuous audio layer that spans multiple clips, riding over the per-clip audio. See
+    <a href="#audio-beds">Audio beds</a>.
+  </p>
+
+  <hr class="hr" />
+
+  <!-- ──────────── PROJECT ──────────── -->
+  <h2 id="project">01 · Project</h2>
+  <p class="lede" style="font-size: 15px;">
+    Where you name the output and decide what gets produced.
+  </p>
+  <p>Three controls matter here:</p>
+  <ul>
+    <li><strong>Basename</strong> &amp; <strong>Output folder</strong> — where the bundle lands.
+        Everything ForgeAssembler writes is prefixed with the basename, in this folder.</li>
+    <li><strong>Produce</strong> toggles — Video MP4, Funscripts, Haptic-estim audio, and the loudness
+        normalise switch. <em>Chapter markers are always written when video is produced.</em></li>
+    <li><strong>Recents</strong> — a list of recent <span class="mono">.forgeproject.json</span>
+        files. Click to reopen.</li>
+  </ul>
+
+  <div class="card tip">
+    <strong>Tip.</strong> A project can produce video without funscripts, or funscripts without video.
+    If you've already cut the video in DaVinci and only need the combined haptic bundle, turn the
+    video toggle off — ForgeAssembler skips the whole ffmpeg video pipeline.
+  </div>
+
+  <!-- ──────────── BUILD ──────────── -->
+  <h2 id="build">02 · Build</h2>
+  <p class="lede" style="font-size: 15px;">
+    The main surface. Adds clips, arrange them into sections, pick the transitions, lay down
+    audio beds.
+  </p>
+
+  <h3>Stats strip</h3>
+  <p>
+    Top of the canvas: <span class="mono">Total duration · Sections · Segments · Audio beds ·
+    Resolution</span>. Updates live as you change the project.
+  </p>
+
+  <h3>Clip rows</h3>
+  <div class="ill">
+    <div class="label">A clip row</div>
+    <div class="clip-row">
+      <i data-lucide="grip-vertical" class="grip"></i>
+      <div class="accent-bar"></div>
+      <div class="thumb"><span class="dur">3:04</span></div>
+      <div class="meta">
+        <div class="title-line">Cut 05 · tease</div>
+        <div class="sub">act2_01.mp4</div>
+      </div>
+      <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 4px;">
+        <i data-lucide="volume-2"></i> keep
+      </span>
+      <span class="mono" style="background: rgba(255,123,123,0.13); color: #ff7b7b; border-color: rgba(255,123,123,0.3); font-size: 10px; padding: 1px 6px; border-radius: 3px;">main</span>
+      <span class="mono" style="background: rgba(77,171,247,0.13); color: #4dabf7; border-color: rgba(77,171,247,0.3); font-size: 10px; padding: 1px 6px; border-radius: 3px;">m-ax</span>
+      <span class="mono" style="background: rgba(62,213,152,0.13); color: #3ed598; border-color: rgba(62,213,152,0.3); font-size: 10px; padding: 1px 6px; border-radius: 3px;">estim</span>
+    </div>
+  </div>
+  <p>
+    Each row shows: drag handle, section colour stripe, thumbnail (with duration badge and a STILL
+    flag for still-image segments), title and filename, audio mode, the funscript channels detected
+    for this clip, and a row of icon actions (split, duplicate, remove).
+  </p>
+  <p>
+    <strong>Click a clip to select it.</strong> The right inspector opens with five tabs:
+    Source · Audio · Overlays · Color · Funscript. (Or — if you've toggled
+    <span class="mono">Inspector → Inline</span> in Tweaks — the row expands inline instead.)
+  </p>
+
+  <h3>Sections</h3>
+  <p>
+    Each section header carries a colour swatch, an index (<span class="mono">02 / 04</span>), a name,
+    a clip-count chip, and two add buttons: <strong>Title card</strong> and <strong>Add clip</strong>.
+    The grip handle on the left of the header drags the whole section to reorder.
+  </p>
+
+  <h3>Joiner pills</h3>
+  <p>
+    Between sections you'll see one of three visual treatments (set by the
+    <span class="mono">Joiner style</span> tweak; default is the inline pill below):
+  </p>
+  <div class="ill">
+    <div class="label">Inline pill (default)</div>
+    <div class="joiner-row">
+      <span class="joiner-pill"><i data-lucide="circle-dot"></i> fade through black · 2.5s</span>
+    </div>
+    <p style="font-size: 13px; color: var(--text-muted); margin-top: 12px;">
+      Click any pill to open the <a href="#joiners">joiner editor</a>. Inside a section
+      (between two clips in the same group) the joiner is always
+      <span class="mono">cut</span> and isn't editable.
+    </p>
+  </div>
+
+  <h3>Audio bed lane</h3>
+  <p>
+    A single horizontal lane below the clip list. See <a href="#audio-beds">Audio beds</a>.
+  </p>
+
+  <h3>Live preview band</h3>
+  <p>
+    Sticky at the bottom, above the Accept/Forge bar. Renders a heatmap of the combined funscript's
+    velocity by colour, peak markers on the beatmap below, total duration, action count, average BPM,
+    peak velocity, and which channels are active. Hover for a timecode at any point in the timeline.
+    No rendering needed — it's all computed in-process from your project.
+  </p>
+
+  <hr class="hr" />
+
+  <!-- ──────────── JOINERS ──────────── -->
+  <h2 id="joiners">Joiners (transitions)</h2>
+  <p class="lede" style="font-size: 15px;">
+    A joiner is one transition with up to three timing values. You don't pick "fade out" and "fade in"
+    separately — they're the same joiner.
+  </p>
+
+  <h3>The editor</h3>
+  <p>
+    Click any joiner pill to open the editor in place. Five built-in kinds:
+  </p>
+
+  <table class="ref">
+    <thead><tr><th>Kind</th><th>What it does</th><th>Parameters</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Cut</strong></td>
+        <td>Straight cut. Previous frame ends, next frame begins.</td>
+        <td><span class="mono">—</span></td>
+      </tr>
+      <tr>
+        <td><strong>Fade through black</strong></td>
+        <td>One transition with three parts: previous clip fades out, holds black for an optional interval, next clip fades in.</td>
+        <td><span class="mono">fade out · hold · fade in · color</span></td>
+      </tr>
+      <tr>
+        <td><strong>Crossfade</strong></td>
+        <td>Dissolves from previous to next. Clips overlap.</td>
+        <td><span class="mono">duration · easing</span></td>
+      </tr>
+      <tr>
+        <td><strong>Dip to color</strong></td>
+        <td>Like fade through black, but you pick the hold colour. Use for dip-to-white, dip-to-brand, etc.</td>
+        <td><span class="mono">fade out · hold · fade in · color</span></td>
+      </tr>
+      <tr>
+        <td><strong>Swipe</strong></td>
+        <td>Soft-edged wipe pushing the next clip in from one edge.</td>
+        <td><span class="mono">duration · direction · easing · softness</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>The timing visualisation</h3>
+  <p>
+    For fade-style joiners the editor shows a proportional bar of the three timing values, with the
+    hold colour painted in the middle and gradients on either side:
+  </p>
+  <div class="ill">
+    <div class="label">Fade out · hold · fade in</div>
+    <div class="timing">
+      <span style="flex: 2; background: linear-gradient(90deg, var(--surface-3, #232735), #000);"></span>
+      <span style="flex: 0.6; background: #000;"></span>
+      <span style="flex: 2; background: linear-gradient(90deg, #000, var(--surface-3, #232735));"></span>
+    </div>
+    <div class="timing-labels">
+      <span>2.5s fade out</span>
+      <span class="mid">0.5s hold</span>
+      <span>2.5s fade in</span>
+    </div>
+  </div>
+  <p>
+    This is the answer to "where is the fade-from-black control?" — there's only one joiner, with
+    three timing values. The middle bar is the hold-at-black duration; set it to zero for a classic
+    no-hold fade.
+  </p>
+
+  <h3>User joiners (custom presets)</h3>
+  <p>
+    Save any joiner configuration as a named preset. From the editor: <strong>Save as preset…</strong>
+    → name it → it appears under <em>Your joiners</em> in the inline picker forever after.
+  </p>
+  <p>
+    The full library lives on the <strong>Joiners</strong> tab (utility, right side of the tab strip):
+  </p>
+  <ul>
+    <li><strong>Built-in kinds</strong> with their defaults — and a <em>Create preset from this</em>
+        button on each.</li>
+    <li><strong>Your joiners</strong> — every preset, editable and removable.</li>
+    <li><strong>+ New joiner</strong> top-right — full authoring modal: pick a built-on kind, name it,
+        tune the params, save.</li>
+  </ul>
+
+  <div class="card tip">
+    <strong>When to make a preset.</strong> Anytime you find yourself dialling in the same fade
+    values across multiple section boundaries. The presets are project-scoped; they live in your
+    <span class="mono">.forgeproject.json</span> alongside the section list.
+  </div>
+
+  <hr class="hr" />
+
+  <!-- ──────────── AUDIO BEDS ──────────── -->
+  <h2 id="audio-beds">Audio beds <span class="pill accent">new</span></h2>
+  <p class="lede" style="font-size: 15px;">
+    A continuous audio layer that survives joiners.
+  </p>
+  <p>
+    Without beds, every clip carries its own audio that cuts hard at every joiner — which sounds
+    fine for a hard cut but is jarring across a fade. A <strong>bed</strong> is one audio file you
+    place across a range of clips. It rides over the per-clip audio and crossfades over the joiners
+    in between, so the music or ambience doesn't break.
+  </p>
+
+  <div class="ill">
+    <div class="label">Audio bed lane</div>
+    <div class="audiobed">
+      <span class="tick" style="left: 25%"></span>
+      <span class="tick" style="left: 53%"></span>
+      <span class="tick" style="left: 78%"></span>
+      <span class="bed" style="left: 22%; right: 12%;">
+        <i data-lucide="music" style="margin-right: 4px;"></i>
+        Hypnotic tech house · −18dB · in 2s · out 4s · duck
+      </span>
+    </div>
+    <p style="font-size: 13px; color: var(--text-muted); margin-top: 12px;">
+      Vertical ticks mark every clip boundary. Each bed spans clip-to-clip and crossfades
+      over the joiners between them.
+    </p>
+  </div>
+
+  <h3>Bed properties</h3>
+  <ul>
+    <li><strong>Coverage</strong> — start segment, end segment.</li>
+    <li><strong>Level</strong> — dB offset (default −18dB; gentler when ducking).</li>
+    <li><strong>Fade in</strong> &amp; <strong>fade out</strong> — at the bed's own edges.</li>
+    <li><strong>Behaviour vs clip audio</strong> — <em>Duck under clips</em> (clip audio drops to
+        −12 dB while the bed plays) or <em>Replace clips</em> (per-clip audio muted under coverage).</li>
+  </ul>
+
+  <h3>Editing a bed</h3>
+  <p>
+    Click any bed in the lane → the right inspector switches from clip mode to bed mode, with the
+    properties above. Click an empty area of the lane or use <em>+ Add bed</em> to start a new one.
+  </p>
+
+  <hr class="hr" />
+
+  <!-- ──────────── TITLES ──────────── -->
+  <h2 id="titles">Title cards &amp; overlays</h2>
+  <p class="lede" style="font-size: 15px;">
+    Author titles directly in ForgeAssembler. Two output paths: a standalone segment, or an overlay
+    on an existing clip.
+  </p>
+
+  <h3>Opening the editor</h3>
+  <ul>
+    <li><strong>Build header</strong> → <em>New title card</em>. Opens with the currently-selected
+        clip as the anchor (if any).</li>
+    <li><strong>Section header</strong> → <em>Title card</em>. Opens scoped to that section.</li>
+    <li><strong>Inspector → Overlays tab</strong> → <em>Title overlay</em>. Pre-targets the selected
+        clip in overlay mode.</li>
+  </ul>
+
+  <h3>Use as: Standalone segment</h3>
+  <p>
+    The new title becomes its own still-image segment. Three insertion-point choices when a clip is
+    selected: <em>Before clip · After clip · End of section</em>. Hold-on-screen duration is yours
+    to set (1–15s).
+  </p>
+
+  <h3>Use as: Overlay on a clip</h3>
+  <p>
+    The editor pivots: the preview composites the title over the selected clip's thumbnail at the
+    layout's natural position, and the right rail swaps to overlay-specific controls:
+  </p>
+  <ul>
+    <li><strong>Start at</strong> — when in the clip the overlay appears.</li>
+    <li><strong>Fade in</strong> &amp; <strong>fade out</strong> — overlay edges.</li>
+    <li><strong>Opacity</strong> — 20%–100%.</li>
+  </ul>
+  <p>
+    Position is set by the layout choice (centred hero → centre, lower-third → bottom-left, etc.) and
+    is shown read-only. The output is a transparent-background PNG registered on the clip's overlay
+    list.
+  </p>
+
+  <h3>Layouts</h3>
+  <table class="ref">
+    <thead><tr><th>Layout</th><th>Best for</th><th>Behaves like</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Centered hero</strong></td>
+        <td>Openings, name plates.</td>
+        <td>Big centred type, optional anvil glyph above.</td>
+      </tr>
+      <tr>
+        <td><strong>Chapter plate</strong></td>
+        <td>Act / chapter markers.</td>
+        <td>Eyebrow + title + subtitle, left-aligned with accent bar.</td>
+      </tr>
+      <tr>
+        <td><strong>Lower third</strong></td>
+        <td>Persistent labels over video.</td>
+        <td>Bottom-left text with a legibility scrim. Good for overlay mode.</td>
+      </tr>
+      <tr>
+        <td><strong>Full quote</strong></td>
+        <td>Statements, dedications.</td>
+        <td>Type fills the frame; optional attribution below.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Themes</h3>
+  <p>
+    Four themes — <strong>Dark</strong>, <strong>Void</strong>, <strong>Brand</strong>,
+    <strong>Light</strong> — set the background, foreground, and accent colours. In overlay mode the
+    background is replaced by your video; only the type, accent stripes, and (for lower-third / full
+    quote) the legibility scrim are baked into the PNG.
+  </p>
+
+  <hr class="hr" />
+
+  <!-- ──────────── DND ──────────── -->
+  <h2 id="dnd">Drag &amp; drop reference</h2>
+  <p>
+    All reordering on Build uses the grip handles, never the row body. Two scopes:
+  </p>
+  <table class="ref">
+    <thead><tr><th>Drag</th><th>Drop on</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Clip's <i data-lucide="grip-vertical"></i> handle</td>
+        <td>Another clip, before half</td>
+        <td>Insert before that clip (within or across sections).</td>
+      </tr>
+      <tr>
+        <td>Clip's <i data-lucide="grip-vertical"></i> handle</td>
+        <td>Another clip, after half</td>
+        <td>Insert after that clip.</td>
+      </tr>
+      <tr>
+        <td>Section's <i data-lucide="grip-vertical"></i> handle</td>
+        <td>Another section header</td>
+        <td>Reorder whole section (its joiner travels with it).</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    During a drag the source row dims to 40% opacity. An accent stripe marks the drop slot. Press
+    <span class="mono">Esc</span> to cancel.
+  </p>
+
+  <hr class="hr" />
+
+  <!-- ──────────── OUTPUT ──────────── -->
+  <h2 id="output">03 · Output</h2>
+  <p class="lede" style="font-size: 15px;">
+    Resolution, quality, audio normalisation, bug overlay — and how to handle funscript channel gaps.
+  </p>
+
+  <h3>Resolution</h3>
+  <p>
+    Choose from 16:9 (1080p / 1440p / 4K), 21:9 ultrawide (UW 1080p / UW 1440p), 4:3 HD, vertical
+    (3:4 HD / 9:16 HD), or <strong>Source</strong> (copy the first clip's resolution at forge time).
+    Aspect ratio is preserved — narrower clips get pillarboxed, taller clips get letterboxed.
+  </p>
+
+  <h3>Quality &amp; frame rate</h3>
+  <p>
+    Quality preset maps to an H.264 CRF: <span class="mono">Low · CRF 28</span>,
+    <span class="mono">Medium · CRF 23</span> (default), <span class="mono">High · CRF 18</span>.
+    Frame rate: <span class="mono">Source · 24 · 30 · 60</span>. Picking <em>Source</em> probes the
+    first clip with ffprobe and matches.
+  </p>
+
+  <h3>Audio</h3>
+  <p>
+    <strong>Normalize audio loudness</strong> — single-pass <span class="mono">loudnorm</span> at
+    −16 LUFS (YouTube reference) over the combined audio. <strong>Haptic-estim audio (WAV)</strong>
+    — toggles concatenation of <span class="mono">.stereostim.wav</span> channels in lockstep.
+  </p>
+
+  <h3 id="channels">Output channels</h3>
+  <p>
+    Funscript channels aren't opt-in — ForgeAssembler detects them automatically by scanning the
+    folder beside each clip. The Output channels card lists every variant that exists somewhere in
+    your project, with a coverage bar:
+  </p>
+  <table class="ref">
+    <thead><tr><th>State</th><th>What you see</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="pill success">continuous</span></td>
+        <td>Full coverage — every eligible clip has this channel. No gaps to resolve.</td>
+      </tr>
+      <tr>
+        <td><span class="pill" style="background: rgba(255,181,71,0.12); color: var(--warn); border-color: rgba(255,181,71,0.3);">partial</span></td>
+        <td>Some clips have it, others don't. You pick a gap policy.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    The gap-policy choices, for each partially-covered channel:
+  </p>
+  <ul>
+    <li><strong>Blank</strong> (default for funscripts) — hold the last position; no new actions
+        during the gap.</li>
+    <li><strong>Basic</strong> — synthesise basic motion from the main channel as a fallback.</li>
+    <li>For <span class="mono">audio_estim</span>: <strong>Silence</strong> or <strong>Tone</strong>
+        (low-level guide tone derived from the main channel).</li>
+  </ul>
+  <p>
+    Channels not detected anywhere in the project collapse into a footer
+    "<em>N channels not detected</em>" disclosure — they're not in the output, no decision needed.
+  </p>
+
+  <h3>Bug overlay</h3>
+  <p>
+    A small PNG (with transparency) that rides every segment in a chosen corner with a chosen
+    opacity and pixel margin. Classic network-logo bug. One PNG, four corner choices, opacity slider.
+  </p>
+
+  <hr class="hr" />
+
+  <!-- ──────────── FORGE ──────────── -->
+  <h2 id="forge">04 · Forge</h2>
+  <p class="lede" style="font-size: 15px;">
+    One pass. ForgeAssembler concatenates the videos, the funscript channels in lockstep, the audio,
+    and writes chapter markers for every section boundary.
+  </p>
+
+  <h3>Summary card</h3>
+  <p>
+    Sections · segments · audio beds · total duration · resolution · loudness · channels — a
+    one-glance recap before you commit.
+  </p>
+
+  <h3>Outputs that will be written</h3>
+  <p>
+    A live list of files. Multi-axis funscripts indent under their main; the
+    <span class="mono">.forgeproject.json</span> sidecar is always last:
+  </p>
+  <ul>
+    <li><span class="mono">basename.mp4</span> — combined video</li>
+    <li><span class="mono">basename.funscript</span> — main</li>
+    <li><span class="mono">basename.pitch.funscript · roll · surge · …</span></li>
+    <li><span class="mono">basename.alpha.funscript · beta</span></li>
+    <li><span class="mono">basename.alt.funscript</span> — alternate funscripts</li>
+    <li><span class="mono">basename.stereostim.wav</span> — haptic-estim audio</li>
+    <li><span class="mono">basename.forgeproject.json</span> — reusable project sidecar</li>
+  </ul>
+
+  <h3>The Forge button</h3>
+  <p>
+    A single primary CTA on a quiet brand-gradient panel. Pressing it kicks the ffmpeg passes —
+    progress and ETA appear below the button. Don't close the app while a forge is running; outputs
+    appear in your project folder as each step completes.
+  </p>
+
+  <hr class="hr" />
+
+  <!-- ──────────── TWEAKS ──────────── -->
+  <h2 id="tweaks">Tweaks panel</h2>
+  <p>
+    The Tweaks toggle in the toolbar opens a floating panel with personal layout preferences. They
+    persist across sessions:
+  </p>
+  <table class="ref">
+    <thead><tr><th>Tweak</th><th>Options</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Build layout</strong></td><td>Sections · Flat · Timeline</td></tr>
+      <tr><td><strong>Density</strong></td><td>Compact · Comfy · Roomy</td></tr>
+      <tr><td><strong>Section grouping</strong></td><td>On / off (off collapses to flat)</td></tr>
+      <tr><td><strong>Joiner style</strong></td><td>Inline pill · Divider · Lane</td></tr>
+      <tr><td><strong>Inspector</strong></td><td>Right panel · Inline (expands the clip row)</td></tr>
+      <tr><td><strong>Sample project</strong></td><td>S (4 clips) · M (8) · L (14)</td></tr>
+    </tbody>
+  </table>
+
+  <hr class="hr" />
+
+  <!-- ──────────── GLOSSARY ──────────── -->
+  <h2 id="glossary">Glossary</h2>
+  <table class="ref">
+    <tbody>
+      <tr><td><strong>Segment</strong></td><td>One clip in the timeline. Video file or still image.</td></tr>
+      <tr><td><strong>Section</strong></td><td>Named group of segments. Becomes a chapter in the output.</td></tr>
+      <tr><td><strong>Joiner</strong></td><td>Transition between two sections. Includes timing values.</td></tr>
+      <tr><td><strong>Audio bed</strong></td><td>Continuous audio layer that spans many segments and crossfades over joiners.</td></tr>
+      <tr><td><strong>Overlay</strong></td><td>Image (or title PNG) layered onto a segment, with start time, fade, opacity, position.</td></tr>
+      <tr><td><strong>Bug</strong></td><td>Persistent corner-PNG overlay applied to every segment. Project-level.</td></tr>
+      <tr><td><strong>Chain file</strong></td><td>The output of one pipeline step that the next step reads.</td></tr>
+      <tr><td><strong>Forge</strong></td><td>The final pass — running ffmpeg and the funscript concat to write the bundle.</td></tr>
+      <tr><td><strong>Channel</strong></td><td>One funscript variant: main, pitch, roll, alpha, beta, alt, audio-estim, etc.</td></tr>
+      <tr><td><strong>Gap policy</strong></td><td>Per-channel rule for what to do when a clip lacks that channel. Blank / Basic / Silence / Tone.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="footer">
+    ForgeAssembler v0.2.0-alpha · ForgeAssembler™ and Liquid Releasing™ are trademarks of Liquid Releasing ·
+    MIT-licensed source. Pre-release software, provided as-is. Runs entirely on your machine — no account, no cloud, no telemetry.
+  </div>
+
+</main>
+
+<script>
+  window.lucide && window.lucide.createIcons();
+</script>
+</body>
+</html>

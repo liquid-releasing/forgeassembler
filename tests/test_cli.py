@@ -172,6 +172,69 @@ def test_new_project_error_when_no_clips(tmp_path: Path):
     assert "no clips detected" in r.stderr.lower()
 
 
+# ── JSON surfaces consumed by the Tauri bridge ────────────────────────
+def test_list_joiners_json():
+    r = run("list-joiners", "--format", "json")
+    assert r.returncode == 0
+    payload = json.loads(r.stdout)
+    types = {j["joiner_type"] for j in payload["joiners"]}
+    assert {"none", "fade_to_black"} <= types
+    fade = next(j for j in payload["joiners"] if j["joiner_type"] == "fade_to_black")
+    assert "duration_s" in fade["params_schema"]
+
+
+def test_detect_json_empty(tmp_path: Path):
+    r = run("detect", str(tmp_path), "--format", "json")
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == {"clips": []}
+
+
+def test_detect_json_with_clip(tmp_path: Path):
+    (tmp_path / "clip.mp4").write_bytes(b"")
+    (tmp_path / "clip.funscript").write_text(
+        json.dumps({"actions": []}), encoding="utf-8"
+    )
+    (tmp_path / "clip.pitch.funscript").write_text(
+        json.dumps({"actions": []}), encoding="utf-8"
+    )
+    r = run("detect", str(tmp_path), "--format", "json")
+    assert r.returncode == 0
+    clips = json.loads(r.stdout)["clips"]
+    assert len(clips) == 1
+    clip = clips[0]
+    assert clip["stem"] == "clip"
+    assert "main" in clip["funscripts"]
+    assert "pitch" in clip["funscripts"]
+    assert "multi_axis" in clip["channel_groups"]
+
+
+def test_validate_json_missing_file():
+    r = run("validate", "nope.json", "--format", "json")
+    assert r.returncode == 2
+    payload = json.loads(r.stdout)
+    assert payload["ok"] is False
+    assert payload["errors"]
+
+
+def test_validate_json_ok(tmp_path: Path):
+    vid = tmp_path / "a.mp4"
+    vid.write_bytes(b"")
+    p = tmp_path / "ok.forgeproject.json"
+    p.write_text(
+        json.dumps({
+            "version": "1.0",
+            "items": [{"id": "s1", "type": "segment", "video": str(vid)}],
+            "output": {"folder": str(tmp_path / "out")},
+        }),
+        encoding="utf-8",
+    )
+    r = run("validate", str(p), "--format", "json")
+    assert r.returncode == 0
+    payload = json.loads(r.stdout)
+    assert payload["ok"] is True
+    assert payload["segment_count"] == 1
+
+
 def test_forge_rejects_all_produce_flags_off_together(tmp_path: Path):
     vid = tmp_path / "a.mp4"
     vid.write_bytes(b"")

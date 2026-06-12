@@ -1,0 +1,39 @@
+/* App-specific tokens layered on the system tokens */
+@import "./colors_and_type.css";
+
+:root {
+  --rail-w: 64px;
+  --inspector-w: 360px;
+  --section-h: 220px;     /* the section viewer band */
+  --header-h: 56px;
+  --status-h: 28px;
+}
+
+html, body, #root { height: 100%; }
+body { overflow: hidden; }
+
+button { font: inherit; }
+button, input, select, textarea { color: inherit; }
+input[type="range"] { accent-color: var(--accent); }
+
+/* utility */
+.hstack { display: flex; align-items: center; gap: var(--s-2); }
+.vstack { display: flex; flex-direction: column; gap: var(--s-2); }
+.spacer { flex: 1; }
+.divider { height: 1px; background: var(--border); }
+.divider-v { width: 1px; align-self: stretch; background: var(--border); }
+.muted { color: var(--text-muted); }
+.dim { color: var(--text-dim); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.no-scroll { overflow: hidden; }
+
+/* lucide icons */
+[data-lucide] { width: 16px; height: 16px; stroke-width: 1.75; }
+.ico-sm [data-lucide] { width: 14px; height: 14px; }
+.ico-lg [data-lucide] { width: 20px; height: 20px; }
+
+/* scrollbars (webkit) */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 6px; border: 2px solid var(--bg); }
+*::-webkit-scrollbar-thumb:hover { background: #3a3f5c; }
+*::-webkit-scrollbar-track { background: transparent; }
