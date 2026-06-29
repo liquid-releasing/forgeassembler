@@ -11,82 +11,10 @@ import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from '.
 // where the design work is concentrated; these convey the structure
 // and the chain pattern.
 
-// ── Project ───────────────────────────────────────────────────────
-function ProjectTab({ project }) {
-  return (
-    <FATabBody>
-      <FATabHeader
-        eyebrow="Pipeline · 01 of 04"
-        title="Project"
-        subtitle="Set the project basename, output folder, and a few global toggles. ForgeAssembler writes everything into one place next to a reusable .forgeproject.json sidecar."
-        right={<Button kind="secondary" size="sm" icon="folder-open">Open existing…</Button>}
-      />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Card>
-          <FASectionLabel>Basics</FASectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <Field label="Basename"><TextInput value={project.name} mono /></Field>
-            <Field label="Output folder">
-              <div style={{ display: "flex", gap: 6 }}>
-                <TextInput value="C:/Users/bruce/Videos/forgeassembler" mono style={{ flex: 1 }} />
-                <Button kind="secondary" size="sm">Pick…</Button>
-              </div>
-            </Field>
-          </div>
-        </Card>
-
-        <Card>
-          <FASectionLabel>Produce</FASectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <Toggle label="Video (MP4)" checked={project.output.video} />
-            <Toggle label="Funscripts" checked={project.output.funscripts} />
-            <Toggle label="Haptic-estim audio (WAV)" checked />
-            <Toggle label="Normalize audio loudness · −16 LUFS" checked={project.output.normalizeAudio} />
-          </div>
-          <div style={{ marginTop: 12, padding: "8px 10px", background: "var(--surface-2)",
-                         border: "1px solid var(--border)", borderRadius: 6,
-                         fontSize: 11, color: "var(--text-muted)" }}>
-            Chapter markers are always written when video is produced.
-          </div>
-        </Card>
-
-        <Card style={{ gridColumn: "1 / -1" }}>
-          <FASectionLabel right={<Button kind="ghost" size="sm" icon="rotate-cw">Reset</Button>}>
-            Recent projects
-          </FASectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {[
-              { name: "lqr_marketing.forgeproject.json", when: "today · 14:22", segs: 4, dur: "0:48", res: "1080p" },
-              { name: "vol_03_compilation.forgeproject.json", when: "yesterday · 23:51", segs: 8, dur: "8:46", res: "1080p" },
-              { name: "longform_session_aug.forgeproject.json", when: "Aug 12 · 19:00", segs: 14, dur: "20:52", res: "1440p" },
-            ].map((r, i) => (
-              <button key={i} style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "8px 10px",
-                background: "transparent", border: "1px solid var(--border)",
-                borderRadius: 6, color: "var(--text)", cursor: "pointer",
-                fontFamily: "inherit", textAlign: "left",
-              }}>
-                <Icon name="file-json-2" size={14} style={{ color: "var(--text-muted)" }} />
-                <span className="mono" style={{ fontSize: 12, fontWeight: 600, flex: 1,
-                                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
-                <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{r.when}</span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 50, textAlign: "right" }}>
-                  {r.segs} clips
-                </span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 50, textAlign: "right" }}>
-                  {r.dur}
-                </span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 50, textAlign: "right" }}>
-                  {r.res}
-                </span>
-              </button>
-            ))}
-          </div>
-        </Card>
-      </div>
-    </FATabBody>
-  );
-}
+// ── Project tab removed ───────────────────────────────────────────
+// Was a dead form (basename/output-folder now set via Save As; recent
+// projects + New/Open moved to the Home screen — see HomeScreen.jsx).
+// The two real "Produce" toggles folded into the Output tab below.
 
 // ── Channels tab removed — folded into Output. Detection-driven now.
 
@@ -95,15 +23,34 @@ function ProjectTab({ project }) {
 // real decision is: when a clip is MISSING this channel, do we
 // (a) generate a basic fallback so the channel is continuous, or
 // (b) leave that section blank (silence / no actions)?
-function OutputTab({ project, channelGapPolicy, onSetChannelGapPolicy }) {
+function OutputTab({ project, channelGapPolicy, onSetChannelGapPolicy,
+                    onSetOutput, onSetChannels }) {
+  const out = project.output || {};
+  const chans = project.channels || {};
   return (
     <FATabBody>
       <FATabHeader
-        eyebrow="Pipeline · 03 of 04"
+        eyebrow="Pipeline · 02 of 03"
         title="Output settings"
-        subtitle="Resolution, frame rate, bug overlay, audio normalisation, and what to do about partially-covered funscript channels — all applied once across the whole combined output."
+        subtitle="What to produce, resolution, frame rate, bug overlay, audio normalisation, and what to do about partially-covered funscript channels — all applied once across the whole combined output."
       />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <Card>
+          <FASectionLabel>Produce</FASectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <Toggle label="Video (MP4)" checked={out.video !== false}
+                    onChange={(v) => onSetOutput?.({ video: v })} />
+            <Toggle label="Funscripts" checked={out.funscripts !== false}
+                    onChange={(v) => onSetOutput?.({ funscripts: v })} />
+            <Toggle label="Haptic-estim audio (WAV)" checked={!!chans.audio_estim}
+                    onChange={(v) => onSetChannels?.({ audio_estim: v })} />
+          </div>
+          <div style={{ marginTop: 10, padding: "8px 10px", background: "var(--surface-2)",
+                         border: "1px solid var(--border)", borderRadius: 6,
+                         fontSize: 11, color: "var(--text-muted)" }}>
+            Chapter markers are always written when video is produced.
+          </div>
+        </Card>
         <Card>
           <FASectionLabel>Resolution</FASectionLabel>
           <ResolutionPicker value={project.output.resolution} />
@@ -133,8 +80,8 @@ function OutputTab({ project, channelGapPolicy, onSetChannelGapPolicy }) {
         <Card>
           <FASectionLabel>Audio</FASectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <Toggle label="Normalize audio loudness · −16 LUFS" checked={project.output.normalizeAudio} />
-            <Toggle label="Haptic-estim audio (WAV)" checked />
+            <Toggle label="Normalize audio loudness · −16 LUFS" checked={!!out.normalizeAudio}
+                    onChange={(v) => onSetOutput?.({ normalizeAudio: v })} />
             <div style={{ padding: "8px 10px", background: "var(--surface-2)",
                             border: "1px solid var(--border)", borderRadius: 6,
                             fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
@@ -368,7 +315,7 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage, ch
   return (
     <FATabBody>
       <FATabHeader
-        eyebrow="Pipeline · 04 of 04"
+        eyebrow="Pipeline · 03 of 03"
         title="Forge"
         subtitle="One pass. ForgeAssembler concatenates the videos, the funscript channels in lockstep, and writes chapter markers for every section boundary."
       />
@@ -806,7 +753,7 @@ function Toggle({ label, checked, disabled, onChange }) {
   );
 }
 
-Object.assign(window, { ProjectTab, OutputTab, ForgeTab, JoinersTab, Toggle });
+Object.assign(window, { OutputTab, ForgeTab, JoinersTab, Toggle });
 
 
-export { ChapterMarkersCard, ForgePanel, ForgeTab, JoinersTab, OutputChannelsCard, OutputTab, ProjectTab, ResolutionPicker, Toggle, UserJoinerAuthor };
+export { ChapterMarkersCard, ForgePanel, ForgeTab, JoinersTab, OutputChannelsCard, OutputTab, ResolutionPicker, Toggle, UserJoinerAuthor };

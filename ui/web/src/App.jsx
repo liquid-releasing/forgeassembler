@@ -4,7 +4,8 @@ import { FAAcceptBar, FAStatusBar, FATabBody, FATabStrip, FATopBar, fmtTotal } f
 import { BuildTab, ClipEditor, Divider } from './BuildTab';
 import { Inspector } from './Inspector';
 import { JoinerEditor, SavePresetPrompt } from './JoinerEditor';
-import { ForgeTab, JoinersTab, OutputTab, ProjectTab } from './OtherTabs';
+import { ForgeTab, JoinersTab, OutputTab } from './OtherTabs';
+import { HomeScreen } from './HomeScreen';
 import { PreviewBand } from './PreviewBand';
 import { OpenProjectDialog, SaveAsDialog, UnsavedChangesDialog } from './ProjectIO';
 import { Section, TitleEditor } from './TitleEditor';
@@ -30,7 +31,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [tab, setTab] = useState("project");
+  const [tab, setTab] = useState("home");
   // Multi-select model. `selectedIds` is the current selection set;
   // `selectionAnchor` is the last clip clicked without modifiers — used
   // as the pivot for shift-range expansion.
@@ -83,6 +84,23 @@ function App() {
   const [ioDialog,      setIoDialog]      = useState(null);
   const [pendingAfterSave, setPendingAfterSave] = useState(null);
   const [ioError,       setIoError]       = useState(null);
+
+  // ── Recent projects (localStorage-backed) ──────────────────────
+  // Real history, not mock rows: every successful Open / Save-As pushes the
+  // path here so the Home screen can reopen it. Capped + de-duped by path.
+  const [recents, setRecents] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('fa.recentProjects')) || []; }
+    catch { return []; }
+  });
+  function pushRecent(path, name) {
+    if (!path) return;
+    setRecents(prev => {
+      const next = [{ path, name: name || path.replace(/\\/g, '/').split('/').pop(), at: Date.now() },
+                    ...prev.filter(r => r.path !== path)].slice(0, 8);
+      try { localStorage.setItem('fa.recentProjects', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   // Tick once a minute so the "saved 2 min ago" label keeps pace.
   const [, setTickerNow] = useState(Date.now());
@@ -301,6 +319,30 @@ function App() {
     setTab('build');
   }
 
+  // ── Home / launcher navigation ─────────────────────────────────
+  function goHome() { setTab('home'); }
+  // Reopen a recent project. Honours the unsaved-changes guard the same way
+  // the topbar Open does.
+  function openRecent(r) {
+    if (!r?.path) return;
+    if (dirty) {
+      setPendingAfterSave(() => () => handleOpenProject({ path: r.path, name: r.name }));
+      setIoDialog('unsaved-then-open');
+    } else {
+      handleOpenProject({ path: r.path, name: r.name });
+    }
+  }
+
+  // ── Output / channel field setters (Output tab) ────────────────
+  function setOutput(partial) {
+    setProject(p => ({ ...p, output: { ...p.output, ...partial } }));
+    markDirty();
+  }
+  function setChannels(partial) {
+    setProject(p => ({ ...p, channels: { ...p.channels, ...partial } }));
+    markDirty();
+  }
+
   // ── Project I/O actions ────────────────────────────────────────
   // Save flow:
   //   • If no savedPath  → open Save As dialog
@@ -336,6 +378,7 @@ function App() {
       setSavedPath(path);
       setDirty(false);
       setLastSavedAtMs(Date.now());
+      pushRecent(path, nextVm.name);
       setIoDialog(null);
       // If we were saving en route to opening another project, continue.
       if (pendingAfterSave) { const a = pendingAfterSave; setPendingAfterSave(null); a(); }
@@ -373,6 +416,8 @@ function App() {
         setProject(p => ({ ...p, name: name || p.name }));
         setDirty(false);
         setLastSavedAtMs(Date.now());
+        pushRecent(path, name);
+        setTab('build');
         return;
       }
       const vm = fromForgeProject(json);
@@ -380,6 +425,8 @@ function App() {
       setSavedPath(path);
       setDirty(false);
       setLastSavedAtMs(Date.now());
+      pushRecent(path, vm.name || name);
+      setTab('build');
     } catch (e) {
       console.error('[open] failed', e);
       setIoError(`Couldn't open ${path}: ${e?.message || e}`);
@@ -629,7 +676,6 @@ function App() {
   }
 
   const [pipeline, setPipeline] = useState({
-    project:  { accepted: true,  chainFile: "project.ffmeta.json" },
     build:    { accepted: false, chainFile: "_build.forgeproject.json" },
     output:   { accepted: false, chainFile: "_output.json" },
     forge:    { accepted: false, chainFile: "forged/" + project.name + ".mp4" },
@@ -734,10 +780,20 @@ function App() {
   // ─── Tab body ──────────────────────────────────────────────────
   let body, acceptKey = null, acceptSummary = "", acceptLabel = "Accept and chain";
 
-  if (tab === "project") {
-    body = <ProjectTab project={project} />;
-    acceptKey = "project";
-    acceptSummary = `Output folder set · basename "${project.name}".`;
+  if (tab === "home") {
+    body = (
+      <HomeScreen
+        recents={recents}
+        hasWork={flatSegments.length > 0}
+        projectName={project.name}
+        segCount={flatSegments.length}
+        sectionCount={project.sections.length}
+        totalLabel={fmtTotal(totalMs)}
+        onNew={handleNewProject}
+        onOpen={handleOpenClick}
+        onOpenRecent={openRecent}
+        onContinue={() => setTab('build')} />
+    );
   } else if (tab === "build") {
     acceptKey = "build";
     acceptSummary = `${project.sections.length} sections · ${flatSegments.length} segments · ${project.audioBeds.length} audio bed${project.audioBeds.length === 1 ? "" : "s"} · ${fmtTotal(totalMs)} total.`;
@@ -794,7 +850,9 @@ function App() {
   } else if (tab === "output") {
     body = <OutputTab project={project}
                        channelGapPolicy={channelGapPolicy}
-                       onSetChannelGapPolicy={setChannelGap} />;
+                       onSetChannelGapPolicy={setChannelGap}
+                       onSetOutput={setOutput}
+                       onSetChannels={setChannels} />;
     acceptKey = "output";
     acceptSummary = `Resolution ${project.output.resolution} · loudness ${project.output.normalizeAudio ? "−16 LUFS" : "off"}.`;
   } else if (tab === "forge") {
@@ -815,7 +873,8 @@ function App() {
       <FATopBar project={project} totalMs={totalMs}
                  segCount={flatSegments.length} sectionCount={project.sections.length}
                  savedPath={savedPath} dirty={dirty} lastSavedAtMs={lastSavedAtMs}
-                 onOpen={handleOpenClick} onSave={handleSaveClick} onNew={handleNewProject} />
+                 onOpen={handleOpenClick} onSave={handleSaveClick} onNew={handleNewProject}
+                 onHome={goHome} />
       <FATabStrip active={tab} onChange={setTab} pipeline={pipeline} />
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>

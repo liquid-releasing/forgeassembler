@@ -27,7 +27,7 @@ function FAGlyph({ size = 28 }) {
 // ── TopBar ────────────────────────────────────────────────────────
 function FATopBar({ project, totalMs, segCount, sectionCount,
                     savedPath, dirty, lastSavedAtMs,
-                    onOpen, onSave, onNew }) {
+                    onOpen, onSave, onNew, onHome }) {
   // "saved 2 min ago" / "saving…" / "unsaved changes" / "new project"
   const filename = savedPath ? savedPath.split("/").pop() : `${project.name}.forgeproject.json`;
   const subtitle = savedPath ? null : "unsaved";
@@ -37,7 +37,11 @@ function FATopBar({ project, totalMs, segCount, sectionCount,
       background: "var(--surface)", borderBottom: "1px solid var(--border)",
       display: "flex", alignItems: "center", gap: 14,
     }}>
-      <FAGlyph />
+      <button onClick={onHome} title="Home — projects &amp; recents"
+              style={{ background: "transparent", border: "none", padding: 0,
+                       cursor: onHome ? "pointer" : "default", display: "flex" }}>
+        <FAGlyph />
+      </button>
       <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
         <span style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
           <span>{filename}</span>
@@ -103,9 +107,10 @@ function fmtRelative(ms) {
 }
 
 // ── Pipeline tab strip ────────────────────────────────────────────
-// Linear flow. "Build" is the rich tab — others are sketched.
+// Linear flow. "Build" is the rich tab — others are sketched. (The old
+// "Project" tab was a dead form — basename/folder live on Save As now, and
+// its launcher role moved to the Home screen.)
 const FA_TABS = [
-  { id: "project",  label: "Project",  icon: "folder",        pipeline: "project"  },
   { id: "build",    label: "Build",    icon: "layout-grid",   pipeline: "build"    },
   { id: "output",   label: "Output",   icon: "sliders",       pipeline: "output"   },
   { id: "forge",    label: "Forge",    icon: "hammer",        pipeline: "forge"    },
