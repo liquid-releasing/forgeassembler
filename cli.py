@@ -151,6 +151,66 @@ def cmd_detect(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import_forge(args: argparse.Namespace) -> int:
+    """Import a FunscriptForge `.forge` bundle as a single Segment.
+
+    Unpacks the bundle, maps its manifest channels, and (when a video can be
+    relinked — either bundled media or `--video`) emits the Segment dict the UI
+    appends. When no video is resolvable, emits the channel map + `needs_video`
+    so the caller can prompt for relink.
+    """
+    from forgeassembler_core import detect_forge_bundle, forge_bundle_to_segment, is_forge_bundle
+
+    bundle_path = Path(args.bundle)
+    if not is_forge_bundle(bundle_path):
+        print(f"ERROR: not a .forge bundle (expected a .forge zip): {bundle_path}",
+              file=sys.stderr)
+        return 2
+    try:
+        bundle = detect_forge_bundle(
+            bundle_path,
+            cache_root=args.cache_root,
+            media_roots=[args.media_root] if args.media_root else None,
+        )
+    except (ValueError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    video = args.video or (str(bundle.media_path) if bundle.media_path else None)
+    groups = categorize_channels({ch: p for ch, p in bundle.funscripts.items()})
+    payload = {
+        "stem": bundle.stem,
+        "project_id": bundle.project_id,
+        "project_version": bundle.project_version,
+        "duration_ms": bundle.duration_ms,
+        "channels": bundle.channels,
+        "channel_groups": {g: sorted(chs) for g, chs in groups.items() if chs},
+        "media_resolved": video is not None,
+        "video": video,
+        "cache_dir": str(bundle.cache_dir),
+    }
+    if video:
+        seg = forge_bundle_to_segment(bundle, video=video)
+        payload["segment"] = seg.to_dict()
+        payload["needs_video"] = False
+    else:
+        payload["segment"] = None
+        payload["needs_video"] = True
+
+    if getattr(args, "format", "text") == "json":
+        print(json.dumps(payload))
+        return 0
+    print(f"{bundle.stem}  ({len(bundle.channels)} channel(s), "
+          f"{(bundle.duration_ms or 0) // 1000}s)")
+    for group, chans in payload["channel_groups"].items():
+        print(f"  {group}: {', '.join(chans)}")
+    if video:
+        print(f"  video: {video}")
+    else:
+        print("  video: (unresolved — pass --video to relink)")
+    return 0
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     path = Path(args.project)
     as_json = getattr(args, "format", "text") == "json"
@@ -550,6 +610,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_detect.add_argument("--format", choices=("text", "json"), default="text",
                           help="json: emit a {clips:[...]} object for the UI")
     p_detect.set_defaults(func=cmd_detect)
+
+    p_import = sub.add_parser(
+        "import-forge",
+        help="import a FunscriptForge .forge bundle as one Segment",
+    )
+    p_import.add_argument("bundle", help="path to a .forge bundle (zip)")
+    p_import.add_argument("--video", help="relink the source video for the segment")
+    p_import.add_argument("--media-root", help="extra folder to search for the source video")
+    p_import.add_argument("--cache-root", help="where to extract bundles (default: temp)")
+    p_import.add_argument("--format", choices=("text", "json"), default="text",
+                          help="json: emit the segment + channel map for the UI")
+    p_import.set_defaults(func=cmd_import_forge)
 
     p_validate = sub.add_parser("validate", help="check a project without forging")
     p_validate.add_argument("project", help="path to project JSON")

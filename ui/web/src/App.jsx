@@ -1,7 +1,7 @@
 /* @esm-converted */
 import React from 'react';
 import { FAAcceptBar, FAStatusBar, FATabBody, FATabStrip, FATopBar, fmtTotal } from './AppShell';
-import { BuildTab, Divider } from './BuildTab';
+import { BuildTab, ClipEditor, Divider } from './BuildTab';
 import { Inspector } from './Inspector';
 import { JoinerEditor, SavePresetPrompt } from './JoinerEditor';
 import { ForgeTab, JoinersTab, OutputTab, ProjectTab } from './OtherTabs';
@@ -9,6 +9,10 @@ import { PreviewBand } from './PreviewBand';
 import { OpenProjectDialog, SaveAsDialog, UnsavedChangesDialog } from './ProjectIO';
 import { Section, TitleEditor } from './TitleEditor';
 import { FA_DATA } from './data';
+import { loadProject, saveProject, pickFolder, pickFile, detectFolder, probeDuration,
+         forgeProject, onForgeProgress, revealPath, validateProject,
+         importForgeBundle } from './api/forge';
+import { fromForgeProject, toForgeProject, fromDetected, fromForgeBundleSegment } from './lib/projectAdapter';
 import { DragDropProvider, reorderClipInProject, reorderSectionInProject } from './dragdrop';
 import { TweakRadio, TweakSection, TweakToggle, TweaksPanel, useTweaks } from './tweaks-panel';
 
@@ -26,7 +30,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [tab, setTab] = useState("build");
+  const [tab, setTab] = useState("project");
   // Multi-select model. `selectedIds` is the current selection set;
   // `selectionAnchor` is the last clip clicked without modifiers — used
   // as the pivot for shift-range expansion.
@@ -34,8 +38,10 @@ function App() {
   const [selectionAnchor, setSelectionAnchor] = useState("m3");
   const [expandedId, setExpandedId] = useState(null);
   const [selectedBedId, setSelectedBedId] = useState(null);
+  const [editingClip, setEditingClip] = useState(null); // segment open in the ClipEditor dialog
   const [forging, setForging] = useState(false);
-  const [progress, setProgress] = useState(0.32);
+  const [progress, setProgress] = useState(0);
+  const [forgeStage, setForgeStage] = useState(null); // live progress line from the backend
 
   const baseProject = useMemo(() => FA_DATA.PROJECTS[t.sampleSize] || FA_DATA.PROJECTS.medium, [t.sampleSize]);
 
@@ -76,6 +82,7 @@ function App() {
   const [lastSavedAtMs, setLastSavedAtMs] = useState(null);
   const [ioDialog,      setIoDialog]      = useState(null);
   const [pendingAfterSave, setPendingAfterSave] = useState(null);
+  const [ioError,       setIoError]       = useState(null);
 
   // Tick once a minute so the "saved 2 min ago" label keeps pace.
   const [, setTickerNow] = useState(Date.now());
@@ -215,6 +222,85 @@ function App() {
   }
   function slug(s) { return (s || "untitled").toLowerCase().replace(/\s+/g, "-"); }
 
+  // ── Add a new (empty) section ──────────────────────────────────
+  // A section's leading transition IS its joiner — so a second section is what
+  // creates an editable joiner between it and the one before. New sections
+  // start with a "none" joiner (a hard cut); click the joiner to change it.
+  function handleAddSection() {
+    markDirty();
+    const id = `sec-${Date.now()}`;
+    setProject(p => ({
+      ...p,
+      sections: [...p.sections, {
+        id, title: '', color: '#ff8c42',
+        joiner: { type: 'none' }, segments: [], overlays: [],
+      }],
+    }));
+  }
+
+  // ── Add a transition between two clips ─────────────────────────
+  // The "+" between clips. Splits the host section right after `clipId` into a
+  // new section that carries the trailing clips, then opens the joiner editor
+  // on that new boundary so the user picks the transition. (Joiners only exist
+  // between sections, so a transition between clips IS a section split.)
+  function handleAddTransition(sectionId, clipId, anchorRect) {
+    const newId = `sec-${Date.now()}`;
+    setProject(p => {
+      const sections = [];
+      for (const s of p.sections) {
+        if (s.id !== sectionId) { sections.push(s); continue; }
+        const i = s.segments.findIndex(seg => seg.id === clipId);
+        if (i < 0 || i >= s.segments.length - 1) { sections.push(s); continue; }
+        const after = s.segments.slice(i + 1);
+        sections.push({ ...s, segments: s.segments.slice(0, i + 1) });
+        sections.push({
+          id: newId, title: after[0]?.title || '', color: '#ff8c42',
+          joiner: { type: 'none' }, segments: after, overlays: [],
+        });
+      }
+      return { ...p, sections };
+    });
+    markDirty();
+    if (anchorRect) setEditingJoiner({ sectionId: newId, anchorRect });
+  }
+
+  // ── Remove a section ───────────────────────────────────────────
+  // Keeps at least one section. Clears selection (a selected clip may have
+  // lived in the removed section).
+  function handleRemoveSection(sectionId) {
+    setProject(p => {
+      if (p.sections.length <= 1) return p;
+      return { ...p, sections: p.sections.filter(s => s.id !== sectionId) };
+    });
+    markDirty();
+    clearClipSelection();
+    setSelectedBedId(null);
+  }
+
+  // ── New (empty) project ────────────────────────────────────────
+  // Clears the canvas to a single empty section — the starting point for
+  // building a compilation from scratch (Add folder / Add .forge scene).
+  function handleNewProject() {
+    setProject({
+      name: 'untitled',
+      output: { folder: null, resolution: '1080p', quality: 'medium',
+                frameRate: 'source', normalizeAudio: true, video: true, funscripts: true },
+      channels: { main: true, multi_axis: false, estim_3p: false, estim_4p: false,
+                  prostate: false, pulse_freq: false, audio_estim: true },
+      sections: [{ id: `sec-${Date.now()}`, title: '', color: '#ff8c42',
+                   joiner: { type: 'none' }, segments: [], overlays: [] }],
+      audioBeds: [],
+      userJoiners: [], userGlyphs: [], userTitleTemplates: [],
+    });
+    setSavedPath(null);
+    setDirty(true);
+    setLastSavedAtMs(null);
+    clearClipSelection();
+    setSelectedBedId(null);
+    setIoError(null);
+    setTab('build');
+  }
+
   // ── Project I/O actions ────────────────────────────────────────
   // Save flow:
   //   • If no savedPath  → open Save As dialog
@@ -224,18 +310,39 @@ function App() {
     if (!dirty) return; // no-op
     saveInPlace();
   }
-  function saveInPlace() {
-    setDirty(false);
-    setLastSavedAtMs(Date.now());
+  async function saveInPlace() {
+    if (!savedPath) { setIoDialog("save"); return; }
+    try {
+      await saveProject(savedPath, toForgeProject(project, { folder: project.output?.folder }));
+      setDirty(false);
+      setLastSavedAtMs(Date.now());
+    } catch (e) {
+      console.error('[save] failed', e);
+      setIoError(`Couldn't save ${savedPath}: ${e?.message || e}`);
+    }
   }
-  function handleSaveAsCommit({ path, basename }) {
-    setSavedPath(path);
-    setProject(p => ({ ...p, name: basename || p.name }));
-    setDirty(false);
-    setLastSavedAtMs(Date.now());
-    setIoDialog(null);
-    // If we were saving en route to opening another project, continue.
-    if (pendingAfterSave) { const a = pendingAfterSave; setPendingAfterSave(null); a(); }
+  async function handleSaveAsCommit({ path, basename, folder }) {
+    // Stamp the chosen basename + folder onto the project, write it, then
+    // adopt the new path. Build the next vm explicitly so the write doesn't
+    // race React's async setState.
+    const nextVm = {
+      ...project,
+      name: basename || project.name,
+      output: { ...project.output, folder: folder ?? project.output?.folder },
+    };
+    try {
+      await saveProject(path, toForgeProject(nextVm, { folder }));
+      setProject(nextVm);
+      setSavedPath(path);
+      setDirty(false);
+      setLastSavedAtMs(Date.now());
+      setIoDialog(null);
+      // If we were saving en route to opening another project, continue.
+      if (pendingAfterSave) { const a = pendingAfterSave; setPendingAfterSave(null); a(); }
+    } catch (e) {
+      console.error('[save] failed', e);
+      setIoError(`Couldn't save ${path}: ${e?.message || e}`);
+    }
   }
   // Open flow:
   //   • If dirty → "Save changes?" first, with a continuation
@@ -252,15 +359,168 @@ function App() {
     setPendingAfterSave(null);
     setIoDialog("open");
   }
-  function handleOpenProject({ path, name }) {
-    // For the prototype this re-loads the current sample but stamps it
-    // with the picked name / path. A real implementation would parse
-    // the JSON, rebuild project state, and restore selection.
-    setSavedPath(path);
-    setProject(p => ({ ...p, name }));
-    setDirty(false);
-    setLastSavedAtMs(Date.now() - 60_000); // pretend it was saved a minute ago
+  async function handleOpenProject({ path, name }) {
+    // Real load: read the .forgeproject.json via the bridge and adapt the
+    // snake_case schema into the camelCase view-model. loadProject() returns
+    // null when there's no backend (browser mock) — fall back to a name stamp
+    // so `npm run dev` still demos the flow.
     setIoDialog(null);
+    setIoError(null);
+    try {
+      const json = await loadProject(path);
+      if (!json) { // mock / no backend
+        setSavedPath(path);
+        setProject(p => ({ ...p, name: name || p.name }));
+        setDirty(false);
+        setLastSavedAtMs(Date.now());
+        return;
+      }
+      const vm = fromForgeProject(json);
+      setProject(vm);
+      setSavedPath(path);
+      setDirty(false);
+      setLastSavedAtMs(Date.now());
+    } catch (e) {
+      console.error('[open] failed', e);
+      setIoError(`Couldn't open ${path}: ${e?.message || e}`);
+    }
+  }
+
+  // ── Add clips from a folder (detect → append) ──────────────────
+  // Picks a folder, scans it for clips + sidecar funscripts/audio-estim,
+  // and appends the detected segments to the target section (or the last
+  // section, or a fresh one). Video durations are probed lazily after the
+  // segments land so the list paints immediately.
+  // Append segments to a target section (or the last/new one), then probe
+  // video durations. The chapter NAME defaults to the first added clip's name
+  // when the section is still unnamed — so a clip's filename becomes its
+  // chapter by default (the user can rename it).
+  function appendSegments(segs, sectionId) {
+    if (!segs.length) return;
+    const stamp = Date.now();
+    markDirty();
+    setProject(p => {
+      const sections = p.sections.length ? p.sections : [{
+        id: `sec-${stamp}`, title: '', color: '#ff8c42',
+        joiner: { type: 'none' }, segments: [], overlays: [],
+      }];
+      const targetId = sectionId || sections[sections.length - 1].id;
+      return {
+        ...p,
+        sections: sections.map(s => s.id === targetId
+          ? { ...s, title: s.title || segs[0]?.title || '', segments: [...s.segments, ...segs] }
+          : s),
+      };
+    });
+    for (const seg of segs) {
+      if (seg.kind === 'still' || !seg.file) continue;
+      probeDuration(seg.file).then(ms => {
+        if (!ms) return;
+        setProject(p => ({
+          ...p,
+          sections: p.sections.map(s => ({
+            ...s,
+            segments: s.segments.map(x => x.id === seg.id ? { ...x, durMs: ms } : x),
+          })),
+        }));
+      }).catch(() => { /* leave durMs at 0 if probe fails */ });
+    }
+  }
+
+  // ── Add clips from a FOLDER (batch detect) — the header "Add folder…" ──
+  async function handleAddClips(sectionId) {
+    setIoError(null);
+    const folder = await pickFolder();
+    if (!folder) return;
+    let payload;
+    try {
+      payload = await detectFolder(folder);
+    } catch (e) {
+      console.error('[detect] failed', e);
+      setIoError(`Couldn't scan ${folder}: ${e?.message || e}`);
+      return;
+    }
+    const stamp = Date.now();
+    const newSegs = fromDetected(payload).map((s, i) => ({ ...s, id: `${s.id}-${stamp}-${i}` }));
+    if (!newSegs.length) {
+      setIoError(`No clips found in ${folder}.`);
+      return;
+    }
+    appendSegments(newSegs, sectionId);
+  }
+
+  // ── Add ONE clip — a video file OR a .forge scene (per-section "Add clip") ──
+  async function handleAddClip(sectionId) {
+    setIoError(null);
+    const path = await pickFile({
+      title: 'Add a clip — pick a video or a .forge scene',
+      filterName: 'Video or .forge scene',
+      extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi', 'forge'],
+    });
+    if (!path) return;
+    if (/\.forge$/i.test(path)) {
+      await importForgeBundleToSection(path, sectionId);
+      return;
+    }
+    const stamp = Date.now();
+    const base = path.replace(/\\/g, '/').split('/').pop();
+    const stem = base.replace(/\.[^.]+$/, '');
+    const isStill = /\.(png|jpe?g|webp)$/i.test(path);
+    appendSegments([{
+      id: `seg-${stem}-${stamp}`, file: path, title: stem,
+      kind: isStill ? 'still' : 'video',
+      durMs: isStill ? 5000 : 0, channels: [], overlays: 0, overlaysList: [],
+      audio: 'keep', temp: 0, funscriptsSource: 'auto_detect', explicitFunscripts: {},
+    }], sectionId);
+  }
+
+  // Import a `.forge` bundle into a section: explicit channel map, with a
+  // relink prompt when the lean bundle carries no media. Shared by the
+  // "Add .forge scene…" header button and the per-section "Add clip".
+  async function importForgeBundleToSection(bundle, sectionId) {
+    let payload;
+    try {
+      payload = await importForgeBundle(bundle);
+    } catch (e) {
+      console.error('[import-forge] failed', e);
+      setIoError(`Couldn't import ${bundle}: ${e?.message || e}`);
+      return;
+    }
+    if (payload?.needs_video) {
+      const video = await pickFile({
+        title: `Select the source VIDEO for “${payload.stem || 'this scene'}”`,
+        filterName: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'],
+      });
+      if (!video) {
+        setIoError(`Import canceled — “${payload.stem || 'scene'}” needs a source video to relink.`);
+        return;
+      }
+      try {
+        payload = await importForgeBundle(bundle, { video });
+      } catch (e) {
+        console.error('[import-forge] relink failed', e);
+        setIoError(`Couldn't relink video: ${e?.message || e}`);
+        return;
+      }
+    }
+    const seg = fromForgeBundleSegment(payload?.segment);
+    if (!seg) {
+      setIoError(`Import produced no segment for ${payload?.stem || bundle}.`);
+      return;
+    }
+    seg.id = `${seg.id || 'seg'}-${Date.now()}`;
+    appendSegments([seg], sectionId);
+  }
+
+  // ── Add a finished FunscriptForge `.forge` scene (header button) ──
+  async function handleAddForgeScene(sectionId) {
+    setIoError(null);
+    const bundle = await pickFile({
+      title: 'Select a .forge scene to import',
+      filterName: 'FunscriptForge bundle', extensions: ['forge'],
+    });
+    if (!bundle) return;
+    await importForgeBundleToSection(bundle, sectionId);
   }
 
   // Reset selection if it doesn't exist in the new sample
@@ -345,6 +605,29 @@ function App() {
     clearClipSelection();
   }
 
+  // Single-segment edit/remove (used by the ClipEditor dialog).
+  function updateSegment(segId, partial) {
+    markDirty();
+    setProject(p => ({
+      ...p,
+      sections: p.sections.map(s => ({
+        ...s,
+        segments: s.segments.map(seg => seg.id === segId ? { ...seg, ...partial } : seg),
+      })),
+    }));
+  }
+  function removeSegment(segId) {
+    markDirty();
+    setProject(p => ({
+      ...p,
+      sections: p.sections.map(s => ({
+        ...s,
+        segments: s.segments.filter(seg => seg.id !== segId),
+      })),
+    }));
+    setSelectedIds(prev => prev.filter(id => id !== segId));
+  }
+
   const [pipeline, setPipeline] = useState({
     project:  { accepted: true,  chainFile: "project.ffmeta.json" },
     build:    { accepted: false, chainFile: "_build.forgeproject.json" },
@@ -379,15 +662,73 @@ function App() {
   const accept = (key) => setPipeline(p => ({ ...p, [key]: { ...p[key], accepted: true } }));
   const reset  = (key) => setPipeline(p => ({ ...p, [key]: { ...p[key], accepted: false } }));
 
-  function startForge() {
-    if (forging) { setForging(false); return; }
-    setForging(true); setProgress(0);
-    let p = 0;
-    const id = setInterval(() => {
-      p += 0.012 + Math.random() * 0.02;
-      if (p >= 1) { p = 1; clearInterval(id); setForging(false); accept("forge"); }
-      setProgress(p);
-    }, 220);
+  // Real forge: ensure the project is saved to disk, subscribe to the
+  // `fa:progress` stage stream, run `forge`, then reveal the output. The CLI
+  // emits stage-text lines ("progress: forging video…") rather than a percent,
+  // so the bar advances coarsely by counting the enabled output stages.
+  async function startForge() {
+    if (forging) return; // no mid-run cancel yet — button is disabled while forging
+    let path = savedPath;
+    if (!path) { setIoError('Save the project before forging.'); setIoDialog('save'); return; }
+    if (dirty) {
+      try {
+        await saveProject(path, toForgeProject(project, { folder: project.output?.folder }));
+        setDirty(false); setLastSavedAtMs(Date.now());
+      } catch (e) {
+        console.error('[forge] pre-save failed', e);
+        setIoError(`Couldn't save before forge: ${e?.message || e}`);
+        return;
+      }
+    }
+
+    // Pre-flight validation — refuse to forge an invalid project. Warnings
+    // are non-fatal; only hard errors block. (validateProject is a no-op in
+    // the browser mock, returning ok:true.)
+    try {
+      const v = await validateProject(path);
+      if (v && v.ok === false && Array.isArray(v.errors) && v.errors.length) {
+        const head = v.errors.slice(0, 3).join('; ');
+        setIoError(`Can't forge — ${v.errors.length} problem${v.errors.length === 1 ? '' : 's'}: ${head}${v.errors.length > 3 ? '…' : ''}`);
+        return;
+      }
+    } catch (e) {
+      console.warn('[forge] validation unavailable, continuing', e);
+    }
+
+    // Rough determinate progress: one tick per enabled output stage.
+    const stageCount = Math.max(1,
+      (project.output?.video !== false ? 1 : 0) +
+      (project.output?.funscripts !== false ? 1 : 0) +
+      (project.channels?.audio_estim ? 1 : 0));
+    let done = 0;
+
+    setIoError(null);
+    setForging(true); setProgress(0); setForgeStage('Starting…');
+    let unlisten = () => {};
+    try {
+      unlisten = await onForgeProgress((line) => {
+        const text = String(line || '');
+        if (text.startsWith('progress:')) {
+          done = Math.min(stageCount, done + 1);
+          setProgress(Math.min(0.95, done / (stageCount + 0.001)));
+          setForgeStage(text.replace(/^progress:\s*/, ''));
+        }
+      });
+      const summaryStr = await forgeProject(path, {});
+      let summary = null;
+      try { summary = JSON.parse(summaryStr); } catch { /* non-JSON summary */ }
+      setProgress(1); setForgeStage('Done');
+      accept('forge');
+      const reveal = summary?.video || project.output?.folder;
+      if (reveal) revealPath(reveal).catch(() => {});
+    } catch (e) {
+      console.error('[forge] failed', e);
+      setIoError(`Forge failed: ${e?.message || e}`);
+      setForgeStage(null);
+    } finally {
+      unlisten();
+      setForging(false);
+    }
   }
 
   // ─── Tab body ──────────────────────────────────────────────────
@@ -423,6 +764,13 @@ function App() {
                 onClearSelection={clearClipSelection}
                 onEditJoiner={(sectionId, anchorRect) => setEditingJoiner({ sectionId, anchorRect })}
                 onRenameSection={renameSection}
+                onAddClips={handleAddClips}
+                onAddClip={handleAddClip}
+                onAddForgeScene={handleAddForgeScene}
+                onAddSection={handleAddSection}
+                onRemoveSection={handleRemoveSection}
+                onEditClip={(seg) => setEditingClip(seg)}
+                onAddTransition={handleAddTransition}
                 onOpenTitleEditor={(sectionId) => setTitleEditor(
                   sectionId
                     ? { anchorClipId: null, forSectionId: sectionId }
@@ -450,7 +798,7 @@ function App() {
     acceptKey = "output";
     acceptSummary = `Resolution ${project.output.resolution} · loudness ${project.output.normalizeAudio ? "−16 LUFS" : "off"}.`;
   } else if (tab === "forge") {
-    body = <ForgeTab project={project} totalMs={totalMs} onForge={startForge} forging={forging} progress={progress} />;
+    body = <ForgeTab project={project} totalMs={totalMs} onForge={startForge} forging={forging} progress={progress} forgeStage={forgeStage} />;
     acceptKey = "forge";
     acceptSummary = forging ? "Forging in progress…" : (pipeline.forge.accepted ? "Forged successfully." : "Press Forge to render the combined output.");
     acceptLabel = "Mark forged";
@@ -467,7 +815,7 @@ function App() {
       <FATopBar project={project} totalMs={totalMs}
                  segCount={flatSegments.length} sectionCount={project.sections.length}
                  savedPath={savedPath} dirty={dirty} lastSavedAtMs={lastSavedAtMs}
-                 onOpen={handleOpenClick} onSave={handleSaveClick} />
+                 onOpen={handleOpenClick} onSave={handleSaveClick} onNew={handleNewProject} />
       <FATabStrip active={tab} onChange={setTab} pipeline={pipeline} />
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -559,6 +907,32 @@ function App() {
             if (!savedPath) setIoDialog("save");          // route through Save As first
             else { saveInPlace(); setIoDialog("open"); }   // save in place, then open
           }} />
+      )}
+
+      {/* Open/save error toast */}
+      {ioError && (
+        <div style={{
+          position: "fixed", bottom: 56, left: "50%", transform: "translateX(-50%)",
+          zIndex: 60, maxWidth: 560,
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "10px 14px", borderRadius: 8,
+          background: "var(--surface)", border: "1px solid var(--danger)",
+          boxShadow: "var(--elev-3)", color: "var(--text)", fontSize: 12.5,
+        }}>
+          <span style={{ flex: 1 }}>{ioError}</span>
+          <button onClick={() => setIoError(null)}
+                  style={{ background: "transparent", border: "none", color: "var(--text-dim)",
+                           cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>Dismiss</button>
+        </div>
+      )}
+
+      {/* Clip editor (trim · audio · remove) */}
+      {editingClip && (
+        <ClipEditor
+          seg={editingClip}
+          onSave={updateSegment}
+          onRemove={removeSegment}
+          onClose={() => setEditingClip(null)} />
       )}
 
       {/* ── Tweaks panel ── */}

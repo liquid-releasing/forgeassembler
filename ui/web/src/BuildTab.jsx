@@ -54,6 +54,49 @@ function ChannelChip({ id }) {
   );
 }
 
+// ── Device pills ──────────────────────────────────────────────────
+// Collapse a segment's raw funscript channels into the device categories they
+// drive, so a 15-channel scene reads as "Stroke · E-Stim ×14" instead of a
+// long technical list. Hover a pill to see the underlying channels.
+const _MULTI_AXIS = new Set(["surge", "sway", "twist", "roll", "pitch"]);
+const _DEVICE_META = {
+  stroke:    { label: "Stroke",     color: "#ff7b7b" },
+  multiaxis: { label: "Multi-axis", color: "#4dabf7" },
+  estim:     { label: "E-Stim",     color: "#3ed598" },
+};
+function bucketChannels(channels) {
+  const g = { stroke: [], multiaxis: [], estim: [] };
+  for (const c of channels || []) {
+    if (c === "main") g.stroke.push(c);
+    else if (_MULTI_AXIS.has(c)) g.multiaxis.push(c);
+    else g.estim.push(c);
+  }
+  return g;
+}
+function DevicePills({ channels = [] }) {
+  if (!channels.length)
+    return <span style={{ fontSize: 10.5, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>—</span>;
+  const g = bucketChannels(channels);
+  return (
+    <>
+      {["stroke", "multiaxis", "estim"].filter(k => g[k].length).map(k => {
+        const m = _DEVICE_META[k];
+        const list = g[k];
+        return (
+          <span key={k} title={list.join(", ")} style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            padding: "1px 8px", borderRadius: 4, fontSize: 10.5, fontWeight: 600,
+            fontFamily: "var(--font-mono)", letterSpacing: "0.02em",
+            background: `${m.color}22`, color: m.color, border: `1px solid ${m.color}44`,
+          }}>
+            {m.label}{list.length > 1 ? ` ×${list.length}` : ""}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 // ── Audio mode glyph ──────────────────────────────────────────────
 function AudioModeBadge({ mode }) {
   const map = {
@@ -111,7 +154,7 @@ function ClipThumb({ seg, w }) {
 }
 
 // ── Clip row (used by sections + flat layouts) ─────────────────────
-function ClipRow({ seg, sectionColor, sectionId, density, selected, onSelect, expanded, onToggleExpand, inspectorMode, isStillRow }) {
+function ClipRow({ seg, sectionColor, sectionId, density, selected, onSelect, expanded, onToggleExpand, inspectorMode, isStillRow, onEditClip }) {
   const d = DENSITY[density];
   const [hover, setHover] = bsState(false);
   const dragHandle = useDraggable({ kind: "clip", id: seg.id, fromSectionId: sectionId });
@@ -168,10 +211,8 @@ function ClipRow({ seg, sectionColor, sectionId, density, selected, onSelect, ex
 
         <AudioModeBadge mode={seg.audio} />
 
-        <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-          {seg.channels.length === 0
-            ? <span style={{ fontSize: 10.5, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>—</span>
-            : seg.channels.map(c => <ChannelChip key={c} id={c} />)}
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <DevicePills channels={seg.channels} />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -181,16 +222,123 @@ function ClipRow({ seg, sectionColor, sectionId, density, selected, onSelect, ex
               <Icon name={expanded ? "chevron-up" : "chevron-down"} size={14} />
             </Button>
           )}
-          <Button kind="ghost" size="icon" title="Split here"
-                  onClick={(e) => e.stopPropagation()}><Icon name="scissors" size={13} /></Button>
-          <Button kind="ghost" size="icon" title="Duplicate"
-                  onClick={(e) => e.stopPropagation()}><Icon name="copy" size={13} /></Button>
-          <Button kind="ghost" size="icon" title="Remove"
-                  onClick={(e) => e.stopPropagation()}><Icon name="trash-2" size={13} /></Button>
+          <Button kind="ghost" size="icon" title="Edit clip (trim · audio · remove)"
+                  onClick={(e) => { e.stopPropagation(); onEditClip?.(seg); }}><Icon name="pencil" size={13} /></Button>
         </div>
       </div>
       <DropLine on={drop.hoverPosition === "after"} />
     </>
+  );
+}
+
+// ── Clip editor dialog ────────────────────────────────────────────
+// Opened from a clip's pencil. Sets the trim window (in/out), the audio
+// treatment, and hosts Remove (the per-clip trashcan moved in here).
+function _fmtSecs(ms) {
+  const t = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(t / 60), s = t % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+function ClipEditor({ seg, onSave, onRemove, onClose }) {
+  const durMs = seg.durMs || 0;
+  const [audio, setAudio] = bsState(seg.audio || "keep");
+  const [startS, setStartS] = bsState(String((seg.trimStartMs ?? 0) / 1000));
+  const [endS, setEndS] = bsState(String((seg.trimEndMs ?? durMs) / 1000));
+
+  bsUseEffect(() => {
+    function k(e) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+
+  function commit() {
+    const sMs = Math.max(0, Math.round((parseFloat(startS) || 0) * 1000));
+    const eMs = Math.round((parseFloat(endS) || 0) * 1000);
+    onSave(seg.id, {
+      audio,
+      trimStartMs: sMs > 0 ? sMs : 0,
+      // end at/after full length (or unset) → play to the source end.
+      trimEndMs: (durMs && (eMs <= 0 || eMs >= durMs)) ? null : (eMs > 0 ? eMs : null),
+    });
+    onClose();
+  }
+
+  const AUDIO_OPTS = [
+    { v: "keep", label: "Keep", icon: "volume-2" },
+    { v: "replace", label: "Replace", icon: "music" },
+    { v: "silence", label: "Silence", icon: "volume-x" },
+  ];
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 50,
+      background: "rgba(0,0,0,0.6)", display: "grid", placeItems: "center",
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: 460, background: "var(--surface)", border: "1px solid var(--border)",
+        borderRadius: 12, boxShadow: "var(--elev-3)", overflow: "hidden",
+      }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)",
+                       display: "flex", alignItems: "center", gap: 10 }}>
+          <Icon name="pencil" size={15} style={{ color: "var(--accent-warm)" }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Edit clip</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--text-dim)",
+                                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {seg.title || seg.file}
+            </div>
+          </div>
+          <Button kind="ghost" size="icon" onClick={onClose}><Icon name="x" size={14} /></Button>
+        </div>
+
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Trim */}
+          <div>
+            <FASectionLabel>Trim window</FASectionLabel>
+            <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "2px 0 10px" }}>
+              In / out points in seconds. {durMs ? <>Source is <span className="mono" style={{ color: "var(--text)" }}>{_fmtSecs(durMs)}</span>.</> : "Duration not probed yet."}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Field label="Start (s)" style={{ flex: 1 }}>
+                <TextInput value={startS} onChange={setStartS} mono />
+              </Field>
+              <Field label="End (s)" style={{ flex: 1 }}>
+                <TextInput value={endS} onChange={setEndS} mono />
+              </Field>
+            </div>
+          </div>
+
+          {/* Audio */}
+          <div>
+            <FASectionLabel>Audio</FASectionLabel>
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              {AUDIO_OPTS.map(o => (
+                <button key={o.v} onClick={() => setAudio(o.v)} style={{
+                  flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  padding: "8px 10px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 12, fontWeight: 600,
+                  background: audio === o.v ? "var(--accent-warm)" : "var(--surface-2)",
+                  color: audio === o.v ? "#1a1a1a" : "var(--text-muted)",
+                  border: `1px solid ${audio === o.v ? "var(--accent-warm)" : "var(--border)"}`,
+                }}>
+                  <Icon name={o.icon} size={13} /> {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8,
+                       padding: "14px 18px", borderTop: "1px solid var(--border)" }}>
+          <Button kind="ghost" size="sm" icon="trash-2"
+                  onClick={() => { onRemove(seg.id); onClose(); }}
+                  style={{ color: "var(--danger)" }}>Remove clip</Button>
+          <div style={{ flex: 1 }} />
+          <Button kind="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button kind="primary" size="sm" icon="check" onClick={commit}>Save</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -297,7 +445,7 @@ function JoinerEl({ joiner, userJoiners, style: jStyle, onClick }) {
 }
 
 // ── Section header (sections layout) ──────────────────────────────
-function SectionHeader({ section, idx, total, density, chapterStartMs, onAddTitle, onRename }) {
+function SectionHeader({ section, idx, total, density, chapterStartMs, onAddTitle, onAddClips, onAddClip, onRename, onRemove }) {
   const dragHandle = useDraggable({ kind: "section", id: section.id });
   const drop = useDroppable({ accept: "section", id: section.id });
   const [editing, setEditing] = bsState(false);
@@ -383,9 +531,18 @@ function SectionHeader({ section, idx, total, density, chapterStartMs, onAddTitl
         <Pill style={{ fontSize: 10 }}>{section.segments.length} clip{section.segments.length === 1 ? "" : "s"}</Pill>
         <div style={{ flex: 1 }} />
         <Button kind="ghost" size="sm" icon="image-plus" onClick={() => onAddTitle?.(section.id)}>Title card</Button>
-        <Button kind="ghost" size="sm" icon="plus">Add clip</Button>
+        <Button kind="ghost" size="sm" icon="plus" onClick={() => onAddClip?.(section.id)}>Add clip</Button>
         <Button kind="ghost" size="icon" title="Rename / configure"
                 onClick={() => setEditing(true)}><Icon name="pencil" size={14} /></Button>
+        {total > 1 && (
+          <Button kind="ghost" size="icon" title="Remove section"
+                  onClick={() => {
+                    if (section.segments.length &&
+                        !window.confirm(`Remove section "${section.title || 'Untitled'}" and its ${section.segments.length} clip${section.segments.length === 1 ? '' : 's'}?`))
+                      return;
+                    onRemove?.(section.id);
+                  }}><Icon name="trash-2" size={14} /></Button>
+        )}
       </div>
       <DropLine on={drop.hoverPosition === "after"} />
     </>
@@ -393,13 +550,13 @@ function SectionHeader({ section, idx, total, density, chapterStartMs, onAddTitl
 }
 
 // ── Layout: sections ──────────────────────────────────────────────
-function LayoutSections({ project, density, joinerStyle, selectedIds, onSelect, expandedId, onToggleExpand, inspectorMode, sectionGrouping, onEditJoiner, onOpenTitleEditor, onRenameSection }) {
+function LayoutSections({ project, density, joinerStyle, selectedIds, onSelect, expandedId, onToggleExpand, inspectorMode, sectionGrouping, onEditJoiner, onOpenTitleEditor, onRenameSection, onAddClips, onAddClip, onAddSection, onRemoveSection, onEditClip, onAddTransition }) {
   // If section grouping is OFF, fall back to flat layout
   if (!sectionGrouping) return <LayoutFlat
     project={project} density={density} joinerStyle={joinerStyle}
     selectedIds={selectedIds} onSelect={onSelect}
     expandedId={expandedId} onToggleExpand={onToggleExpand} inspectorMode={inspectorMode}
-    onEditJoiner={onEditJoiner} onOpenTitleEditor={onOpenTitleEditor} />;
+    onEditJoiner={onEditJoiner} onOpenTitleEditor={onOpenTitleEditor} onAddClips={onAddClips} onAddClip={onAddClip} onEditClip={onEditClip} />;
 
   // Precompute each section's chapter start time (sum of all preceding
   // section durations + their leading joiner totals).
@@ -428,31 +585,65 @@ function LayoutSections({ project, density, joinerStyle, selectedIds, onSelect, 
                             density={density}
                             chapterStartMs={sectionStarts[sec.id]}
                             onAddTitle={(sectionId) => onOpenTitleEditor(sectionId)}
-                            onRename={onRenameSection} />
+                            onAddClips={onAddClips}
+                            onAddClip={onAddClip}
+                            onRename={onRenameSection}
+                            onRemove={onRemoveSection} />
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {sec.segments.map((seg) => (
+              {sec.segments.map((seg, i) => (
                 <React.Fragment key={seg.id}>
                   <ClipRow seg={seg} sectionColor={sec.color} sectionId={sec.id} density={density}
                            selected={selectedIds.includes(seg.id)}
                            onSelect={(e) => onSelect(seg.id, e)}
                            expanded={expandedId === seg.id} onToggleExpand={() => onToggleExpand(seg.id)}
-                           inspectorMode={inspectorMode} />
+                           inspectorMode={inspectorMode} onEditClip={onEditClip} />
                   {expandedId === seg.id && inspectorMode === "inline" &&
                     <InlineEditor seg={seg} onClose={() => onToggleExpand(seg.id)} />}
+                  {i < sec.segments.length - 1 && (
+                    <AddTransitionButton
+                      onPick={(rect) => onAddTransition?.(sec.id, seg.id, rect)} />
+                  )}
                 </React.Fragment>
               ))}
             </div>
           </div>
         </React.Fragment>
       ))}
-      <AddSectionButton />
+      <AddSectionButton onAddSection={onAddSection} />
     </div>
   );
 }
 
-function AddSectionButton() {
+// A "+" that sits between two clips in a section. Clicking it inserts a
+// transition there — under the hood it splits the section so the joiner has a
+// boundary to live on (every joiner is also a chapter marker).
+function AddTransitionButton({ onPick }) {
+  const [hover, setHover] = bsState(false);
   return (
-    <button style={{
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+         style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                  height: 14, position: "relative" }}>
+      <div style={{ position: "absolute", left: 0, right: 0, height: 1,
+                     background: hover ? "var(--accent-warm)" : "transparent",
+                     opacity: 0.4, transition: "background 0.12s" }} />
+      <button title="Add a transition here"
+        onClick={(e) => { e.stopPropagation(); onPick?.(e.currentTarget.getBoundingClientRect()); }}
+        style={{ position: "relative", display: "inline-flex", alignItems: "center",
+                 justifyContent: "center", width: 20, height: 20, borderRadius: 10,
+                 cursor: "pointer", fontFamily: "inherit",
+                 background: hover ? "var(--accent-warm)" : "var(--surface-2)",
+                 color: hover ? "#1a1a1a" : "var(--text-dim)",
+                 border: `1px solid ${hover ? "var(--accent-warm)" : "var(--border)"}`,
+                 opacity: hover ? 1 : 0.6, transition: "all 0.12s" }}>
+        <Icon name="plus" size={12} />
+      </button>
+    </div>
+  );
+}
+
+function AddSectionButton({ onAddSection }) {
+  return (
+    <button onClick={() => onAddSection?.()} style={{
       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
       padding: "14px", marginTop: 8,
       background: "transparent", border: "1px dashed var(--border)",
@@ -465,7 +656,7 @@ function AddSectionButton() {
 }
 
 // ── Layout: flat ──────────────────────────────────────────────────
-function LayoutFlat({ project, density, joinerStyle, selectedIds, onSelect, expandedId, onToggleExpand, inspectorMode, onEditJoiner }) {
+function LayoutFlat({ project, density, joinerStyle, selectedIds, onSelect, expandedId, onToggleExpand, inspectorMode, onEditJoiner, onAddClips, onAddClip, onEditClip }) {
   const flat = [];
   for (const sec of project.sections) {
     for (let i = 0; i < sec.segments.length; i++) {
@@ -490,13 +681,13 @@ function LayoutFlat({ project, density, joinerStyle, selectedIds, onSelect, expa
                      selected={selectedIds.includes(seg.id)}
                      onSelect={(e) => onSelect(seg.id, e)}
                      expanded={expandedId === seg.id} onToggleExpand={() => onToggleExpand(seg.id)}
-                     inspectorMode={inspectorMode} />
+                     inspectorMode={inspectorMode} onEditClip={onEditClip} />
             {expandedId === seg.id && inspectorMode === "inline" &&
               <InlineEditor seg={seg} onClose={() => onToggleExpand(seg.id)} />}
           </React.Fragment>
         );
       })}
-      <button style={{
+      <button onClick={() => onAddClip?.(null)} style={{
         display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
         padding: "14px", marginTop: 8,
         background: "transparent", border: "1px dashed var(--border)",
@@ -732,7 +923,7 @@ function BuildTab({ project, density, buildLayout, joinerStyle, sectionGrouping,
                     expandedId, onToggleExpand,
                     selectedBedId, onSelectBed,
                     onClearSelection,
-                    onEditJoiner, onOpenTitleEditor, onRenameSection }) {
+                    onEditJoiner, onOpenTitleEditor, onRenameSection, onAddClips, onAddClip, onAddForgeScene, onAddSection, onRemoveSection, onEditClip, onAddTransition }) {
 
   const totalMs = project.sections.flatMap(s => s.segments).reduce((a, s) => a + s.durMs, 0);
   const segCount = project.sections.flatMap(s => s.segments).length;
@@ -744,7 +935,7 @@ function BuildTab({ project, density, buildLayout, joinerStyle, sectionGrouping,
       selectedIds={selectedIds} onSelect={onSelect}
       expandedId={expandedId} onToggleExpand={onToggleExpand}
       inspectorMode={inspectorMode} onEditJoiner={onEditJoiner}
-      onOpenTitleEditor={onOpenTitleEditor} />;
+      onOpenTitleEditor={onOpenTitleEditor} onAddClips={onAddClips} onAddClip={onAddClip} onEditClip={onEditClip} />;
   } else if (buildLayout === "timeline") {
     main = <LayoutTimeline
       project={project} density={density} joinerStyle={joinerStyle}
@@ -757,7 +948,8 @@ function BuildTab({ project, density, buildLayout, joinerStyle, sectionGrouping,
       expandedId={expandedId} onToggleExpand={onToggleExpand}
       inspectorMode={inspectorMode} sectionGrouping={sectionGrouping}
       onEditJoiner={onEditJoiner} onOpenTitleEditor={onOpenTitleEditor}
-      onRenameSection={onRenameSection} />;
+      onRenameSection={onRenameSection} onAddClips={onAddClips} onAddClip={onAddClip} onAddSection={onAddSection}
+      onRemoveSection={onRemoveSection} onEditClip={onEditClip} onAddTransition={onAddTransition} />;
   }
 
   return (
@@ -768,8 +960,10 @@ function BuildTab({ project, density, buildLayout, joinerStyle, sectionGrouping,
         subtitle="Add clips, group them into sections, and choose how each section transitions in. The audio-bed lane below lets a single sound piece span many clips — no per-clip audio cuts at joiners."
         right={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Button kind="secondary" size="sm" icon="folder-plus">Add folder…</Button>
-            <Button kind="secondary" size="sm" icon="file-plus">Add file…</Button>
+            <Button kind="secondary" size="sm" icon="folder-plus"
+                     onClick={() => onAddClips?.(null)}>Add folder…</Button>
+            <Button kind="secondary" size="sm" icon="package"
+                     onClick={() => onAddForgeScene?.(null)}>Add .forge scene…</Button>
             <Button kind="primary" size="sm" icon="type"
                      onClick={() => onOpenTitleEditor()}>New title card</Button>
           </div>
@@ -823,4 +1017,4 @@ function Divider() {
 Object.assign(window, { BuildTab });
 
 
-export { AddSectionButton, AudioBedLane, AudioModeBadge, BuildTab, ChannelChip, ClipRow, ClipThumb, DENSITY, Divider, InlineEditor, JoinerEl, LayoutFlat, LayoutSections, LayoutTimeline, SectionHeader, StatItem };
+export { AddSectionButton, AudioBedLane, AudioModeBadge, BuildTab, ChannelChip, ClipEditor, ClipRow, ClipThumb, DENSITY, DevicePills, Divider, InlineEditor, JoinerEl, LayoutFlat, LayoutSections, LayoutTimeline, SectionHeader, StatItem };

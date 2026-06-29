@@ -254,7 +254,7 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
   return (
     <div ref={ref} style={{
       position: "fixed", top: pos.top, left: pos.left, zIndex: 30,
-      width: 380, maxHeight: "70vh", overflow: "auto",
+      width: 720, maxHeight: pos.maxHeight || "82vh", overflow: "hidden",
       background: "var(--surface)", border: "1px solid var(--border)",
       borderRadius: 10, boxShadow: "var(--elev-3)",
       display: "flex", flexDirection: "column",
@@ -270,84 +270,91 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
         <Button kind="ghost" size="icon" onClick={onClose}><Icon name="x" size={14} /></Button>
       </div>
 
-      {/* Kind picker */}
-      <div style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>
-        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
-                        textTransform: "uppercase", letterSpacing: "0.1em" }}>Type</span>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-          {FA_DATA.JOINER_KINDS.map(k => {
-            const active = joiner.kind === k.kind;
-            return (
-              <button key={k.kind} onClick={() => setKind(k.kind)} style={{
-                display: "inline-flex", alignItems: "center", gap: 5,
-                padding: "5px 10px", borderRadius: 6,
-                background: active ? "rgba(255,75,75,0.08)" : "var(--surface-2)",
-                border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                color: active ? "var(--text)" : "var(--text-muted)",
-                fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
-              }}>
-                <Icon name={k.icon} size={11} /> {k.label}
-              </button>
-            );
-          })}
-        </div>
-        {/* user presets */}
-        {userJoiners?.length > 0 && (
-          <>
-            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
-                              textTransform: "uppercase", letterSpacing: "0.1em" }}>Your joiners</span>
-              <Pill style={{ fontSize: 9 }}>{userJoiners.length}</Pill>
-            </div>
+      {/* Two-column body: Type + description on the left, settings on the right */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0, alignItems: "stretch" }}>
+        {/* LEFT: kind picker + description */}
+        <div style={{ width: 290, flexShrink: 0, borderRight: "1px solid var(--border)",
+                       display: "flex", flexDirection: "column", overflow: "auto" }}>
+          <div style={{ padding: 12 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
+                            textTransform: "uppercase", letterSpacing: "0.1em" }}>Type</span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-              {userJoiners.map(p => {
-                const builtOn = FA_DATA.JOINER_KINDS.find(k => k.kind === p.builtOn);
+              {FA_DATA.JOINER_KINDS.map(k => {
+                const active = joiner.kind === k.kind;
                 return (
-                  <button key={p.id} onClick={() => applyPreset(p)} style={{
+                  <button key={k.kind} onClick={() => setKind(k.kind)} style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
                     padding: "5px 10px", borderRadius: 6,
-                    background: "var(--surface-2)", border: "1px solid var(--border)",
-                    color: "var(--text)", fontFamily: "inherit", fontSize: 11.5, fontWeight: 600,
-                    cursor: "pointer",
+                    background: active ? "rgba(255,75,75,0.08)" : "var(--surface-2)",
+                    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                    color: active ? "var(--text)" : "var(--text-muted)",
+                    fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
                   }}>
-                    <Icon name={builtOn?.icon || "bookmark"} size={11}
-                          style={{ color: "var(--accent-warm)" }} />
-                    {p.name}
+                    <Icon name={k.icon} size={11} /> {k.label}
                   </button>
                 );
               })}
             </div>
-          </>
-        )}
-      </div>
-
-      {/* Description */}
-      <div style={{ padding: "10px 14px", fontSize: 11.5, color: "var(--text-muted)",
-                     lineHeight: 1.5, borderBottom: "1px solid var(--border)" }}>
-        {kind.desc}
-      </div>
-
-      {/* Params */}
-      {joiner.kind !== "none" && (
-        <div style={{ padding: 14 }}>
-          {/* Animated preview at the top — loops the transition */}
-          <AnimatedJoinerPreview joiner={joiner}
-                                  prevClip={prevClip} nextClip={nextClip} />
-
-          {/* Timeline visualisation for fade-style joiners */}
-          {(joiner.kind === "fade_through_black" || joiner.kind === "dip_to_color") && (
-            <TimingVisual joiner={joiner} kind={kind} />
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {kind.params.map(p => (
-              <ParamControl key={p.id} param={p}
-                             value={joiner[p.id] ?? p.default}
-                             onChange={(v) => setParam(p.id, v)} />
-            ))}
+            {userJoiners?.length > 0 && (
+              <>
+                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
+                                  textTransform: "uppercase", letterSpacing: "0.1em" }}>Your joiners</span>
+                  <Pill style={{ fontSize: 9 }}>{userJoiners.length}</Pill>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+                  {userJoiners.map(p => {
+                    const builtOn = FA_DATA.JOINER_KINDS.find(k => k.kind === p.builtOn);
+                    return (
+                      <button key={p.id} onClick={() => applyPreset(p)} style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "5px 10px", borderRadius: 6,
+                        background: "var(--surface-2)", border: "1px solid var(--border)",
+                        color: "var(--text)", fontFamily: "inherit", fontSize: 11.5, fontWeight: 600,
+                        cursor: "pointer",
+                      }}>
+                        <Icon name={builtOn?.icon || "bookmark"} size={11}
+                              style={{ color: "var(--accent-warm)" }} />
+                        {p.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+          <div style={{ padding: "10px 14px", fontSize: 11.5, color: "var(--text-muted)",
+                         lineHeight: 1.5, borderTop: "1px solid var(--border)" }}>
+            {kind.desc}
           </div>
         </div>
-      )}
+
+        {/* RIGHT: live preview + settings */}
+        <div style={{ flex: 1, minWidth: 0, overflow: "auto" }}>
+          {joiner.kind === "none" ? (
+            <div style={{ padding: 18, fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>
+              A hard cut — no settings. Pick a transition type on the left to add a fade or wipe.
+            </div>
+          ) : (
+            <div style={{ padding: 14 }}>
+              <div style={{ maxWidth: 320, margin: "0 auto 12px" }}>
+                <AnimatedJoinerPreview joiner={joiner}
+                                        prevClip={prevClip} nextClip={nextClip} />
+              </div>
+              {(joiner.kind === "fade_through_black" || joiner.kind === "dip_to_color") && (
+                <TimingVisual joiner={joiner} kind={kind} />
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 4 }}>
+                {kind.params.map(p => (
+                  <ParamControl key={p.id} param={p}
+                                 value={joiner[p.id] ?? p.default}
+                                 onChange={(v) => setParam(p.id, v)} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Footer */}
       <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)",
@@ -370,15 +377,17 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
 
 // Position the popover ~ above the anchor, clamped to viewport.
 function computePos(rect) {
-  const w = 380;
+  const w = 720;
   const margin = 16;
   let left = rect.left + rect.width / 2 - w / 2;
   left = Math.max(margin, Math.min(window.innerWidth - w - margin, left));
-  let top = rect.top - 16;
-  // If too high, place below
-  if (top < margin + 200) top = Math.min(window.innerHeight - 320, rect.bottom + 8);
-  else top = top - 200; // rough panel height
-  return { top, left };
+  // Anchor a bit above the clicked boundary, but keep the whole panel on
+  // screen: cap `top` to the upper portion, then size `maxHeight` to whatever
+  // room is left below so the footer always stays visible (the body scrolls).
+  let top = rect.top - 200;
+  top = Math.max(margin, Math.min(Math.round(window.innerHeight * 0.32), top));
+  const maxHeight = window.innerHeight - top - margin;
+  return { top, left, maxHeight };
 }
 
 // ── Timing visual for fade-style joiners ─────────────────────────

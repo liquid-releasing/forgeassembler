@@ -48,8 +48,13 @@ static CLI: OnceLock<CliInvocation> = OnceLock::new();
 fn dev_cli_invocation() -> CliInvocation {
     let root = std::env::var("FORGEASSEMBLER_ROOT")
         .unwrap_or_else(|_| DEV_FORGEASSEMBLER_ROOT.to_string());
-    let python = std::env::var("FORGEASSEMBLER_PYTHON")
-        .unwrap_or_else(|_| format!(r"{}\.venv\Scripts\python.exe", root));
+    // Prefer an explicit override, then the repo's own `.venv`, then whatever
+    // `python` resolves to on PATH (this repo has no committed .venv, so the
+    // dev loop relies on the active interpreter on PATH).
+    let python = std::env::var("FORGEASSEMBLER_PYTHON").unwrap_or_else(|_| {
+        let venv = format!(r"{}\.venv\Scripts\python.exe", root);
+        if std::path::Path::new(&venv).is_file() { venv } else { "python".to_string() }
+    });
     CliInvocation {
         program: PathBuf::from(python),
         prefix_args: vec![format!(r"{}\cli.py", root)],
@@ -214,6 +219,22 @@ pub async fn detect_folder(path: String) -> Result<Value, String> {
     run_cli_json(&["detect", &path, "--format", "json"]).await
 }
 
+/// Import a FunscriptForge `.forge` bundle as one Segment
+/// (`cli.py import-forge <bundle> [--video PATH] --format json`). Returns the
+/// channel map + (when relinkable) the Segment dict to append.
+#[tauri::command]
+pub async fn import_forge_bundle(bundle: String, video: Option<String>) -> Result<Value, String> {
+    let mut args: Vec<String> = vec![
+        "import-forge".into(), bundle, "--format".into(), "json".into(),
+    ];
+    if let Some(v) = video {
+        args.push("--video".into());
+        args.push(v);
+    }
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_cli_json(&refs).await
+}
+
 /// Validate a saved project without forging (`cli.py validate <project> --format json`).
 #[tauri::command]
 pub async fn validate_project(path: String) -> Result<Value, String> {
@@ -298,8 +319,21 @@ pub async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub async fn pick_file(app: AppHandle) -> Result<Option<String>, String> {
-    let file = app.dialog().file().blocking_pick_file();
+pub async fn pick_file(
+    app: AppHandle,
+    title: Option<String>,
+    filter_name: Option<String>,
+    extensions: Option<Vec<String>>,
+) -> Result<Option<String>, String> {
+    let mut builder = app.dialog().file();
+    if let Some(t) = title.as_deref() {
+        builder = builder.set_title(t);
+    }
+    if let (Some(name), Some(exts)) = (filter_name.as_deref(), extensions.as_ref()) {
+        let refs: Vec<&str> = exts.iter().map(|s| s.as_str()).collect();
+        builder = builder.add_filter(name, &refs);
+    }
+    let file = builder.blocking_pick_file();
     Ok(file.map(|p| p.to_string()))
 }
 

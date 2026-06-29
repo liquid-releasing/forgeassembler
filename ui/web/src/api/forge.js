@@ -72,6 +72,15 @@ export function loadProject(path) {
     call('load_project', { path }, () => Promise.resolve(null)));
 }
 
+// Import a FunscriptForge `.forge` bundle as one Segment. Returns
+// { stem, channels, channel_groups, duration_ms, media_resolved, video,
+//   needs_video, segment }. `segment` is a real Segment dict when a video is
+// resolvable (bundled media or `video` passed); otherwise null + needs_video.
+export function importForgeBundle(bundle, { video = null } = {}) {
+  return call('import_forge_bundle', { bundle, video },
+    () => Promise.resolve({ stem: null, channels: [], needs_video: true, segment: null }));
+}
+
 // ── Write/mutate commands ─────────────────────────────────────────────
 export function saveProject(path, project) {
   return call('save_project', { path, project }, () => Promise.resolve());
@@ -94,8 +103,8 @@ export async function onForgeProgress(handler) {
 export function pickFolder() {
   return call('pick_folder', {}, () => Promise.resolve(null));
 }
-export function pickFile() {
-  return call('pick_file', {}, () => Promise.resolve(null));
+export function pickFile({ title = null, filterName = null, extensions = null } = {}) {
+  return call('pick_file', { title, filterName, extensions }, () => Promise.resolve(null));
 }
 export function pickSavePath(defaultName) {
   return call('pick_save_path', { defaultName }, () => Promise.resolve(null));

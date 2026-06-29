@@ -3,6 +3,7 @@ import React from 'react';
 import { FASectionLabel } from './AppShell';
 import { Section } from './TitleEditor';
 import { Button, Field, Icon, TextInput } from './primitives';
+import { pickFile, pickFolder } from './api/forge';
 
 // ProjectIO — Save / Open / Unsaved-changes dialogs.
 //
@@ -50,7 +51,11 @@ function SaveAsDialog({ project, defaultFolder, onCancel, onSave }) {
         <Field label="Folder">
           <div style={{ display: "flex", gap: 6 }}>
             <TextInput value={folder} onChange={setFolder} mono style={{ flex: 1 }} />
-            <Button kind="secondary" size="sm" icon="folder-open">Browse…</Button>
+            <Button kind="secondary" size="sm" icon="folder-open"
+                    onClick={async () => {
+                      const picked = await pickFolder();
+                      if (picked) setFolder(picked);
+                    }}>Browse…</Button>
           </div>
         </Field>
 
@@ -103,8 +108,10 @@ function OpenProjectDialog({ onCancel, onOpen }) {
             </div>
           </div>
           <Button kind="primary" size="sm" icon="folder-open"
-                   onClick={() => onOpen({ path: "C:/Users/bruce/Videos/forgeassembler/picked-file.forgeproject.json",
-                                            name: "picked-file" })}>
+                   onClick={async () => {
+                     const path = await pickFile();
+                     if (path) onOpen({ path });
+                   }}>
             Browse…
           </Button>
         </div>

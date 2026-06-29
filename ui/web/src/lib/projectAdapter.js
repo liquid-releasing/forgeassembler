@@ -49,6 +49,16 @@ export function timecodeToMs(tc) {
 // ── segment ───────────────────────────────────────────────────────────
 function segToReal(seg) {
   const isStill = seg.kind === 'still' || IMAGE_EXT.test(seg.file || '');
+  // Funscripts ride NESTED under `funscripts: {source, files?, folder?}` to
+  // match the backend schema (forgeassembler_core/project.py Segment). Explicit
+  // segments (e.g. a `.forge` import) carry their channel→path map in `files`.
+  const fsrc = seg.funscriptsSource || 'auto_detect';
+  const funscripts = { source: fsrc };
+  if (fsrc === 'explicit' && seg.explicitFunscripts && Object.keys(seg.explicitFunscripts).length) {
+    funscripts.files = seg.explicitFunscripts;
+  } else if (fsrc === 'auto_detect' && seg.funscriptsFolder) {
+    funscripts.folder = seg.funscriptsFolder;
+  }
   const out = {
     id: seg.id,
     video: seg.file,
@@ -57,7 +67,7 @@ function segToReal(seg) {
       ...(seg.audioFile ? { file: seg.audioFile } : {}),
     },
     overlays: seg.overlaysList || [],
-    funscripts_source: seg.funscriptsSource || 'auto_detect',
+    funscripts,
   };
   if (isStill) out.still_duration_s = (seg.durMs ?? 5000) / 1000;
   if (seg.temp) out.color_temperature_k = seg.temp;
@@ -71,19 +81,25 @@ function segToReal(seg) {
 
 function segFromReal(seg) {
   const isStill = seg.still_duration_s != null || IMAGE_EXT.test(seg.video || '');
+  const fs = seg.funscripts || {};
+  const explicit = fs.files || {};
   const v = {
     id: seg.id,
     file: seg.video,
     title: seg.bookmark || prettyStem(seg.video),
     kind: isStill ? 'still' : 'video',
     durMs: isStill ? Math.round((seg.still_duration_s ?? 5) * 1000) : 0,
-    channels: [],
+    // Explicit (e.g. `.forge` import) segments know their channels up front;
+    // auto-detect segments discover them later, so start empty.
+    channels: Object.keys(explicit),
     overlays: (seg.overlays || []).length,
     overlaysList: seg.overlays || [],
     audio: seg.audio?.mode || 'keep',
     temp: seg.color_temperature_k || 0,
-    funscriptsSource: seg.funscripts_source || 'auto_detect',
+    funscriptsSource: fs.source || 'auto_detect',
+    explicitFunscripts: explicit,
   };
+  if (fs.folder) v.funscriptsFolder = fs.folder;
   if (seg.audio?.file) v.audioFile = seg.audio.file;
   const ts = timecodeToMs(seg.trim_start);
   const te = timecodeToMs(seg.trim_end);
@@ -120,6 +136,37 @@ function sectionFromReal(sec) {
     segments: (sec.segments || []).map(segFromReal),
     overlays: sec.overlays || [],
   };
+}
+
+// ── legacy v1.0 migration ────────────────────────────────────────────
+// Old projects stored a flat `items: [Segment | Joiner]` list. The backend
+// (forgeassembler_core/project.py::_migrate_items_to_sections) auto-migrates
+// these to v2.0 Sections on load — but `load_project` reads the file raw, so
+// we mirror that same rule here on read. Rules (kept 1:1 with Python):
+//   • a non-"none" joiner starts a new section, leading with that joiner;
+//   • a "none" joiner is an absorbed inter-clip cut;
+//   • the first section defaults to a "none" leading joiner.
+function migrateItemsToSections(items) {
+  const sections = [];
+  let curSegs = [];
+  let curLeading = { joiner_type: 'none', params: {} };
+  let n = 0;
+  for (const it of items || []) {
+    if (it && it.type === 'joiner') {
+      if ((it.joiner_type || 'none') === 'none') continue; // absorbed cut
+      if (curSegs.length || sections.length) {
+        sections.push({ id: `sec-${n++}`, leading_joiner: curLeading, segments: curSegs });
+      }
+      curSegs = [];
+      curLeading = { joiner_type: it.joiner_type, params: it.params || {} };
+    } else if (it) {
+      curSegs.push(it); // anything else is a segment
+    }
+  }
+  if (curSegs.length || !sections.length) {
+    sections.push({ id: `sec-${n++}`, leading_joiner: curLeading, segments: curSegs });
+  }
+  return sections;
 }
 
 // ── project ─────────────────────────────────────────────────────────
@@ -167,9 +214,21 @@ export function fromForgeProject(json) {
       funscripts: json.output?.produce_funscripts ?? true,
     },
     channels,
-    sections: (json.sections || []).map(sectionFromReal),
+    sections: (Array.isArray(json.sections)
+      ? json.sections
+      : migrateItemsToSections(json.items)).map(sectionFromReal),
     audioBeds: json.audio_beds || [],
   };
+}
+
+// ── forge bundle → view segment ─────────────────────────────────────
+// `cli.py import-forge --format json` returns `segment` as a real Segment dict
+// (funscripts.source = "explicit", funscripts.files = {channel: path}). It maps
+// straight through segFromReal — the explicit channel map + video relink come
+// across intact.
+export function fromForgeBundleSegment(realSegment) {
+  if (!realSegment) return null;
+  return segFromReal(realSegment);
 }
 
 // ── detect → view segments ──────────────────────────────────────────

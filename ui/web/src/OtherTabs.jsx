@@ -358,7 +358,7 @@ function ResolutionPicker({ value }) {
 }
 
 // ── Forge tab ─────────────────────────────────────────────────────
-function ForgeTab({ project, totalMs, onForge, forging, progress, channelGapPolicy }) {
+function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage, channelGapPolicy }) {
   // Detect channels present anywhere in the project (detection-driven output).
   const flat = project.sections.flatMap(s => s.segments);
   const detected = FA_DATA.CHANNELS.filter(c => !c.future)
@@ -424,7 +424,7 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, channelGapPoli
       </div>
 
       <div style={{ marginTop: 18 }}>
-        <ForgePanel project={project} onForge={onForge} forging={forging} progress={progress} totalMs={totalMs} />
+        <ForgePanel project={project} onForge={onForge} forging={forging} progress={progress} forgeStage={forgeStage} totalMs={totalMs} />
       </div>
     </FATabBody>
   );
@@ -510,7 +510,7 @@ function ChapterMarkersCard({ project }) {
   );
 }
 
-function ForgePanel({ project, onForge, forging, progress, totalMs }) {
+function ForgePanel({ project, onForge, forging, progress, forgeStage, totalMs }) {
   return (
     <Card padding={20} style={{
       background: "linear-gradient(135deg, #1a0e1e 0%, #1a1d27 60%, #0e1117 100%)",
@@ -535,8 +535,8 @@ function ForgePanel({ project, onForge, forging, progress, totalMs }) {
               : <>About <span className="mono" style={{ color: "var(--text)" }}>{fmtTotal(totalMs)}</span> of output. Estimated forge time at this resolution: <span className="mono" style={{ color: "var(--text)" }}>~{Math.max(1, Math.round(totalMs / 30000))} minutes</span>.</>}
           </p>
         </div>
-        <Button kind={forging ? "secondary" : "primary"} size="md" icon={forging ? "x" : "hammer"} onClick={onForge}>
-          {forging ? "Cancel" : "Forge"}
+        <Button kind="primary" size="md" icon="hammer" onClick={onForge} disabled={forging}>
+          {forging ? "Forging…" : "Forge"}
         </Button>
       </div>
 
@@ -547,12 +547,13 @@ function ForgePanel({ project, onForge, forging, progress, totalMs }) {
             <span style={{
               display: "block", width: `${Math.round(progress * 100)}%`, height: "100%",
               background: "linear-gradient(90deg, var(--accent-warm), var(--accent))",
+              transition: "width 0.3s ease",
             }} />
           </div>
           <div className="mono" style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)",
                                           display: "flex", justifyContent: "space-between" }}>
-            <span>Pass 2/4 · Concat video</span>
-            <span>{Math.round(progress * 100)}% · eta 2m 14s</span>
+            <span>{forgeStage || "Working…"}</span>
+            <span>{Math.round(progress * 100)}%</span>
           </div>
         </div>
       )}

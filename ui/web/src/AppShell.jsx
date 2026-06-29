@@ -27,7 +27,7 @@ function FAGlyph({ size = 28 }) {
 // ── TopBar ────────────────────────────────────────────────────────
 function FATopBar({ project, totalMs, segCount, sectionCount,
                     savedPath, dirty, lastSavedAtMs,
-                    onOpen, onSave }) {
+                    onOpen, onSave, onNew }) {
   // "saved 2 min ago" / "saving…" / "unsaved changes" / "new project"
   const filename = savedPath ? savedPath.split("/").pop() : `${project.name}.forgeproject.json`;
   const subtitle = savedPath ? null : "unsaved";
@@ -76,6 +76,8 @@ function FATopBar({ project, totalMs, segCount, sectionCount,
         <Button kind="ghost" size="icon" title="Undo"><Icon name="undo-2" size={14} /></Button>
         <Button kind="ghost" size="icon" title="Redo"><Icon name="redo-2" size={14} /></Button>
         <div style={{ width: 1, height: 22, background: "var(--border)", margin: "0 6px" }} />
+        <Button kind="ghost" size="sm" icon="file-plus" onClick={onNew}
+                title="Start an empty project">New</Button>
         <Button kind="secondary" size="sm" icon="folder-open" onClick={onOpen}>Open project…</Button>
         <Button kind={dirty ? "primary" : "secondary"} size="sm" icon="save"
                 onClick={onSave}

@@ -37,6 +37,12 @@ from .detect import (
     detect_folder,
     detect_folder_tree,
 )
+from .forge_bundle import (
+    ForgeBundle,
+    detect_forge_bundle,
+    forge_bundle_to_segment,
+    is_forge_bundle,
+)
 from .filters import (
     bug_overlay_filter,
     bug_prepare_filter,
@@ -89,6 +95,7 @@ __all__ = [
     "BugOverlay",
     "Chapter",
     "DetectedClip",
+    "ForgeBundle",
     "FfmpegCommand",
     "FfmpegInput",
     "FRAME_RATE_KEYS",
@@ -127,6 +134,9 @@ __all__ = [
     "detect_file",
     "detect_folder",
     "detect_folder_tree",
+    "detect_forge_bundle",
+    "forge_bundle_to_segment",
+    "is_forge_bundle",
     "fade_to_black_audio_acrossfade",
     "fade_to_black_xfade",
     "forge_audio_estim",
