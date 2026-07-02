@@ -505,8 +505,15 @@ def cmd_forge(args: argparse.Namespace) -> int:
             )
 
     if out.produce_video:
-        emit(f"progress: forging video at {out.resolution}")
-        say(f"Forging video at {out.resolution} → {out.folder}/{out.basename}.mp4")
+        from forgeassembler_core.concat_video import resolve_video_encoder
+        _enc = resolve_video_encoder(ffmpeg_exe)
+        _enc_label = {
+            "nvenc": "GPU · NVIDIA NVENC",
+            "qsv":   "GPU · Intel Quick Sync",
+            "amf":   "GPU · AMD AMF",
+        }.get(_enc, "CPU · libx264")
+        emit(f"progress: forging video at {out.resolution} ({_enc_label})")
+        say(f"Forging video at {out.resolution} [{_enc_label}] → {out.folder}/{out.basename}.mp4")
         try:
             output = forge_video(
                 project, layout,

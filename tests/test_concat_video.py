@@ -496,6 +496,45 @@ def test_output_args_include_h264_and_aac(tmp_path: Path):
     assert "yuv420p" in cmd.output_args
 
 
+# ── GPU / hardware encoder selection ──────────────────────────────────
+def test_encoder_none_defaults_to_libx264(tmp_path: Path):
+    """No encoder arg → the deterministic CPU path (what the pure builder and
+    every existing test assume)."""
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout)
+    assert "libx264" in cmd.output_args
+    assert "h264_nvenc" not in cmd.output_args
+
+
+def test_encoder_nvenc_emits_h264_nvenc_with_cq(tmp_path: Path):
+    """encoder='nvenc' → NVIDIA hardware H.264, CRF mapped onto NVENC -cq."""
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout, encoder="nvenc")
+    assert "h264_nvenc" in cmd.output_args
+    assert "libx264" not in cmd.output_args
+    cq_idx = cmd.output_args.index("-cq")
+    assert cmd.output_args[cq_idx + 1] == "23"  # medium → 23, mirrored to -cq
+    assert "-crf" not in cmd.output_args
+
+
+def test_encoder_env_override_forces_cpu(tmp_path, monkeypatch):
+    """FORGEASSEMBLER_ENCODER=x264 pins the CPU encoder regardless of hardware."""
+    from forgeassembler_core.concat_video import resolve_video_encoder
+    monkeypatch.setenv("FORGEASSEMBLER_ENCODER", "x264")
+    assert resolve_video_encoder(ffmpeg_exe="ffmpeg") == "libx264"
+
+
+def test_encoder_env_override_forces_named_hw(tmp_path, monkeypatch):
+    """An explicit hardware name is trusted without probing."""
+    from forgeassembler_core.concat_video import resolve_video_encoder
+    monkeypatch.setenv("FORGEASSEMBLER_ENCODER", "amf")
+    assert resolve_video_encoder(ffmpeg_exe="ffmpeg") == "amf"
+
+
 # ── Quality preset → CRF ──────────────────────────────────────────────
 def test_quality_default_emits_crf_23(tmp_path: Path):
     """Default quality ('medium') maps to CRF 23 in the ffmpeg args."""

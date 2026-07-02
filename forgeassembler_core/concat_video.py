@@ -24,6 +24,7 @@ Total added output time = `d`, matching the layout engine.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -221,6 +222,7 @@ def build_ffmpeg_command(
     chapters_path: Optional[str] = None,
     segments_with_audio: Optional[set[str]] = None,
     text_files: Optional[dict[str, str]] = None,
+    encoder: Optional[str] = None,
 ) -> FfmpegCommand:
     """Return an `FfmpegCommand` describing the video forge for this project.
 
@@ -777,11 +779,7 @@ def build_ffmpeg_command(
         chapters_idx = None
 
     output_args = [
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", str(out.crf()),
-        "-pix_fmt", "yuv420p",
-        "-r", str(fps),
+        *_video_codec_args(out, fps, encoder),
         "-c:a", "aac",
         "-b:a", "192k",
         "-ar", "48000",
@@ -810,6 +808,95 @@ def build_ffmpeg_command(
 
 
 # ── ffmpeg invocation ─────────────────────────────────────────────────
+# ── Video encoder selection (CPU x264 ↔ GPU hardware) ─────────────────
+#
+# The encode is the hot, all-cores-pinned part of a forge. When a supported
+# GPU is present we offload it to the vendor's dedicated hardware encoder:
+# faster, and it keeps the CPU (and a thermally-limited laptop) far cooler.
+# A GPU is NOT required — with none detected we fall back to libx264 on the
+# CPU, which always works. Selection is auto by default; override with the
+# FORGEASSEMBLER_ENCODER env var (nvenc | qsv | amf | x264).
+#
+# Supported hardware encoders (H.264):
+#   nvenc  → h264_nvenc   NVIDIA NVENC     (GeForce / RTX / Quadro)
+#   qsv    → h264_qsv     Intel Quick Sync (Arc / recent iGPUs)
+#   amf    → h264_amf     AMD AMF/VCE      (Radeon)
+#   x264   → libx264      CPU software     (universal fallback)
+_HW_ENCODER_FFNAME = {
+    "nvenc": "h264_nvenc",
+    "qsv":   "h264_qsv",
+    "amf":   "h264_amf",
+}
+# Auto-detect priority — first that actually encodes on this machine wins.
+_HW_ENCODER_PRIORITY = ("nvenc", "qsv", "amf")
+_ENCODER_CACHE: dict[str, str] = {}
+
+
+def _video_codec_args(out, fps, encoder: Optional[str] = None) -> list[str]:
+    """Video `-c:v …` args for the chosen encoder.
+
+    `encoder` is one of nvenc/qsv/amf (hardware) or None/x264/libx264 (CPU).
+    Hardware encoders map ForgeAssembler's H.264 CRF onto their nearest
+    constant-quality control so the quality preset stays meaningful; None keeps
+    the deterministic libx264 path (what the pure builder + tests expect).
+    """
+    crf = out.crf()
+    enc = (encoder or "libx264").lower()
+    tail = ["-pix_fmt", "yuv420p", "-r", str(fps)]
+    if enc in ("nvenc", "h264_nvenc"):
+        # NVENC: VBR constant-quality; -cq mirrors x264 CRF closely. p5 ≈ medium.
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr",
+                "-cq", str(crf), "-b:v", "0", *tail]
+    if enc in ("qsv", "h264_qsv"):
+        return ["-c:v", "h264_qsv", "-global_quality", str(crf),
+                "-preset", "medium", *tail]
+    if enc in ("amf", "h264_amf"):
+        return ["-c:v", "h264_amf", "-rc", "cqp", "-qp_i", str(crf),
+                "-qp_p", str(crf), "-quality", "balanced", *tail]
+    # CPU fallback (also the default for unknown ids) — unchanged behaviour.
+    return ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf), *tail]
+
+
+def _probe_encoder(exe: str, enc_id: str) -> bool:
+    """True when `enc_id`'s hardware encoder actually encodes on this machine.
+
+    Compiled-in ≠ usable (no GPU, driver missing, laptop MUX quirks), so we run
+    a sub-second test encode of a synthetic clip and check it exits cleanly."""
+    name = _HW_ENCODER_FFNAME.get(enc_id)
+    if not name:
+        return False
+    try:
+        argv = [exe, "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "testsrc=d=0.2:s=256x144:r=10",
+                "-c:v", name, "-f", "null", "-"]
+        return subprocess.run(argv, capture_output=True, timeout=25).returncode == 0
+    except Exception:
+        return False
+
+
+def resolve_video_encoder(ffmpeg_exe: Optional[str] = None) -> str:
+    """Pick the best available video encoder for THIS machine.
+
+    Order: explicit FORGEASSEMBLER_ENCODER override → auto-detect the fastest
+    working GPU encoder (nvenc → qsv → amf) → libx264 CPU fallback. The probe
+    result is cached per ffmpeg binary so a multi-pass forge probes once."""
+    override = os.environ.get("FORGEASSEMBLER_ENCODER", "").strip().lower()
+    if override in ("x264", "libx264", "cpu"):
+        return "libx264"
+    if override in _HW_ENCODER_FFNAME:
+        return override  # trust an explicit hardware choice; probe stays for auto
+    exe = ffmpeg_exe or _resolve_ffmpeg_exe()
+    if exe in _ENCODER_CACHE:
+        return _ENCODER_CACHE[exe]
+    chosen = "libx264"
+    for cand in _HW_ENCODER_PRIORITY:
+        if _probe_encoder(exe, cand):
+            chosen = cand
+            break
+    _ENCODER_CACHE[exe] = chosen
+    return chosen
+
+
 def _resolve_ffmpeg_exe() -> str:
     """Locate an ffmpeg binary.
 
@@ -1008,6 +1095,10 @@ def forge_video(
             write_ffmetadata(chapters, chapters_file)
             chapters_path = str(chapters_file)
 
+        # Offload the encode to a GPU hardware encoder when one is available
+        # (cooler + faster); falls back to libx264 on the CPU otherwise.
+        encoder = resolve_video_encoder(exe)
+
         cmd = build_ffmpeg_command(
             project, layout,
             output_path=output_path,
@@ -1017,6 +1108,7 @@ def forge_video(
             chapters_path=chapters_path,
             segments_with_audio=segments_with_audio,
             text_files=text_files,
+            encoder=encoder,
         )
 
         out_path = Path(cmd.output_path)
