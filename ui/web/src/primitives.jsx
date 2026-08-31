@@ -162,7 +162,7 @@ function TextInput({ value, onChange, mono, placeholder, style = {}, ...rest }) 
 }
 
 // ─── Slider ──────────────────────────────────────────────────────
-function Slider({ value, min = 0, max = 100, step = 1, onChange, label, valueLabel }) {
+function Slider({ value, min = 0, max = 100, step = 1, onChange, label, valueLabel, disabled = false }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {(label || valueLabel) && (
@@ -172,27 +172,30 @@ function Slider({ value, min = 0, max = 100, step = 1, onChange, label, valueLab
         </div>
       )}
       <input type="range" min={min} max={max} step={step} value={value}
+        disabled={disabled}
         onChange={(e) => onChange?.(Number(e.target.value))}
-        style={{ width: "100%", accentColor: "var(--accent)" }}
+        style={{ width: "100%", accentColor: "var(--accent)",
+                 opacity: disabled ? 0.45 : 1,
+                 cursor: disabled ? "not-allowed" : "pointer" }}
       />
     </div>
   );
 }
 
 // ─── Tab strip (segmented) ───────────────────────────────────────
-function Segmented({ options, value, onChange }) {
+function Segmented({ options, value, onChange, disabled = false }) {
   return (
-    <div style={{ display: "inline-flex", padding: 3, background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--border)" }}>
+    <div style={{ display: "inline-flex", padding: 3, background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--border)", opacity: disabled ? 0.45 : 1 }}>
       {options.map((opt) => {
         const v = typeof opt === "string" ? opt : opt.value;
         const lbl = typeof opt === "string" ? opt : opt.label;
         const active = v === value;
         return (
-          <button key={v} onClick={() => onChange?.(v)} style={{
+          <button key={v} disabled={disabled} onClick={() => onChange?.(v)} style={{
             padding: "5px 12px", fontSize: 12, fontWeight: 600, borderRadius: 5, border: "none",
             background: active ? "var(--accent)" : "transparent",
             color: active ? "#fff" : "var(--text-muted)",
-            cursor: "pointer", transition: "all 120ms", fontFamily: "inherit",
+            cursor: disabled ? "not-allowed" : "pointer", transition: "all 120ms", fontFamily: "inherit",
           }}>{lbl}</button>
         );
       })}

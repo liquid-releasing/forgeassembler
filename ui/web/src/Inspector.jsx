@@ -5,10 +5,10 @@ import { fmtClipDur, fmtTotal } from './AppShell';
 import { ClipThumb, InlineEditor } from './BuildTab';
 import { MediaViewer } from 'forgemoment';
 import { toMediaUrl } from './lib/mediaUrl';
-import { readSidecar } from './api/forge';
+import { pickFile, readSidecar } from './api/forge';
 import { toAudioWaveform, toBeats, toFunscript } from './lib/sidecars';
 import { Section } from './TitleEditor';
-import { FA_DATA } from './data';
+import { channelGroup, CHANNEL_GROUPS, NEUTRAL_KELVIN } from './lib/projectAdapter';
 import { Button, Field, Icon, Segmented, Slider, TextInput } from './primitives';
 
 // Right inspector. Open when a clip is selected.
@@ -121,9 +121,9 @@ function ClipInspector({ seg, onClose, onAddOverlay, onUpdate }) {
       {/* Body */}
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
         {tab === "source"   && <SourcePane seg={seg} onUpdate={onUpdate} />}
-        {tab === "audio"    && <AudioPane seg={seg} />}
+        {tab === "audio"    && <AudioPane seg={seg} onUpdate={onUpdate} />}
         {tab === "overlays" && <OverlaysPane seg={seg} onAddOverlay={onAddOverlay} />}
-        {tab === "color"    && <ColorPane seg={seg} />}
+        {tab === "color"    && <ColorPane seg={seg} onUpdate={onUpdate} />}
         {tab === "fs"       && <FunscriptPane seg={seg} />}
       </div>
     </aside>
@@ -506,12 +506,21 @@ function Handle({ pos, dragging, onPointerDown, side, timecode }) {
   );
 }
 
-function AudioPane({ seg }) {
+function AudioPane({ seg, onUpdate }) {
+  async function pickReplacement() {
+    const f = await pickFile({
+      title: "Choose the replacement audio for this clip",
+      filterName: "Audio", extensions: ["mp3", "wav", "m4a", "aac", "flac", "ogg", "opus"],
+    });
+    if (f) onUpdate?.({ audio: "replace", audioFile: f });
+  }
+  const needsFile = seg.audio === "replace" && !seg.audioFile;
   return (
     <>
       <PaneSection title="Audio mode"
                     hint="Keep the source audio, replace with an external file, or go silent.">
-        <Segmented value={seg.audio} onChange={() => {}}
+        <Segmented value={seg.audio}
+                    onChange={(v) => onUpdate?.({ audio: v })}
                     options={[
                       { value: "keep", label: "Keep" },
                       { value: "replace", label: "Replace" },
@@ -520,24 +529,39 @@ function AudioPane({ seg }) {
       </PaneSection>
       {seg.audio === "replace" && (
         <PaneSection title="Replacement file"
-                      hint="Any audio format ffmpeg understands.">
-          <Field><TextInput value={seg.audioFile || ""} mono /></Field>
+                      hint="Any audio format ffmpeg understands. It's stretched to nothing — if it's shorter than the clip, the rest is silent.">
+          <Field>
+            <TextInput value={seg.audioFile || ""} mono
+                        placeholder="No file chosen" readOnly />
+          </Field>
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <Button kind="secondary" size="sm" icon="folder-open"
+                     onClick={pickReplacement}>Choose file…</Button>
+            {seg.audioFile && (
+              <Button kind="ghost" size="sm"
+                       onClick={() => onUpdate?.({ audioFile: null })}>Clear</Button>
+            )}
+          </div>
+          {needsFile && (
+            <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 8, lineHeight: 1.45 }}>
+              Replace mode with no file fails validation — pick one, or switch back to Keep.
+            </div>
+          )}
         </PaneSection>
       )}
-      <PaneSection title="Per-clip volume">
-        <Slider value={0} min={-20} max={6} step={1}
-                onChange={() => {}} valueLabel="0 dB" />
-      </PaneSection>
       <PaneSection title="Cross-clip audio"
-                    hint="Audio beds (set on the Build canvas) sit above per-clip audio and can duck or replace it across joiners.">
+                    hint="Audio beds are authored on the Build canvas and sit above per-clip audio.">
         <div style={{ padding: "8px 10px", border: "1px solid var(--border)",
                        background: "var(--surface-2)", borderRadius: 6,
-                       fontSize: 11, color: "var(--text-muted)" }}>
+                       fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Icon name="music-4" size={12} style={{ color: "var(--accent-warm)" }} />
-            No bed covers this clip.
+            <Icon name="music-4" size={12} style={{ color: "var(--warn)" }} />
+            Beds aren't mixed into the output yet.
           </span>
-          <Button kind="ghost" size="sm" style={{ marginTop: 8 }} icon="plus">Cover this clip with a bed</Button>
+          <div style={{ marginTop: 4 }}>
+            You can place them on the Build canvas and they're saved with the project,
+            but the forge doesn't render them — per-clip audio above is what you hear.
+          </div>
         </div>
       </PaneSection>
     </>
@@ -632,8 +656,12 @@ function OverlaysPane({ seg, onAddOverlay }) {
   );
 }
 
-function ColorPane({ seg }) {
-  const kelvin = 6500 + seg.temp;
+// Colour temperature. The slider works in ABSOLUTE Kelvin because that's
+// what a colourist thinks in and what ffmpeg takes; the view model stores
+// the offset from neutral, and projectAdapter converts at the file
+// boundary. 6500 K is neutral and writes no filter at all.
+function ColorPane({ seg, onUpdate }) {
+  const kelvin = NEUTRAL_KELVIN + seg.temp;
   const swatch = kelvin < 6000 ? "#cce4ff" : kelvin > 7000 ? "#ffd9a8" : "#fafafa";
   return (
     <>
@@ -644,57 +672,87 @@ function ColorPane({ seg }) {
                           border: "1px solid var(--border)" }} />
           <div style={{ flex: 1 }}>
             <Slider value={kelvin} min={4000} max={10000} step={100}
-                    onChange={() => {}}
+                    onChange={(v) => onUpdate?.({ temp: Math.round(v) - NEUTRAL_KELVIN })}
                     valueLabel={`${kelvin}K · ${seg.temp >= 0 ? "+" : ""}${seg.temp} from neutral`} />
           </div>
         </div>
-        <Button kind="secondary" size="sm" icon="camera">Preview frame</Button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <Button kind="ghost" size="sm" onClick={() => onUpdate?.({ temp: 0 })}
+                   disabled={seg.temp === 0}>Reset to neutral</Button>
+          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            {seg.temp === 0
+              ? "Neutral — this clip is passed through untouched."
+              : "Applied when the video is forged."}
+          </span>
+        </div>
       </PaneSection>
     </>
   );
 }
 
+// What this clip actually contributes to the combined funscript. Reads
+// the clip's REAL channel names — a FunscriptForge scene carries ~20,
+// most of them device and restim-parameter tracks that no fixed menu
+// lists. The old version checked `channels.includes(uiCategoryId)`, which
+// only ever matched "main", so a 20-channel scene reported one.
 function FunscriptPane({ seg }) {
-  const detected = seg.channels;
-  const all = FA_DATA.CHANNELS.filter(c => !c.future);
+  const detected = seg.channels || [];
+  const byGroup = new Map();
+  for (const ch of [...detected].sort()) {
+    const g = channelGroup(ch);
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(ch);
+  }
+  const groups = CHANNEL_GROUPS.filter(g => byGroup.has(g.id));
+  const source = seg.funscriptsSource === "explicit"
+    ? "From the .forge bundle this clip was imported from."
+    : "Scanned from the folder beside the video.";
+
   return (
     <>
-      <PaneSection title="Detected channels"
-                    hint="ForgeAssembler scanned the folder beside the video and found these funscript files.">
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {all.map(c => {
-            const has = detected.includes(c.id);
-            return (
-              <div key={c.id} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "6px 8px", borderRadius: 5,
-                background: has ? "rgba(62,213,152,0.06)" : "transparent",
-                border: `1px solid ${has ? "rgba(62,213,152,0.25)" : "var(--border)"}`,
-              }}>
-                <Icon name={has ? "check" : "minus"} size={12}
-                      style={{ color: has ? "var(--success)" : "var(--text-dim)" }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: has ? "var(--text)" : "var(--text-dim)" }}>
-                  {c.label}
-                </span>
-                <span className="mono" style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: "auto" }}>
-                  {c.desc}
-                </span>
+      <PaneSection title={`Channels (${detected.length})`} hint={source}>
+        {detected.length === 0 ? (
+          <div style={{ padding: "12px 10px", borderRadius: 6, fontSize: 11.5,
+                         color: "var(--text-dim)", background: "var(--surface-2)",
+                         border: "1px dashed var(--border)", lineHeight: 1.5 }}>
+            {seg.kind === "still"
+              ? "Title cards carry no funscript — this clip is silent by design, and the other channels hold their last position across it."
+              : "No funscript found for this clip. Wherever the other clips have channels, this stretch of the combined script will be blank."}
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {groups.map(g => (
+              <div key={g.id}>
+                <div className="mono" style={{ fontSize: 10, color: "var(--text-dim)",
+                                                 textTransform: "uppercase",
+                                                 letterSpacing: "0.06em", fontWeight: 700,
+                                                 marginBottom: 4 }}>
+                  {g.label}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {byGroup.get(g.id).map(ch => (
+                    <span key={ch} className="mono" style={{
+                      fontSize: 10.5, padding: "2px 7px", borderRadius: 5,
+                      background: "rgba(62,213,152,0.08)",
+                      border: "1px solid rgba(62,213,152,0.25)",
+                      color: "var(--text)",
+                    }}>{ch}</span>
+                  ))}
+                </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </PaneSection>
-      <PaneSection title="Action count"
-                    hint="From the main .funscript channel.">
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px",
-                       border: "1px solid var(--border)", background: "var(--surface-2)",
-                       borderRadius: 6 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Total actions</span>
-          <span className="mono" style={{ fontSize: 12, fontWeight: 600 }}>
-            {detected.includes("main") ? Math.round(seg.durMs / 50) : "—"}
-          </span>
-        </div>
-      </PaneSection>
+
+      {seg.bundleLean && (
+        <PaneSection title="Analysis">
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            This bundle shipped no analysis sidecars, so previews derive the waveform
+            from the video instead of reading it. The forged output is identical either way.
+          </div>
+        </PaneSection>
+      )}
     </>
   );
 }
@@ -732,6 +790,21 @@ function BedInspector({ bed, project, onClose }) {
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
+        {/* Beds round-trip through the project file, but nothing in
+            forgeassembler_core reads `audio_beds` — the forge doesn't mix
+            them. Say so here rather than let three live-looking sliders
+            imply otherwise. */}
+        <div style={{ display: "flex", gap: 8, padding: "10px 12px", marginBottom: 14,
+                       borderRadius: 6, background: "var(--surface-2)",
+                       border: "1px solid var(--warn)", lineHeight: 1.5 }}>
+          <Icon name="triangle-alert" size={13} style={{ color: "var(--warn)", marginTop: 2, flexShrink: 0 }} />
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+            <span style={{ fontWeight: 600, color: "var(--text)" }}>Not mixed into the output yet.</span>
+            {" "}This bed is saved with the project and drawn on the canvas, but the forge
+            doesn't render it. The mix settings below are a preview of the intended controls.
+          </div>
+        </div>
+
         <PaneSection title="Coverage"
                       hint="Which clips this bed spans. The bed crossfades over joiners between covered clips.">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -746,29 +819,29 @@ function BedInspector({ bed, project, onClose }) {
 
         <PaneSection title="Mix">
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <Slider value={bed.level} min={-30} max={0} step={1}
-                    onChange={() => {}} label="Bed level"
+            <Slider value={bed.level} min={-30} max={0} step={1} disabled
+                    label="Bed level"
                     valueLabel={`${bed.level} dB`} />
-            <Slider value={bed.fadeInS} min={0} max={10} step={0.5}
-                    onChange={() => {}} label="Fade in"
+            <Slider value={bed.fadeInS} min={0} max={10} step={0.5} disabled
+                    label="Fade in"
                     valueLabel={`${bed.fadeInS.toFixed(1)} s`} />
-            <Slider value={bed.fadeOutS} min={0} max={10} step={0.5}
-                    onChange={() => {}} label="Fade out"
+            <Slider value={bed.fadeOutS} min={0} max={10} step={0.5} disabled
+                    label="Fade out"
                     valueLabel={`${bed.fadeOutS.toFixed(1)} s`} />
           </div>
         </PaneSection>
 
         <PaneSection title="Behaviour vs clip audio"
                       hint="What happens to each covered clip's own audio while the bed plays.">
-          <Segmented value={bed.duckUnderSegmentAudio ? "duck" : "solo"} onChange={() => {}}
+          <Segmented value={bed.duckUnderSegmentAudio ? "duck" : "solo"} disabled
                       options={[
                         { value: "duck", label: "Duck under clips" },
                         { value: "solo", label: "Replace clips" },
                       ]} />
           <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
             {bed.duckUnderSegmentAudio
-              ? "Clip audio drops to −12 dB while the bed plays. Joiners crossfade the bed over."
-              : "Per-clip audio is muted under this bed's coverage. Joiners use the bed for continuity."}
+              ? "Intended: clip audio drops to −12 dB while the bed plays, and joiners crossfade the bed over."
+              : "Intended: per-clip audio is muted under this bed's coverage, and joiners use the bed for continuity."}
           </div>
         </PaneSection>
       </div>
@@ -787,14 +860,21 @@ function MultiSelectInspector({ segs, onClose, onBulkUpdate, onBulkDuplicate, on
   const temps = uniq(segs.map(s => s.temp));
   const allVideos = kinds.length === 1 && kinds[0] === "video";
 
-  // Channel coverage across selection
-  const allChannelIds = ["main","multi_axis","estim_3p","alt","audio_estim"];
-  const channelCoverage = allChannelIds.map(id => ({
-    id,
-    label: window.FA_DATA?.CHANNELS?.find(c => c.id === id)?.label || id,
-    have: segs.filter(s => s.channels.includes(id)).length,
-    total: segs.length,
-  })).filter(c => c.have > 0);
+  // Channel coverage across the selection, by REAL channel name. This
+  // used to test `channels.includes(uiCategoryId)` against a fixed list
+  // that included a phantom "alt" channel nothing produces — only "main"
+  // ever matched, so a selection of 20-channel scenes reported one.
+  const channelCoverage = (() => {
+    const counts = new Map();
+    for (const s of segs) {
+      if (s.kind === "still") continue;
+      for (const ch of s.channels || []) counts.set(ch, (counts.get(ch) || 0) + 1);
+    }
+    const total = segs.filter(s => s.kind !== "still").length;
+    return [...counts.entries()]
+      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+      .map(([id, have]) => ({ id, label: id, have, total }));
+  })();
 
   // Section spread
   const sectionCounts = {};
@@ -976,10 +1056,10 @@ function uniq(arr) {
 
 function BulkTempControl({ segs, onApply }) {
   const temps = uniq(segs.map(s => s.temp));
-  const initialKelvin = temps.length === 1 ? 6500 + temps[0] : 6500;
+  const initialKelvin = temps.length === 1 ? NEUTRAL_KELVIN + temps[0] : NEUTRAL_KELVIN;
   const [kelvin, setKelvin] = insState(initialKelvin);
   insUseEffect(() => { setKelvin(initialKelvin); }, [initialKelvin]);
-  const offset = kelvin - 6500;
+  const offset = kelvin - NEUTRAL_KELVIN;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <Slider value={kelvin} min={4000} max={10000} step={100}

@@ -894,3 +894,21 @@ def test_output_channels_from_dict_defaults_match_the_dataclass():
     assert vetoed.three_phase_estim is False
     assert vetoed.main is True
 
+
+def test_validate_rejects_an_offset_masquerading_as_kelvin(tmp_path: Path):
+    """color_temperature_k is ABSOLUTE Kelvin. An offset written here
+    ("+500 warmer" -> 500) is outside ffmpeg's 1000..40000 range and
+    aborts the whole video render at filter-graph setup, so say so
+    before the forge starts rather than 40 minutes into it."""
+    v1 = _make_video(tmp_path, "a")
+    p = Project(items=[Segment(id="s1", video=str(v1), color_temperature_k=500)])
+    issues = validate(p)
+    assert any("color_temperature_k" in i.message and i.level == "error"
+               for i in issues)
+
+
+def test_validate_accepts_a_real_kelvin_value(tmp_path: Path):
+    v1 = _make_video(tmp_path, "a")
+    p = Project(items=[Segment(id="s1", video=str(v1), color_temperature_k=7000)])
+    assert not any("color_temperature_k" in i.message for i in validate(p))
+

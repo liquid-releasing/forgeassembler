@@ -7,6 +7,8 @@ from __future__ import annotations
 import pytest
 
 from forgeassembler_core.filters import (
+    COLOR_TEMP_MAX_K,
+    COLOR_TEMP_MIN_K,
     bug_overlay_filter,
     bug_prepare_filter,
     concat_filter,
@@ -188,3 +190,30 @@ def test_image_overlay_rejects_unknown_position():
 def test_image_overlay_positions(position, expected):
     s = image_overlay_filter("v", "img", "out", position=position)
     assert expected in s
+
+
+# ── colour temperature is absolute Kelvin, and ffmpeg is strict ───────
+# `colortemperature` accepts 1000..40000 and ERRORS OUT otherwise
+# ("Value 500.000000 ... out of range", "Result too large"), which kills
+# the filter graph before a single frame is written. The UI once wrote an
+# OFFSET into this field, so "+500 warmer" became temperature=500.
+
+def test_normalize_segment_filter_clamps_a_low_temperature():
+    chain = normalize_segment_filter("in", "out", 1920, 1080, color_temperature_k=500)
+    assert f"colortemperature=temperature={COLOR_TEMP_MIN_K}" in chain
+
+
+def test_normalize_segment_filter_clamps_a_high_temperature():
+    chain = normalize_segment_filter("in", "out", 1920, 1080, color_temperature_k=99000)
+    assert f"colortemperature=temperature={COLOR_TEMP_MAX_K}" in chain
+
+
+def test_normalize_segment_filter_passes_a_legal_temperature_through():
+    chain = normalize_segment_filter("in", "out", 1920, 1080, color_temperature_k=7000)
+    assert "colortemperature=temperature=7000" in chain
+
+
+def test_normalize_segment_filter_omits_the_filter_when_unset():
+    chain = normalize_segment_filter("in", "out", 1920, 1080)
+    assert "colortemperature" not in chain
+

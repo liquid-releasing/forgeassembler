@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toForgeProject, fromForgeProject, fromDetected, fromForgeBundleSegment,
   msToTimecode, timecodeToMs, segmentHasChannel,
-  channelGroup, projectChannelCoverage, channelGapsFor,
+  channelGroup, projectChannelCoverage, channelGapsFor, NEUTRAL_KELVIN,
 } from './projectAdapter.js';
 
 // A representative .forgeproject.json (the contract). real → view → real must
@@ -474,6 +474,85 @@ describe('channelGapsFor', () => {
     expect(channelGapsFor(solo.sections[0].segments[0], solo)).toEqual([]);
     expect(channelGapsFor(null, proj)).toEqual([]);
     expect(channelGapsFor({ id: 'x', kind: 'video', channels: [] }, null)).toEqual([]);
+  });
+});
+
+
+describe('colour temperature is an offset in the view, Kelvin in the file', () => {
+  // ffmpeg's colortemperature filter takes ABSOLUTE Kelvin and refuses
+  // anything outside 1000..40000 — it doesn't clamp, it fails the whole
+  // filter graph. Writing the UI's "+500 from neutral" straight into
+  // color_temperature_k sent it 500 and killed the render.
+  const seg = (json) => fromForgeProject({
+    version: '2.0', output: { basename: 'x' },
+    sections: [{ id: 's', leading_joiner: { id: 'j', joiner_type: 'none', params: {} },
+                 segments: [{ id: 'a', video: 'C:/a.mp4', audio: { mode: 'keep' },
+                              funscripts: { source: 'auto_detect' }, ...json }] }],
+  }).sections[0].segments[0];
+
+  it('reads absolute Kelvin as an offset from neutral', () => {
+    expect(seg({ color_temperature_k: 5200 }).temp).toBe(5200 - NEUTRAL_KELVIN);
+    expect(seg({}).temp).toBe(0);
+  });
+
+  it('writes the offset back as absolute Kelvin, inside ffmpeg range', () => {
+    const out = toForgeProject({
+      channels: {}, output: {},
+      sections: [{ id: 's', joiner: { type: 'none' }, segments: [
+        { id: 'a', file: 'C:/a.mp4', temp: 500, audio: 'keep' },
+      ] }],
+    });
+    const k = out.sections[0].segments[0].color_temperature_k;
+    expect(k).toBe(7000);
+    expect(k).toBeGreaterThanOrEqual(1000);
+    expect(k).toBeLessThanOrEqual(40000);
+  });
+
+  it('omits the field entirely at neutral, so no filter is applied', () => {
+    const out = toForgeProject({
+      channels: {}, output: {},
+      sections: [{ id: 's', joiner: { type: 'none' }, segments: [
+        { id: 'a', file: 'C:/a.mp4', temp: 0, audio: 'keep' },
+      ] }],
+    });
+    expect(out.sections[0].segments[0].color_temperature_k).toBeUndefined();
+  });
+});
+
+
+describe('schema fields with no UI survive a load/save', () => {
+  // Output.bug / metadata / closing_joiner are real, implemented schema
+  // fields that no control edits yet. They used to vanish: open a
+  // CLI-made project in the GUI, save it, and the bug overlay was gone.
+  const WITH_EXTRAS = {
+    version: '2.0', sections: [],
+    output_channels: { main: true },
+    output: {
+      folder: 'C:/out', basename: 'mix', resolution: '1080p', quality: 'high',
+      frame_rate: '30', normalize_audio: true, produce_video: true,
+      produce_funscripts: true, produce_audio_estim: true,
+      bug: { file: 'C:/logo.png', corner: 'br', margin_px: 32, opacity: 0.8 },
+      metadata: { title: 'Vol 3' },
+      closing_joiner: { id: 'join-close', joiner_type: 'fade_to_black',
+                        params: { duration_s: 2 } },
+    },
+  };
+
+  it('round-trips them untouched', () => {
+    const back = toForgeProject(fromForgeProject(WITH_EXTRAS));
+    expect(back.output.bug).toEqual(WITH_EXTRAS.output.bug);
+    expect(back.output.metadata).toEqual(WITH_EXTRAS.output.metadata);
+    expect(back.output.closing_joiner).toEqual(WITH_EXTRAS.output.closing_joiner);
+  });
+
+  it('does not invent them for a project that has none', () => {
+    const back = toForgeProject(fromForgeProject({
+      version: '2.0', sections: [], output_channels: { main: true },
+      output: { basename: 'mix' },
+    }));
+    expect('bug' in back.output).toBe(false);
+    expect('metadata' in back.output).toBe(false);
+    expect('closing_joiner' in back.output).toBe(false);
   });
 });
 

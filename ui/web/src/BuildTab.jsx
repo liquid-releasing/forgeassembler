@@ -7,7 +7,7 @@ import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
 import { Button, Field, Icon, Pill, Slider, TextInput } from './primitives';
 import { toMediaUrl } from './lib/mediaUrl';
-import { channelGapsFor } from './lib/projectAdapter';
+import { channelGapsFor, NEUTRAL_KELVIN } from './lib/projectAdapter';
 
 // ForgeAssembler — Build tab.
 // Renders the active project as clips you can sequence + a cross-clip
@@ -407,7 +407,22 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
 }
 
 // ── Inline-expand panel (when inspectorMode = "inline") ────────────
-function InlineEditor({ seg, onClose }) {
+// A read-only summary of the clip. Every control here used to be live-
+// looking and inert: the trim fields were hardcoded ("00:00.000" and the
+// full duration, whatever the clip's real window), the temperature slider
+// moved nothing, and "Preview frame" did nothing. Editing lives in the
+// clip dialog and the right-hand inspector, both of which write through,
+// so this shows the truth and hands off.
+function InlineEditor({ seg, onClose, onEditClip }) {
+  const sourceMs = seg.sourceDurMs ?? seg.durMs ?? 0;
+  const inMs = seg.trimStartMs ?? 0;
+  const outMs = seg.trimEndMs ?? sourceMs;
+  const trimmed = inMs > 0 || (seg.trimEndMs != null && seg.trimEndMs < sourceMs);
+  const kelvin = NEUTRAL_KELVIN + (seg.temp || 0);
+  const row = { display: "flex", justifyContent: "space-between", gap: 12, padding: "4px 0" };
+  const key = { fontSize: 11.5, color: "var(--text-muted)" };
+  const val = { fontSize: 11.5, fontFamily: "var(--font-mono)", color: "var(--text)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
   return (
     <div style={{
       margin: "4px 0 10px 32px",
@@ -419,24 +434,31 @@ function InlineEditor({ seg, onClose }) {
     }}>
       <div>
         <FASectionLabel>Source</FASectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Field label="File"><TextInput value={seg.file} mono /></Field>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Field label="Trim in"><TextInput value="00:00.000" mono style={{ width: 110 }} /></Field>
-            <Field label="Trim out"><TextInput value={fmtTotal(seg.durMs)} mono style={{ width: 110 }} /></Field>
-          </div>
-        </div>
+        <div style={row}><span style={key}>File</span>
+          <span style={{ ...val, maxWidth: 260 }} title={seg.file}>{seg.file}</span></div>
+        <div style={row}><span style={key}>Trim in</span>
+          <span style={val}>{fmtTotal(inMs)}</span></div>
+        <div style={row}><span style={key}>Trim out</span>
+          <span style={val}>{fmtTotal(outMs)}</span></div>
+        <div style={row}><span style={key}>{trimmed ? "Uses" : "Full clip"}</span>
+          <span style={val}>{fmtTotal(seg.durMs || 0)}</span></div>
       </div>
       <div>
-        <FASectionLabel>Color temperature</FASectionLabel>
-        <Slider value={seg.temp + 6500} min={4000} max={10000} step={100}
-                onChange={() => {}} label={`${seg.temp >= 0 ? "+" : ""}${seg.temp}K offset`}
-                valueLabel={`${6500 + seg.temp}K`} />
-        <div style={{ marginTop: 12 }}>
-          <Button kind="secondary" size="sm" icon="camera">Preview frame</Button>
-        </div>
+        <FASectionLabel>Look &amp; channels</FASectionLabel>
+        <div style={row}><span style={key}>Colour temperature</span>
+          <span style={val}>
+            {seg.temp ? `${kelvin}K (${seg.temp > 0 ? "+" : ""}${seg.temp})` : "neutral"}
+          </span></div>
+        <div style={row}><span style={key}>Audio</span>
+          <span style={val}>{seg.audio || "keep"}</span></div>
+        <div style={row}><span style={key}>Channels</span>
+          <span style={val}>{(seg.channels || []).length || "—"}</span></div>
+        <div style={row}><span style={key}>Overlays</span>
+          <span style={val}>{(seg.overlaysList || []).length || 0}</span></div>
       </div>
-      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: 6 }}>
+        <Button kind="secondary" size="sm" icon="pencil"
+                 onClick={() => onEditClip?.(seg)}>Edit clip…</Button>
         <Button kind="ghost" size="sm" onClick={onClose}>Done</Button>
       </div>
     </div>
@@ -668,7 +690,7 @@ function LayoutSections({ project, density, joinerStyle, selectedIds, onSelect, 
                            inspectorMode={inspectorMode} onEditClip={onEditClip}
                            gaps={channelGapsFor(seg, project)} />
                   {expandedId === seg.id && inspectorMode === "inline" &&
-                    <InlineEditor seg={seg} onClose={() => onToggleExpand(seg.id)} />}
+                    <InlineEditor seg={seg} onClose={() => onToggleExpand(seg.id)} onEditClip={onEditClip} />}
                   {i < sec.segments.length - 1 && (
                     <AddTransitionButton
                       onPick={(rect) => onAddTransition?.(sec.id, seg.id, rect)} />
@@ -821,7 +843,7 @@ function LayoutFlat({ project, density, joinerStyle, selectedIds, onSelect, expa
                      inspectorMode={inspectorMode} onEditClip={onEditClip}
                      gaps={channelGapsFor(seg, project)} />
             {expandedId === seg.id && inspectorMode === "inline" &&
-              <InlineEditor seg={seg} onClose={() => onToggleExpand(seg.id)} />}
+              <InlineEditor seg={seg} onClose={() => onToggleExpand(seg.id)} onEditClip={onEditClip} />}
           </React.Fragment>
         );
       })}

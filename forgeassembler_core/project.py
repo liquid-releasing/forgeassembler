@@ -1161,6 +1161,21 @@ def validate(project: Project) -> list[ValidationIssue]:
                     item_id=seg.id,
                 ))
 
+        # Colour temperature is ABSOLUTE Kelvin, and ffmpeg rejects
+        # anything outside its range rather than clamping — so an offset
+        # written here by mistake (500 meaning "+500 from neutral") kills
+        # the whole render at filter-graph setup.
+        if seg.color_temperature_k is not None:
+            from .filters import COLOR_TEMP_MAX_K, COLOR_TEMP_MIN_K
+            if not (COLOR_TEMP_MIN_K <= seg.color_temperature_k <= COLOR_TEMP_MAX_K):
+                issues.append(ValidationIssue(
+                    "error",
+                    f"color_temperature_k must be absolute Kelvin between "
+                    f"{COLOR_TEMP_MIN_K} and {COLOR_TEMP_MAX_K} "
+                    f"(got {seg.color_temperature_k}).",
+                    item_id=seg.id,
+                ))
+
         # Still image / duration coupling
         if seg.is_still():
             if seg.still_duration_s is None:

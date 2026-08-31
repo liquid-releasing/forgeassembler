@@ -5,6 +5,7 @@ import { FASectionLabel, FATabBody, FATabHeader, fmtTotal } from './AppShell';
 import { ParamControl, TimingVisual } from './JoinerEditor';
 import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
+import { pickFile } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
 import { projectChannelCoverage, segmentHasChannel } from './lib/projectAdapter';
 
@@ -53,13 +54,15 @@ function OutputTab({ project, onSetOutput, onSetChannels }) {
         </Card>
         <Card>
           <FASectionLabel>Resolution</FASectionLabel>
-          <ResolutionPicker value={project.output.resolution} />
+          <ResolutionPicker value={project.output.resolution}
+                             onChange={(v) => onSetOutput?.({ resolution: v })} />
         </Card>
         <Card>
           <FASectionLabel>Quality &amp; frame rate</FASectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Field label="Quality">
-              <Segmented value="medium" onChange={() => {}}
+              <Segmented value={out.quality || "medium"}
+                          onChange={(v) => onSetOutput?.({ quality: v })}
                           options={[
                             { value: "low", label: "Low · CRF 28" },
                             { value: "medium", label: "Medium · CRF 23" },
@@ -67,7 +70,8 @@ function OutputTab({ project, onSetOutput, onSetChannels }) {
                           ]} />
             </Field>
             <Field label="Frame rate">
-              <Segmented value="source" onChange={() => {}}
+              <Segmented value={out.frameRate || "source"}
+                          onChange={(v) => onSetOutput?.({ frameRate: v })}
                           options={[
                             { value: "source", label: "Source" },
                             { value: "24", label: "24" },
@@ -85,33 +89,74 @@ function OutputTab({ project, onSetOutput, onSetChannels }) {
             <div style={{ padding: "8px 10px", background: "var(--surface-2)",
                             border: "1px solid var(--border)", borderRadius: 6,
                             fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-              Audio beds (set on Build) ride over per-clip audio across joiners.
+              Audio beds can be placed on the Build canvas and are saved with the
+              project, but the forge doesn't mix them into the output yet.
             </div>
           </div>
         </Card>
-        <Card>
-          <FASectionLabel right={<Button kind="ghost" size="sm" icon="plus">Add bug</Button>}>
-            Bug overlay
-          </FASectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <Field label="PNG file"><TextInput value="" placeholder="None — click Add bug to pick a PNG" mono /></Field>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <Field label="Corner">
-                <Segmented value="br" onChange={() => {}}
-                            options={[{ value: "tl", label: "TL" }, { value: "tr", label: "TR" },
-                                      { value: "bl", label: "BL" }, { value: "br", label: "BR" }]} />
-              </Field>
-              <Field label="Margin"><TextInput value="32 px" mono /></Field>
-            </div>
-            <Slider value={80} min={0} max={100} label="Opacity" valueLabel="80%" onChange={() => {}} />
-          </div>
-        </Card>
+        <BugOverlayCard bug={out.bug} onSetOutput={onSetOutput} />
       </div>
 
       <div style={{ marginTop: 20 }}>
         <OutputChannelsCard project={project} onSetChannels={onSetChannels} />
       </div>
     </FATabBody>
+  );
+}
+
+// ── Bug overlay card ─────────────────────────────────────────────
+// A PNG composited into one corner of every clip. `Output.bug` is a real
+// schema field the video pipeline implements (filters.corner_position_expr);
+// this card used to be a hardcoded sketch with no state, so the setting
+// could never be made — and, until the adapter carried it, a project that
+// already had one lost it the first time the GUI saved.
+function BugOverlayCard({ bug, onSetOutput }) {
+  async function pickBug() {
+    const file = await pickFile({
+      title: "Choose the bug PNG", filterName: "PNG image", extensions: ["png"],
+    });
+    if (!file) return;
+    onSetOutput?.({ bug: { corner: "br", margin_px: 24, opacity: 1.0, ...(bug || {}), file } });
+  }
+  const set = (patch) => onSetOutput?.({ bug: { ...bug, ...patch } });
+
+  return (
+    <Card>
+      <FASectionLabel right={
+        bug
+          ? <Button kind="ghost" size="sm" icon="x"
+                     onClick={() => onSetOutput?.({ bug: null })}>Remove</Button>
+          : <Button kind="ghost" size="sm" icon="plus" onClick={pickBug}>Add bug</Button>
+      }>
+        Bug overlay
+      </FASectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Field label="PNG file">
+          <div style={{ display: "flex", gap: 6 }}>
+            <TextInput value={bug?.file || ""} mono readOnly
+                        placeholder="None — click Add bug to pick a PNG" />
+            {bug && <Button kind="secondary" size="sm" onClick={pickBug}>Change…</Button>}
+          </div>
+        </Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <Field label="Corner">
+            <Segmented value={bug?.corner || "br"} disabled={!bug}
+                        onChange={(v) => set({ corner: v })}
+                        options={[{ value: "tl", label: "TL" }, { value: "tr", label: "TR" },
+                                  { value: "bl", label: "BL" }, { value: "br", label: "BR" }]} />
+          </Field>
+          <Field label="Margin">
+            <Slider value={bug?.margin_px ?? 24} min={0} max={200} step={4} disabled={!bug}
+                    onChange={(v) => set({ margin_px: Math.round(v) })}
+                    valueLabel={`${bug?.margin_px ?? 24} px`} />
+          </Field>
+        </div>
+        <Slider value={Math.round((bug?.opacity ?? 1) * 100)} min={0} max={100} step={5}
+                label="Opacity" disabled={!bug}
+                valueLabel={`${Math.round((bug?.opacity ?? 1) * 100)}%`}
+                onChange={(v) => set({ opacity: v / 100 })} />
+      </div>
+    </Card>
   );
 }
 
@@ -251,7 +296,7 @@ function ChannelGroupRow({ group, clips, onToggle }) {
   );
 }
 
-function ResolutionPicker({ value }) {
+function ResolutionPicker({ value, onChange }) {
   const groups = [
     { title: "16:9 widescreen", opts: [
       { v: "1080p",     label: "1080p",   px: "1920×1080" },
@@ -283,7 +328,7 @@ function ResolutionPicker({ value }) {
             {g.opts.map(o => {
               const on = o.v === value;
               return (
-                <button key={o.v} style={{
+                <button key={o.v} onClick={() => onChange?.(o.v)} style={{
                   display: "flex", flexDirection: "column", alignItems: "flex-start",
                   padding: "6px 12px", borderRadius: 6,
                   background: on ? "rgba(255,75,75,0.08)" : "var(--surface-2)",

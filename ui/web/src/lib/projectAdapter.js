@@ -143,6 +143,10 @@ export function channelGapsFor(seg, project) {
   return [...others].filter(c => !mine.has(c)).sort();
 }
 
+// Neutral daylight — ffmpeg's own default for `colortemperature`, and the
+// zero point the UI's warm/cool offset is measured from.
+export const NEUTRAL_KELVIN = 6500;
+
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 
 // ── time helpers: ms ↔ "HH:MM:SS.mmm" ─────────────────────────────────
@@ -192,7 +196,13 @@ function segToReal(seg) {
     out.audio_estim = { files: seg.explicitAudioEstim };
   }
   if (isStill) out.still_duration_s = (seg.durMs ?? 5000) / 1000;
-  if (seg.temp) out.color_temperature_k = seg.temp;
+  // The view model carries an OFFSET from neutral ("+500 warmer"), which
+  // is what the slider shows; the schema field is ABSOLUTE Kelvin, which
+  // is what ffmpeg's colortemperature filter takes. Writing the offset
+  // straight through sent `temperature=500` to ffmpeg, outside its
+  // 1000..40000 range, and the whole video render died at filter-graph
+  // setup. 0 still means "no filter at all", so the key stays absent.
+  if (seg.temp) out.color_temperature_k = NEUTRAL_KELVIN + seg.temp;
   if (seg.title) out.bookmark = seg.title;
   const ts = msToTimecode(seg.trimStartMs);
   const te = msToTimecode(seg.trimEndMs);
@@ -217,7 +227,7 @@ function segFromReal(seg) {
     overlays: (seg.overlays || []).length,
     overlaysList: seg.overlays || [],
     audio: seg.audio?.mode || 'keep',
-    temp: seg.color_temperature_k || 0,
+    temp: seg.color_temperature_k ? seg.color_temperature_k - NEUTRAL_KELVIN : 0,
     funscriptsSource: fs.source || 'auto_detect',
     explicitFunscripts: explicit,
     // Haptic audio the bundle brought with it, channel key -> path. Kept on
@@ -316,6 +326,14 @@ export function toForgeProject(vm, { folder = null } = {}) {
       produce_video: vm.output?.video ?? true,
       produce_funscripts: vm.output?.funscripts ?? true,
       produce_audio_estim: vch.audio_estim ?? true,
+      // Schema fields with no UI yet. They're optional in Output.to_dict
+      // (emitted only when set), so a GUI-made project never has them —
+      // but a CLI-made or hand-edited one does, and loading then saving
+      // it here used to delete them without a word. Carried opaquely
+      // until each grows a real control.
+      ...(vm.output?.bug ? { bug: vm.output.bug } : {}),
+      ...(vm.output?.metadata ? { metadata: vm.output.metadata } : {}),
+      ...(vm.output?.closingJoiner ? { closing_joiner: vm.output.closingJoiner } : {}),
     },
     audio_beds: vm.audioBeds || [],
   };
@@ -348,6 +366,10 @@ export function fromForgeProject(json) {
       normalizeAudio: json.output?.normalize_audio ?? true,
       video: json.output?.produce_video ?? true,
       funscripts: json.output?.produce_funscripts ?? true,
+      // Passthrough — see toForgeProject.
+      ...(json.output?.bug ? { bug: json.output.bug } : {}),
+      ...(json.output?.metadata ? { metadata: json.output.metadata } : {}),
+      ...(json.output?.closing_joiner ? { closingJoiner: json.output.closing_joiner } : {}),
     },
     channels,
     sections: (Array.isArray(json.sections)

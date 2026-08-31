@@ -17,6 +17,12 @@ from typing import Iterable
 from .project import BugCorner
 
 
+# ffmpeg's `colortemperature` filter range. Outside it the filter refuses
+# to initialise and the render dies before a single frame is written.
+COLOR_TEMP_MIN_K = 1000
+COLOR_TEMP_MAX_K = 40000
+
+
 # ── Segment normalization (scale + pad + optional color temp) ─────────
 def normalize_segment_filter(
     in_label: str,
@@ -39,7 +45,12 @@ def normalize_segment_filter(
         f"setsar=1"
     )
     if color_temperature_k is not None:
-        chain += f",colortemperature=temperature={int(color_temperature_k)}"
+        # ffmpeg's colortemperature filter accepts 1000..40000 K and ERRORS
+        # OUT on anything else ("Result too large"), which would abort the
+        # whole video render at filter-graph setup. Clamp so a bad number
+        # can't cost a 40-minute forge; `validate()` reports it up front.
+        temp = min(max(int(color_temperature_k), COLOR_TEMP_MIN_K), COLOR_TEMP_MAX_K)
+        chain += f",colortemperature=temperature={temp}"
     return f"[{in_label}]{chain}[{out_label}]"
 
 
