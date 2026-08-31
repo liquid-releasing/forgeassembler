@@ -15,6 +15,7 @@ import { loadProject, saveProject, pickFolder, pickFile, detectFolder, probeDura
          importForgeBundle } from './api/forge';
 import { fromForgeProject, toForgeProject, fromDetected, fromForgeBundleSegment } from './lib/projectAdapter';
 import { parseProgressLine } from './lib/forgeProgress';
+import { insertSegment } from './lib/placement';
 import { DragDropProvider, reorderClipInProject, reorderSectionInProject } from './dragdrop';
 import { TweakRadio, TweakSection, TweakToggle, TweaksPanel, useTweaks } from './tweaks-panel';
 
@@ -230,31 +231,7 @@ function App() {
       temp: 0,
       titleCard: titleMeta(payload),
     };
-    setProject(p => ({
-      ...p,
-      sections: p.sections.map(s => {
-        // Anchored-to-clip insertion takes precedence.
-        if (ctx?.anchorClipId) {
-          const idx = s.segments.findIndex(c => c.id === ctx.anchorClipId);
-          if (idx === -1) return s;
-          const ip = payload.insertionPoint || "after";
-          if (ip === "end") return { ...s, segments: [...s.segments, seg] };
-          const at = ip === "before" ? idx : idx + 1;
-          const next = [...s.segments];
-          next.splice(at, 0, seg);
-          return { ...s, segments: next };
-        }
-        // Otherwise append to the explicit section…
-        if (ctx?.forSectionId && s.id === ctx.forSectionId) {
-          return { ...s, segments: [...s.segments, seg] };
-        }
-        // …or to the last section.
-        if (!ctx?.forSectionId && s.id === p.sections[p.sections.length - 1].id) {
-          return { ...s, segments: [...s.segments, seg] };
-        }
-        return s;
-      }),
-    }));
+    setProject(p => insertSegment(p, seg, ctx, payload.insertionPoint));
   }
 
   function titleMeta(p) {
@@ -455,7 +432,9 @@ function App() {
   // video durations. The chapter NAME defaults to the first added clip's name
   // when the section is still unnamed — so a clip's filename becomes its
   // chapter by default (the user can rename it).
-  function appendSegments(segs, sectionId) {
+  // `atIndex` inserts at that position in the target section instead of
+  // appending — the "+" above the first clip passes 0.
+  function appendSegments(segs, sectionId, atIndex = null) {
     if (!segs.length) return;
     const stamp = Date.now();
     markDirty();
@@ -467,9 +446,12 @@ function App() {
       const targetId = sectionId || sections[sections.length - 1].id;
       return {
         ...p,
-        sections: sections.map(s => s.id === targetId
-          ? { ...s, title: s.title || segs[0]?.title || '', segments: [...s.segments, ...segs] }
-          : s),
+        sections: sections.map(s => {
+          if (s.id !== targetId) return s;
+          const next = [...s.segments];
+          next.splice(atIndex == null ? next.length : atIndex, 0, ...segs);
+          return { ...s, title: s.title || segs[0]?.title || '', segments: next };
+        }),
       };
     });
     for (const seg of segs) {
@@ -488,7 +470,7 @@ function App() {
   }
 
   // ── Add clips from a FOLDER (batch detect) — the header "Add folder…" ──
-  async function handleAddClips(sectionId) {
+  async function handleAddClips(sectionId, atIndex = null) {
     setIoError(null);
     const folder = await pickFolder();
     if (!folder) return;
@@ -506,11 +488,11 @@ function App() {
       setIoError(`No clips found in ${folder}.`);
       return;
     }
-    appendSegments(newSegs, sectionId);
+    appendSegments(newSegs, sectionId, atIndex);
   }
 
   // ── Add ONE clip — a video file OR a .forge scene (per-section "Add clip") ──
-  async function handleAddClip(sectionId) {
+  async function handleAddClip(sectionId, atIndex = null) {
     setIoError(null);
     const path = await pickFile({
       title: 'Add a clip — pick a video or a .forge scene',
@@ -531,7 +513,7 @@ function App() {
       kind: isStill ? 'still' : 'video',
       durMs: isStill ? 5000 : 0, channels: [], overlays: 0, overlaysList: [],
       audio: 'keep', temp: 0, funscriptsSource: 'auto_detect', explicitFunscripts: {},
-    }], sectionId);
+    }], sectionId, atIndex);
   }
 
   // Import a `.forge` bundle into a section: explicit channel map, with a
@@ -563,7 +545,7 @@ function App() {
         return;
       }
     }
-    const seg = fromForgeBundleSegment(payload?.segment);
+    const seg = fromForgeBundleSegment(payload?.segment, payload);
     if (!seg) {
       setIoError(`Import produced no segment for ${payload?.stem || bundle}.`);
       return;

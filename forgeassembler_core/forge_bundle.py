@@ -64,7 +64,9 @@ class ForgeBundle:
     manifest: dict
     stem: str
     funscripts: dict[str, Path] = field(default_factory=dict)   # channel -> path
-    audio_estim: dict[str, Path] = field(default_factory=dict)  # name -> path
+    audio_estim: dict[str, Path] = field(default_factory=dict)  # channel key -> path
+    sidecars: dict[str, Path] = field(default_factory=dict)     # analysis -> path
+    thumbnails: dict[str, Path] = field(default_factory=dict)   # role -> path
     media: Optional[dict] = None                  # manifest `media` block, if any
     media_path: Optional[Path] = None             # resolved video, else None
 
@@ -109,6 +111,31 @@ def _cache_dir_for(manifest: dict, cache_root: Path) -> Path:
     return cache_root / f"{pid}.v{ver}"
 
 
+# Manifest audio `role` -> the engine's channel key. The engine names
+# channels after the FILENAME suffix a sibling would have had
+# (`<stem>.mp3` -> "mp3", `<stem>.prostate.mp3` -> "prostate.mp3"), and
+# names its outputs the same way, so a bundle's audio has to arrive under
+# those keys or the combined output would be named after a bundle-internal
+# role nobody else uses.
+_AUDIO_ROLE_SUFFIX: dict[str, str] = {
+    "estim": "",                    # the main haptic track -> `<basename>.mp3`
+    "estim-prostate": "prostate",   #                       -> `<basename>.prostate.mp3`
+}
+
+
+def _channel_for_audio(rel_path: str, artifact: dict) -> str:
+    """Map an audio artifact to the engine's channel key.
+
+    Unknown roles pass through under their own name rather than being
+    dropped — a new FunscriptForge audio role should show up as an extra
+    output channel, not vanish silently.
+    """
+    ext = (artifact.get("format") or Path(rel_path).suffix.lstrip(".") or "mp3").lower()
+    role = artifact.get("role") or Path(rel_path).stem
+    suffix = _AUDIO_ROLE_SUFFIX.get(role, role)
+    return f"{suffix}.{ext}" if suffix else ext
+
+
 def _channel_for_funscript(rel_path: str, artifact: dict) -> str:
     """Map an artifact's relative path to a channel key.
 
@@ -123,9 +150,15 @@ def _channel_for_funscript(rel_path: str, artifact: dict) -> str:
     return channel or "main"
 
 
-def _map_artifacts(manifest: dict, cache_dir: Path) -> tuple[dict[str, Path], dict[str, Path]]:
+def _map_artifacts(
+    manifest: dict, cache_dir: Path,
+) -> tuple[dict[str, Path], dict[str, Path], dict[str, Path], dict[str, Path]]:
+    """Sort every manifest artifact into funscripts, audio, analysis
+    sidecars and thumbnails — all keyed the way consumers ask for them."""
     funscripts: dict[str, Path] = {}
     audio_estim: dict[str, Path] = {}
+    sidecars: dict[str, Path] = {}
+    thumbnails: dict[str, Path] = {}
     for art in manifest.get("artifacts", []):
         rel = art.get("path")
         if not rel:
@@ -138,8 +171,18 @@ def _map_artifacts(manifest: dict, cache_dir: Path) -> tuple[dict[str, Path], di
             # manifest); deterministic.
             funscripts.setdefault(channel, fp)
         elif kind in ("audio", "audio_estim", "stim_audio"):
-            audio_estim.setdefault(Path(rel).name, fp)
-    return funscripts, audio_estim
+            audio_estim.setdefault(_channel_for_audio(rel, art), fp)
+        elif kind == "sidecar":
+            # `analysis` names it: audio (waveform peaks), beats, chapters,
+            # phrases, characters. These are what let a preview open fast
+            # instead of decoding the whole video again.
+            sidecars.setdefault(art.get("analysis") or Path(rel).stem, fp)
+        elif kind == "thumbnail":
+            role = art.get("role") or Path(rel).stem
+            if role == "chapter" and art.get("index") is not None:
+                role = f"chapter_{art['index']}"
+            thumbnails.setdefault(role, fp)
+    return funscripts, audio_estim, sidecars, thumbnails
 
 
 def _resolve_media(
@@ -209,7 +252,7 @@ def detect_forge_bundle(
     # Re-read from the extracted copy (authoritative on disk).
     manifest = json.loads((cache_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
     stem = manifest.get("stem") or p.stem
-    funscripts, audio_estim = _map_artifacts(manifest, cache_dir)
+    funscripts, audio_estim, sidecars, thumbnails = _map_artifacts(manifest, cache_dir)
     media = manifest.get("media")
     media_path = _resolve_media(
         p, cache_dir, media,
@@ -218,6 +261,7 @@ def detect_forge_bundle(
     return ForgeBundle(
         path=p, cache_dir=cache_dir, manifest=manifest, stem=stem,
         funscripts=funscripts, audio_estim=audio_estim,
+        sidecars=sidecars, thumbnails=thumbnails,
         media=media, media_path=media_path,
     )
 
@@ -245,5 +289,10 @@ def forge_bundle_to_segment(
         video=str(vid),
         funscripts_source="explicit",
         explicit_funscripts=explicit,
+        # The bundle's own stim audio. Without this the forge falls back to
+        # scanning for `.stereostim.wav` siblings of the video, finds none,
+        # and writes no haptic audio at all — while the files sat unused in
+        # the extraction cache.
+        explicit_audio_estim={ch: str(p) for ch, p in bundle.audio_estim.items()},
         bookmark=bundle.stem,
     )

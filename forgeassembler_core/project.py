@@ -425,6 +425,12 @@ class Segment:
     funscripts_source: Literal["auto_detect", "explicit", "none"] = "auto_detect"
     funscripts_folder: Optional[str] = None
     explicit_funscripts: dict[str, str] = field(default_factory=dict)
+    # Haptic-estim audio the caller supplies outright, channel key -> path
+    # (keys match `concat_audio_estim`'s filename-derived scheme: "mp3",
+    # "prostate.mp3", "stereostim.wav"). A `.forge` bundle carries its stim
+    # audio inside the zip, where the sibling-file scan can never find it;
+    # without this the bundle's audio was extracted and then dropped.
+    explicit_audio_estim: dict[str, str] = field(default_factory=dict)
     still_duration_s: Optional[float] = None  # required when video is a PNG
     color_temperature_k: Optional[int] = None  # 4000..10000 when set
     background: SegmentBackground = "black"  # only meaningful for stills
@@ -473,6 +479,8 @@ class Segment:
             d["funscripts"]["files"] = self.explicit_funscripts
         elif self.funscripts_source == "auto_detect" and self.funscripts_folder:
             d["funscripts"]["folder"] = self.funscripts_folder
+        if self.explicit_audio_estim:
+            d["audio_estim"] = {"files": dict(self.explicit_audio_estim)}
         if self.still_duration_s is not None:
             d["still_duration_s"] = self.still_duration_s
         if self.color_temperature_k is not None:
@@ -498,6 +506,7 @@ class Segment:
             funscripts_source=fs.get("source", "auto_detect"),
             funscripts_folder=fs.get("folder"),
             explicit_funscripts=fs.get("files", {}),
+            explicit_audio_estim=(d.get("audio_estim") or {}).get("files", {}),
             still_duration_s=d.get("still_duration_s"),
             color_temperature_k=d.get("color_temperature_k"),
             background=d.get("background", "black"),
@@ -774,6 +783,7 @@ def split_segment_at(
         funscripts_source=segment.funscripts_source,
         funscripts_folder=segment.funscripts_folder,
         explicit_funscripts=dict(segment.explicit_funscripts),
+        explicit_audio_estim=dict(segment.explicit_audio_estim),
         still_duration_s=segment.still_duration_s,
         color_temperature_k=segment.color_temperature_k,
         background=segment.background,
@@ -789,6 +799,7 @@ def split_segment_at(
         funscripts_source=segment.funscripts_source,
         funscripts_folder=segment.funscripts_folder,
         explicit_funscripts=dict(segment.explicit_funscripts),
+        explicit_audio_estim=dict(segment.explicit_audio_estim),
         still_duration_s=segment.still_duration_s,
         color_temperature_k=segment.color_temperature_k,
         background=segment.background,

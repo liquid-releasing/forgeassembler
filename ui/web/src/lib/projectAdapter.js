@@ -69,6 +69,9 @@ function segToReal(seg) {
     overlays: seg.overlaysList || [],
     funscripts,
   };
+  if (seg.explicitAudioEstim && Object.keys(seg.explicitAudioEstim).length) {
+    out.audio_estim = { files: seg.explicitAudioEstim };
+  }
   if (isStill) out.still_duration_s = (seg.durMs ?? 5000) / 1000;
   if (seg.temp) out.color_temperature_k = seg.temp;
   if (seg.title) out.bookmark = seg.title;
@@ -98,6 +101,10 @@ function segFromReal(seg) {
     temp: seg.color_temperature_k || 0,
     funscriptsSource: fs.source || 'auto_detect',
     explicitFunscripts: explicit,
+    // Haptic audio the bundle brought with it, channel key -> path. Kept on
+    // the view model so the round-trip preserves it and the UI can tell a
+    // clip that ships audio from one that doesn't.
+    explicitAudioEstim: seg.audio_estim?.files || {},
   };
   if (fs.folder) v.funscriptsFolder = fs.folder;
   if (seg.audio?.file) v.audioFile = seg.audio.file;
@@ -226,9 +233,33 @@ export function fromForgeProject(json) {
 // (funscripts.source = "explicit", funscripts.files = {channel: path}). It maps
 // straight through segFromReal — the explicit channel map + video relink come
 // across intact.
-export function fromForgeBundleSegment(realSegment) {
+/**
+ * A `.forge` import payload -> one view segment.
+ *
+ * `cli.py import-forge --format json` returns the Segment plus everything
+ * else the bundle carries. The extras are what make a preview open fast:
+ * `audio.json` (waveform peaks) and `beats.json` save re-deriving analysis
+ * from the video, and `thumbnails/hero.png` is a real picture for the clip
+ * row. Paths point into the bundle's extraction cache.
+ *
+ * @param {object} realSegment  payload.segment
+ * @param {object} [payload]    the whole import payload, for the extras
+ */
+export function fromForgeBundleSegment(realSegment, payload = null) {
   if (!realSegment) return null;
-  return segFromReal(realSegment);
+  const v = segFromReal(realSegment);
+  if (!payload) return v;
+  const sidecars = payload.sidecars || {};
+  const thumbnails = payload.thumbnails || {};
+  if (thumbnails.hero) v.thumbPath = thumbnails.hero;
+  if (Object.keys(thumbnails).length) v.thumbnails = thumbnails;
+  if (Object.keys(sidecars).length) v.sidecars = sidecars;
+  if (payload.duration_ms) v.durMs = payload.duration_ms;
+  // A bundle with no analysis sidecars still previews — just slowly, by
+  // decoding the video. Flagged so the UI can say so and point at a
+  // re-export rather than leaving the user to wonder.
+  v.bundleLean = !sidecars.audio;
+  return v;
 }
 
 // ── detect → view segments ──────────────────────────────────────────

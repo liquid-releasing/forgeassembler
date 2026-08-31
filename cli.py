@@ -204,6 +204,13 @@ def cmd_import_forge(args: argparse.Namespace) -> int:
         "media_resolved": video is not None,
         "video": video,
         "cache_dir": str(bundle.cache_dir),
+        # Haptic audio the bundle carries, keyed by engine channel.
+        "audio_estim": {ch: str(p) for ch, p in bundle.audio_estim.items()},
+        # Analysis the preview can load instead of re-deriving: waveform
+        # peaks, beats, chapters, phrases, characters.
+        "sidecars": {name: str(p) for name, p in bundle.sidecars.items()},
+        # hero / funscript / audio / spectrogram / chapter_N stills.
+        "thumbnails": {role: str(p) for role, p in bundle.thumbnails.items()},
     }
     if video:
         seg = forge_bundle_to_segment(bundle, video=video)

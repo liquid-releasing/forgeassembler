@@ -1,7 +1,7 @@
 {
   "name": "forgeassembler-tauri",
   "version": "0.1.0-alpha",
-  "description": "ForgeAssembler — Tauri + React desktop app",
+  "description": "ForgeAssembler \u2014 Tauri + React desktop app",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-dialog": "^2.0.1",
+    "forgemoment": "file:../../../forgemoment",
     "lucide": "^0.469.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",

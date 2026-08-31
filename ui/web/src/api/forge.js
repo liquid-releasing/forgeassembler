@@ -72,6 +72,16 @@ export function loadProject(path) {
     call('load_project', { path }, () => Promise.resolve(null)));
 }
 
+// Read one analysis sidecar a `.forge` bundle carried (peaks / beats /
+// chapters / phrases / characters), from its extraction cache. Resolves to
+// null when the bundle didn't ship that one — a lean bundle has none, and
+// the preview still works, just slower.
+export function readSidecar(path) {
+  if (!path) return Promise.resolve(null);
+  return dedupedCall(`read_sidecar::${path}`, () =>
+    call('read_sidecar', { path }, () => Promise.resolve(null)));
+}
+
 // Import a FunscriptForge `.forge` bundle as one Segment. Returns
 // { stem, channels, channel_groups, duration_ms, media_resolved, video,
 //   needs_video, segment }. `segment` is a real Segment dict when a video is

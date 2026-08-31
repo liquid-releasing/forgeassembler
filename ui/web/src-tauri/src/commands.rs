@@ -295,6 +295,26 @@ pub async fn load_project(path: String) -> Result<Value, String> {
     serde_json::from_str(&raw).map_err(|e| format!("parse {}: {}", path, e))
 }
 
+/// Read one analysis sidecar (`audio.json`, `beats.json`, `chapters.json`, …)
+/// that a `.forge` bundle carried, from the bundle's extraction cache.
+///
+/// Returns `None` rather than erroring when the file is absent: a lean bundle
+/// legitimately has no sidecars, and the preview falls back to deriving what
+/// it needs from the video. Only a present-but-unreadable file is an error
+/// worth surfacing.
+#[tauri::command]
+pub async fn read_sidecar(path: String) -> Result<Option<Value>, String> {
+    if !Path::new(&path).is_file() {
+        return Ok(None);
+    }
+    let raw = tokio::fs::read_to_string(&path)
+        .await
+        .map_err(|e| format!("read sidecar {}: {}", path, e))?;
+    serde_json::from_str(&raw)
+        .map(Some)
+        .map_err(|e| format!("parse sidecar {}: {}", path, e))
+}
+
 /// Write a project object to disk as pretty-printed JSON.
 #[tauri::command]
 pub async fn save_project(path: String, project: Value) -> Result<(), String> {

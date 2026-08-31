@@ -228,3 +228,65 @@ describe('fromDetected', () => {
     expect(segs[1].kind).toBe('still');
   });
 });
+
+// ── .forge bundle extras ─────────────────────────────────────────────
+// A bundle carries far more than funscripts: its own stim audio, analysis
+// sidecars that let a preview open without re-deriving anything, and a hero
+// still. All of it used to be extracted and then dropped.
+describe('fromForgeBundleSegment', () => {
+  const segment = {
+    id: 'seg-1',
+    video: 'E:/clips/scene.mp4',
+    bookmark: 'Scene',
+    funscripts: { source: 'explicit', files: { main: '/cache/motion.funscript' } },
+    audio_estim: { files: { 'mp3': '/cache/audio/stim.mp3' } },
+  };
+  const payload = {
+    stem: 'Scene',
+    duration_ms: 387099,
+    sidecars: { audio: '/cache/audio.json', beats: '/cache/beats.json' },
+    thumbnails: { hero: '/cache/thumbnails/hero.png', funscript: '/cache/thumbnails/funscript.png' },
+  };
+
+  it('keeps working when only the segment is passed', () => {
+    const v = fromForgeBundleSegment(segment);
+    expect(v.channels).toEqual(['main']);
+    expect(v.thumbPath).toBeUndefined();
+  });
+
+  it('carries the hero still, the sidecars and the duration', () => {
+    const v = fromForgeBundleSegment(segment, payload);
+    expect(v.thumbPath).toBe('/cache/thumbnails/hero.png');
+    expect(v.sidecars.audio).toBe('/cache/audio.json');
+    expect(v.durMs).toBe(387099);
+  });
+
+  it('carries the bundle audio onto the view model', () => {
+    expect(fromForgeBundleSegment(segment, payload).explicitAudioEstim)
+      .toEqual({ 'mp3': '/cache/audio/stim.mp3' });
+  });
+
+  it('flags a bundle with no analysis sidecars as lean', () => {
+    expect(fromForgeBundleSegment(segment, payload).bundleLean).toBe(false);
+    expect(fromForgeBundleSegment(segment, { ...payload, sidecars: {} }).bundleLean).toBe(true);
+  });
+
+  it('round-trips the bundle audio back to the on-disk shape', () => {
+    const v = fromForgeBundleSegment(segment, payload);
+    const real = toForgeProject({
+      name: 'p', output: {}, channels: {}, audioBeds: [],
+      sections: [{ id: 's', joiner: { type: 'none' }, segments: [v] }],
+    });
+    expect(real.sections[0].segments[0].audio_estim)
+      .toEqual({ files: { 'mp3': '/cache/audio/stim.mp3' } });
+  });
+
+  it('omits audio_estim entirely for a clip that has none', () => {
+    const plain = fromForgeBundleSegment({ ...segment, audio_estim: undefined });
+    const real = toForgeProject({
+      name: 'p', output: {}, channels: {}, audioBeds: [],
+      sections: [{ id: 's', joiner: { type: 'none' }, segments: [plain] }],
+    });
+    expect(real.sections[0].segments[0]).not.toHaveProperty('audio_estim');
+  });
+});

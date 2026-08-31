@@ -94,12 +94,18 @@ def _resolve_channel_audio_path(
     """Return the on-disk audio path for `segment` × `channel_key`, or
     None if this segment contributes silence for that channel.
 
-    Stills carry no haptic audio. Untrimmed and trimmed video segments
-    both use the same auto-detect: scan the video's folder (and the
-    known subfolders) for `{stem}.{channel_key}` next to the source.
+    Stills carry no haptic audio. A segment imported from a `.forge`
+    bundle names its audio outright (the files live in the bundle's
+    extraction cache, where no sibling scan would ever find them), and
+    that wins. Otherwise: scan the video's folder (and the known
+    subfolders) for `{stem}.{channel_key}` next to the source.
     """
     if segment.is_still():
         return None
+    explicit = (segment.explicit_audio_estim or {}).get(channel_key)
+    if explicit:
+        p = Path(explicit)
+        return p if p.is_file() else None
     from .detect import audio_estim_for_stem
     video_path = Path(segment.video)
     folder = video_path.parent
@@ -157,6 +163,9 @@ def discover_channels_in_layout(
             continue
         if item.is_still():
             continue
+        # Bundle-supplied audio is named outright and lives in the
+        # extraction cache; no sibling scan would surface it.
+        channels.update(item.explicit_audio_estim or {})
         video_path = Path(item.video)
         if not video_path.exists():
             # Still try the parent's listing — the segment may be on

@@ -6,6 +6,10 @@ import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
 import { Button, Field, Icon, Pill, Slider, TextInput } from './primitives';
+import { toMediaUrl } from './lib/mediaUrl';
+import { MediaViewer } from 'forgemoment';
+import { readSidecar } from './api/forge';
+import { toAudioWaveform, toBeats, toChapters, toFunscript } from './lib/sidecars';
 
 // ForgeAssembler — Build tab.
 // Renders the active project as clips you can sequence + a cross-clip
@@ -117,15 +121,34 @@ function AudioModeBadge({ mode }) {
 }
 
 // ── Clip thumbnail with overlays ──────────────────────────────────
+// What to draw when a clip has no thumbnail. Clips added from disk arrive
+// without one — detection reports paths, not pictures — and an <img> with
+// no src renders as the browser's broken-image glyph, which reads as an
+// error rather than as "no preview yet".
+const KIND_ICON = { video: "film", still: "image", audio: "audio-lines" };
+
 function ClipThumb({ seg, w }) {
   const h = Math.round(w * 9 / 16);
+  const isTitle = !!seg.titleCard;
+  // A `.forge` bundle ships its own hero still; the adapter records the
+  // path and it becomes an asset URL here (the adapter stays pure, with no
+  // Tauri import, so it can be unit-tested).
+  const src = seg.thumb || (seg.thumbPath ? toMediaUrl(seg.thumbPath) : null);
   return (
     <div style={{
       position: "relative", width: w, height: h, flexShrink: 0,
       borderRadius: 6, overflow: "hidden", background: "var(--surface-2)",
       border: "1px solid var(--border)",
     }}>
-      <img src={seg.thumb} alt="" style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }} />
+      {src ? (
+        <img src={src} alt="" style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }} />
+      ) : (
+        <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center",
+                      color: "var(--text-dim)" }}>
+          <Icon name={isTitle ? "type" : (KIND_ICON[seg.kind] || "film")}
+                size={Math.max(14, Math.round(h * 0.44))} stroke={1.5} />
+        </div>
+      )}
       {/* still-image badge */}
       {seg.kind === "still" && (
         <span style={{
@@ -133,7 +156,7 @@ function ClipThumb({ seg, w }) {
           background: "rgba(0,0,0,0.7)", color: "#fff", fontFamily: "var(--font-mono)",
           fontSize: 9, fontWeight: 700, letterSpacing: "0.06em",
           borderRadius: 2, lineHeight: 1.3,
-        }}>STILL</span>
+        }}>{isTitle ? "TITLE" : "STILL"}</span>
       )}
       {/* duration badge */}
       <span style={{
@@ -245,6 +268,44 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
   const [startS, setStartS] = bsState(String((seg.trimStartMs ?? 0) / 1000));
   const [endS, setEndS] = bsState(String((seg.trimEndMs ?? durMs) / 1000));
 
+  // ── Preview clock ────────────────────────────────────────────────
+  // The video element is the master clock: MediaViewer throttles its own
+  // timeupdate and gates seek echoes internally, so writing currentMs
+  // straight from onTimeChange is safe here.
+  const [currentMs, setCurrentMs] = bsState(seg.trimStartMs ?? 0);
+  const [isPlaying, setIsPlaying] = bsState(false);
+  const videoSrc = seg.file ? toMediaUrl(seg.file) : null;
+
+  // Analysis the bundle already carried. Loaded when the editor opens
+  // rather than at import: a compilation can hold a dozen clips and each
+  // peaks sidecar is a few hundred KB. A clip with no sidecars still
+  // previews — the viewer just has less to draw.
+  const [analysis, setAnalysis] = bsState({ waveform: null, beats: null, chapters: [], funscript: null });
+  bsUseEffect(() => {
+    let cancelled = false;
+    const sc = seg.sidecars || {};
+    const mainScript = (seg.explicitFunscripts || {}).main;
+    Promise.all([
+      readSidecar(sc.audio), readSidecar(sc.beats),
+      readSidecar(sc.chapters), readSidecar(mainScript),
+    ]).then(([audioSc, beatsSc, chaptersSc, scriptSc]) => {
+      if (cancelled) return;
+      setAnalysis({
+        waveform: toAudioWaveform(audioSc),
+        beats: toBeats(beatsSc),
+        chapters: toChapters(chaptersSc),
+        funscript: toFunscript(scriptSc),
+      });
+    }).catch((e) => console.warn('[clip preview] sidecars unavailable', e));
+    return () => { cancelled = true; };
+  }, [seg.id]);
+
+  // Set the in/out point from wherever the playhead is sitting. This is
+  // the whole reason the preview is here: scrub to where the standard
+  // title card ends, and cut there.
+  function markIn()  { setStartS((currentMs / 1000).toFixed(2)); }
+  function markOut() { setEndS((currentMs / 1000).toFixed(2)); }
+
   bsUseEffect(() => {
     function k(e) { if (e.key === "Escape") onClose(); }
     window.addEventListener("keydown", k);
@@ -275,8 +336,9 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
       background: "rgba(0,0,0,0.6)", display: "grid", placeItems: "center",
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: 460, background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: 12, boxShadow: "var(--elev-3)", overflow: "hidden",
+        width: 760, maxWidth: "94vw", maxHeight: "94vh", overflowY: "auto",
+        background: "var(--surface)", border: "1px solid var(--border)",
+        borderRadius: 12, boxShadow: "var(--elev-3)",
       }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)",
                        display: "flex", alignItems: "center", gap: 10 }}>
@@ -292,20 +354,63 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
         </div>
 
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Preview — scrub the real clip to find the cut points. Spectro is
+              hidden: a bundle ships a spectrogram PNG, not the mel cells the
+              live canvas needs. */}
+          {videoSrc && (
+            <MediaViewer
+              videoSrc={videoSrc}
+              media={{ kind: "video", title: seg.title || "clip" }}
+              totalMs={durMs || analysis.waveform?.durationMs || 0}
+              currentMs={currentMs}
+              isPlaying={isPlaying}
+              onPlayPause={() => setIsPlaying(p => !p)}
+              onSeek={setCurrentMs}
+              onTimeChange={setCurrentMs}
+              funscript={analysis.funscript}
+              audioWaveform={analysis.waveform}
+              beats={analysis.beats}
+              hideEmptySpectro
+              showMark={false}
+              thumbnailAspect="16/9"
+              controls={["back5", "frame-back", "play", "frame-forward", "forward5"]}
+              showSpeed
+              modeToggleAlign="start"
+              modeToggleSize="sm" />
+          )}
+
           {/* Trim */}
           <div>
             <FASectionLabel>Trim window</FASectionLabel>
             <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "2px 0 10px" }}>
               In / out points in seconds. {durMs ? <>Source is <span className="mono" style={{ color: "var(--text)" }}>{_fmtSecs(durMs)}</span>.</> : "Duration not probed yet."}
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
               <Field label="Start (s)" style={{ flex: 1 }}>
                 <TextInput value={startS} onChange={setStartS} mono />
               </Field>
+              {videoSrc && (
+                <Button kind="secondary" size="sm" icon="chevron-right" onClick={markIn}
+                        title="Set the in-point to the playhead">In</Button>
+              )}
               <Field label="End (s)" style={{ flex: 1 }}>
                 <TextInput value={endS} onChange={setEndS} mono />
               </Field>
+              {videoSrc && (
+                <Button kind="secondary" size="sm" icon="chevron-left" onClick={markOut}
+                        title="Set the out-point to the playhead">Out</Button>
+              )}
             </div>
+            {videoSrc && (
+              <div className="mono" style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
+                playhead {_fmtSecs(currentMs)}
+                {seg.bundleLean && (
+                  <span style={{ color: "var(--warn)", marginLeft: 12 }}>
+                    · no analysis in this bundle — re-export from FunscriptForge for a faster preview
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Audio */}
@@ -590,6 +695,11 @@ function LayoutSections({ project, density, joinerStyle, selectedIds, onSelect, 
                             onRename={onRenameSection}
                             onRemove={onRemoveSection} />
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {sec.segments.length > 0 && (
+                <InsertContentButton
+                  onAddClip={() => onAddClip?.(sec.id, 0)}
+                  onAddTitle={() => onOpenTitleEditor(sec.id)} />
+              )}
               {sec.segments.map((seg, i) => (
                 <React.Fragment key={seg.id}>
                   <ClipRow seg={seg} sectionColor={sec.color} sectionId={sec.id} density={density}
@@ -637,6 +747,73 @@ function AddTransitionButton({ onPick }) {
                  opacity: hover ? 1 : 0.6, transition: "all 0.12s" }}>
         <Icon name="plus" size={12} />
       </button>
+    </div>
+  );
+}
+
+// A "+" above the FIRST clip of a section. The one between clips adds a
+// transition; there is no clip before this one to transition from, so this
+// one inserts content instead — the lead-in you want at the top.
+function InsertContentButton({ onAddClip, onAddTitle }) {
+  const [hover, setHover] = bsState(false);
+  const [open, setOpen] = bsState(false);
+
+  // Click-away: the menu is small and modeless, so anything outside closes it.
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const close = () => setOpen(false);
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const item = {
+    display: "flex", alignItems: "center", gap: 8, width: "100%",
+    padding: "7px 12px", background: "transparent", border: "none",
+    color: "var(--text)", fontSize: 12.5, fontFamily: "inherit",
+    cursor: "pointer", textAlign: "left", whiteSpace: "nowrap",
+  };
+
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+         style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                  height: 14, position: "relative" }}>
+      <div style={{ position: "absolute", left: 0, right: 0, height: 1,
+                     background: hover || open ? "var(--accent-warm)" : "transparent",
+                     opacity: 0.4, transition: "background 0.12s" }} />
+      <button title="Insert a clip or title card above"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+        style={{ position: "relative", display: "inline-flex", alignItems: "center",
+                 justifyContent: "center", width: 20, height: 20, borderRadius: 10,
+                 cursor: "pointer", fontFamily: "inherit",
+                 background: hover || open ? "var(--accent-warm)" : "var(--surface-2)",
+                 color: hover || open ? "#1a1a1a" : "var(--text-dim)",
+                 border: `1px solid ${hover || open ? "var(--accent-warm)" : "var(--border)"}`,
+                 opacity: hover || open ? 1 : 0.6, transition: "all 0.12s" }}>
+        <Icon name="plus" size={12} />
+      </button>
+      {open && (
+        <div onMouseDown={(e) => e.stopPropagation()}
+             style={{ position: "absolute", top: 24, left: "50%", transform: "translateX(-50%)",
+                      zIndex: 40, minWidth: 168, padding: "4px 0",
+                      background: "var(--surface)", border: "1px solid var(--border)",
+                      borderRadius: 8, boxShadow: "0 10px 28px rgba(0,0,0,0.45)" }}>
+          <button style={item} onClick={() => { setOpen(false); onAddClip?.(); }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+            <Icon name="plus" size={13} /> Add clip…
+          </button>
+          <button style={item} onClick={() => { setOpen(false); onAddTitle?.(); }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+            <Icon name="image-plus" size={13} /> Title card…
+          </button>
+        </div>
+      )}
     </div>
   );
 }

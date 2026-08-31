@@ -387,3 +387,53 @@ class TestOutputCodec:
         cmd = build_audio_estim_command(p, layout, "stereostim.wav", out)
         assert "pcm_s16le" in cmd.output_args
         assert "libmp3lame" not in cmd.output_args
+
+
+# ── bundle-supplied audio ────────────────────────────────────────────
+# Audio imported from a `.forge` bundle lives in the extraction cache, not
+# beside the video, so the sibling scan can never see it. These cover the
+# explicit path winning and the channel showing up in discovery at all.
+def test_explicit_audio_wins_over_the_sibling_scan(tmp_path):
+    from forgeassembler_core.concat_audio_estim import _resolve_channel_audio_path
+    from forgeassembler_core.project import Segment
+
+    (tmp_path / "clip.mp4").write_text("v", encoding="utf-8")
+    sibling = tmp_path / "clip.mp3"
+    sibling.write_text("sibling", encoding="utf-8")
+    cached = tmp_path / "cache" / "stim.mp3"
+    cached.parent.mkdir()
+    cached.write_text("bundle", encoding="utf-8")
+
+    seg = Segment(id="s", video=str(tmp_path / "clip.mp4"),
+                  explicit_audio_estim={"mp3": str(cached)})
+    assert _resolve_channel_audio_path(seg, "mp3") == cached
+
+
+def test_explicit_audio_that_has_gone_missing_falls_to_silence(tmp_path):
+    """A stale cache entry must silence-fill, not crash the forge."""
+    from forgeassembler_core.concat_audio_estim import _resolve_channel_audio_path
+    from forgeassembler_core.project import Segment
+
+    (tmp_path / "clip.mp4").write_text("v", encoding="utf-8")
+    seg = Segment(id="s", video=str(tmp_path / "clip.mp4"),
+                  explicit_audio_estim={"mp3": str(tmp_path / "gone.mp3")})
+    assert _resolve_channel_audio_path(seg, "mp3") is None
+
+
+def test_discovery_sees_channels_only_the_bundle_supplies(tmp_path):
+    """Without this the channel is never discovered, so the engine never
+    emits it — the audio would sit in the cache unused."""
+    from forgeassembler_core.concat_audio_estim import discover_channels_in_layout
+    from forgeassembler_core.layout import lay_out
+    from forgeassembler_core.project import Project, Section, Segment
+
+    (tmp_path / "clip.mp4").write_text("v", encoding="utf-8")
+    cached = tmp_path / "cache" / "stim.mp3"
+    cached.parent.mkdir()
+    cached.write_text("bundle", encoding="utf-8")
+
+    seg = Segment(id="s", video=str(tmp_path / "clip.mp4"),
+                  explicit_audio_estim={"prostate.mp3": str(cached)})
+    project = Project(sections=[Section(id="sec", segments=[seg])])
+    layout = lay_out(project, probe=lambda _p: 10_000)
+    assert "prostate.mp3" in discover_channels_in_layout(project, layout)

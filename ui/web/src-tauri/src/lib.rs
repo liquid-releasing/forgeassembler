@@ -26,6 +26,7 @@ pub fn run() {
             commands::forge_project,
             commands::load_project,
             commands::save_project,
+            commands::read_sidecar,
             commands::probe_duration,
             commands::extract_thumbnail,
             commands::pick_folder,

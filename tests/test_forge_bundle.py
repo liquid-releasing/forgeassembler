@@ -228,3 +228,99 @@ def test_real_victoriaoaks_full_multichannel_bundle(tmp_path):
     seg = forge_bundle_to_segment(b, video="C:/clips/VictoriaOaks.mp4")
     assert seg.funscripts_source == "explicit"
     assert len(seg.explicit_funscripts) == len(b.channels) == 15
+
+
+# ── rich bundles: audio, analysis sidecars, thumbnails ───────────────
+# The 2026-08 FunscriptForge export carries far more than funscripts. All
+# of it used to be extracted and then dropped on the floor: the audio had
+# nowhere to live on a Segment, and the sidecars/thumbnails were never
+# surfaced at all — so a forge wrote no haptic audio and a preview had to
+# re-derive analysis the bundle was already carrying.
+def _rich_manifest(stem: str = "Scene") -> dict:
+    return {
+        "version": 1, "schema": "ffmeta/v1", "stem": stem,
+        "created_with": "FunscriptForge", "duration_ms": 60000,
+        "project_id": "rich0001", "project_version": 3,
+        "artifacts": [
+            {"path": "motion.funscript", "kind": "funscript", "role": "stroke", "axis": "L0"},
+            {"path": "audio/stim.mp3", "kind": "audio", "role": "estim", "format": "mp3"},
+            {"path": "audio/stim-prostate.mp3", "kind": "audio", "role": "estim-prostate", "format": "mp3"},
+            {"path": "audio/beat.mp3", "kind": "audio", "role": "beat", "format": "mp3"},
+            {"path": "audio.json", "kind": "sidecar", "analysis": "audio"},
+            {"path": "beats.json", "kind": "sidecar", "analysis": "beats"},
+            {"path": "chapters.json", "kind": "sidecar", "analysis": "chapters"},
+            {"path": "thumbnails/hero.png", "kind": "thumbnail", "role": "hero"},
+            {"path": "thumbnails/chapter_01.png", "kind": "thumbnail", "role": "chapter", "index": 1},
+        ],
+    }
+
+
+@pytest.fixture
+def rich_bundle(tmp_path) -> Path:
+    return _write_bundle(
+        tmp_path / "Scene.forge", _rich_manifest(),
+        {
+            "motion.funscript": _fake_funscript(),
+            "audio/stim.mp3": "ID3-stim",
+            "audio/stim-prostate.mp3": "ID3-prostate",
+            "audio/beat.mp3": "ID3-beat",
+            "audio.json": '{"hop_ms": 10, "peaks": [0, 1]}',
+            "beats.json": '{"bpm": 120, "beats_ms": [0, 500]}',
+            "chapters.json": '{"chapters": []}',
+            "thumbnails/hero.png": "PNG",
+            "thumbnails/chapter_01.png": "PNG",
+        },
+    )
+
+
+def test_audio_roles_map_to_engine_channel_keys(rich_bundle, tmp_path):
+    """The engine names channels after the filename suffix a sibling would
+    have had, and names its outputs to match — so bundle audio has to
+    arrive under those keys, not under bundle-internal role names."""
+    b = detect_forge_bundle(rich_bundle, cache_root=tmp_path / "cache")
+    assert set(b.audio_estim) == {"mp3", "prostate.mp3", "beat.mp3"}
+    assert b.audio_estim["mp3"].name == "stim.mp3"
+    assert b.audio_estim["prostate.mp3"].name == "stim-prostate.mp3"
+
+
+def test_unknown_audio_role_passes_through_rather_than_vanishing(tmp_path):
+    m = _rich_manifest()
+    m["artifacts"].append(
+        {"path": "audio/wibble.mp3", "kind": "audio", "role": "wibble", "format": "mp3"},
+    )
+    p = _write_bundle(tmp_path / "S.forge", m, {
+        "motion.funscript": _fake_funscript(), "audio/wibble.mp3": "ID3",
+    })
+    b = detect_forge_bundle(p, cache_root=tmp_path / "cache")
+    assert b.audio_estim["wibble.mp3"].name == "wibble.mp3"
+
+
+def test_sidecars_and_thumbnails_are_surfaced(rich_bundle, tmp_path):
+    b = detect_forge_bundle(rich_bundle, cache_root=tmp_path / "cache")
+    assert set(b.sidecars) == {"audio", "beats", "chapters"}
+    assert b.sidecars["audio"].is_file()
+    # A per-chapter still keeps its index so several can coexist.
+    assert set(b.thumbnails) == {"hero", "chapter_1"}
+    assert b.thumbnails["hero"].name == "hero.png"
+
+
+def test_segment_carries_the_bundles_audio(rich_bundle, tmp_path):
+    b = detect_forge_bundle(rich_bundle, cache_root=tmp_path / "cache")
+    seg = forge_bundle_to_segment(b, video=tmp_path / "clip.mp4")
+    assert set(seg.explicit_audio_estim) == {"mp3", "prostate.mp3", "beat.mp3"}
+    assert seg.explicit_audio_estim["mp3"].endswith("stim.mp3")
+
+
+def test_explicit_audio_estim_round_trips_through_json(rich_bundle, tmp_path):
+    b = detect_forge_bundle(rich_bundle, cache_root=tmp_path / "cache")
+    seg = forge_bundle_to_segment(b, video=tmp_path / "clip.mp4")
+    from forgeassembler_core.project import Segment
+    back = Segment.from_dict(json.loads(json.dumps(seg.to_dict())))
+    assert back.explicit_audio_estim == seg.explicit_audio_estim
+
+
+def test_segment_without_bundle_audio_writes_no_audio_key(tmp_path):
+    """Projects that never touched a bundle keep their old JSON exactly."""
+    from forgeassembler_core.project import Segment
+    seg = Segment(id="s1", video="clip.mp4")
+    assert "audio_estim" not in seg.to_dict()
