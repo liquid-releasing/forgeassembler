@@ -394,3 +394,42 @@ def test_a_cache_from_an_older_build_is_refreshed_once(tmp_path):
     _versioned_bundle(b, 77)
     again = detect_forge_bundle(b, cache_root=cache)
     assert json.loads(again.funscripts["main"].read_text())["actions"][0]["pos"] == 77
+
+
+# ── listing the scenes in a folder ("Add folder" adds one SECTION each) ──
+
+def test_forge_bundles_in_lists_only_dot_forge(tmp_path):
+    from forgeassembler_core.forge_bundle import forge_bundles_in
+    (tmp_path / "b.forge").write_bytes(b"")
+    (tmp_path / "a.forge").write_bytes(b"")
+    (tmp_path / "clip.mp4").write_bytes(b"")
+    (tmp_path / "clip.funscript").write_text("{}", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "deep.forge").write_bytes(b"")  # shallow: not listed
+    names = [p.name for p in forge_bundles_in(tmp_path)]
+    assert names == ["a.forge", "b.forge"]
+
+
+def test_forge_bundles_in_is_case_insensitively_sorted(tmp_path):
+    """Section order must be stable and human — v5 shouldn't sort before
+    v1 because someone capitalised the V."""
+    from forgeassembler_core.forge_bundle import forge_bundles_in
+    for n in ("jay V5.forge", "jay v1.forge", "jay v10.forge"):
+        (tmp_path / n).write_bytes(b"")
+    assert [p.name for p in forge_bundles_in(tmp_path)] == [
+        "jay v1.forge", "jay v10.forge", "jay V5.forge",
+    ]
+
+
+def test_forge_bundles_in_empty_folder(tmp_path):
+    from forgeassembler_core.forge_bundle import forge_bundles_in
+    assert forge_bundles_in(tmp_path) == []
+
+
+def test_forge_bundles_in_rejects_a_file(tmp_path):
+    from forgeassembler_core.forge_bundle import forge_bundles_in
+    f = tmp_path / "x.forge"
+    f.write_bytes(b"")
+    with pytest.raises(NotADirectoryError):
+        forge_bundles_in(f)
+

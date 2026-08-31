@@ -10,7 +10,7 @@ import { PreviewBand } from './PreviewBand';
 import { OpenProjectDialog, SaveAsDialog, UnsavedChangesDialog } from './ProjectIO';
 import { Section, TitleEditor } from './TitleEditor';
 import { FA_DATA } from './data';
-import { loadProject, saveProject, pickFolder, pickFile, detectFolder, probeDuration,
+import { loadProject, saveProject, pickFolder, pickFile, detectFolder, detectForgeFolder, probeDuration,
          forgeProject, onForgeProgress, revealPath, validateProject,
          importForgeBundle } from './api/forge';
 import { fromForgeProject, toForgeProject, fromDetected, fromForgeBundleSegment } from './lib/projectAdapter';
@@ -112,6 +112,9 @@ function App() {
   const [ioDialog,      setIoDialog]      = useState(null);
   const [pendingAfterSave, setPendingAfterSave] = useState(null);
   const [ioError,       setIoError]       = useState(null);
+  // Batch .forge import progress: { done, total, name } | null. Importing
+  // a folder of scenes extracts each bundle, which is not instant.
+  const [batchImport,   setBatchImport]   = useState(null);
 
   // ── Recent projects (localStorage-backed) ──────────────────────
   // Real history, not mock rows: every successful Open / Save-As pushes the
@@ -366,6 +369,10 @@ function App() {
       await saveProject(savedPath, toForgeProject(project, { folder: project.output?.folder }));
       setDirty(false);
       setLastSavedAtMs(Date.now());
+      // Save-in-place refreshes the recents entry too. Only Save-As did,
+      // so a project that fell off the end of the list (or whose entry was
+      // lost) never came back no matter how often you saved it.
+      pushRecent(savedPath, project.name);
     } catch (e) {
       console.error('[save] failed', e);
       setIoError(`Couldn't save ${savedPath}: ${e?.message || e}`);
@@ -530,35 +537,68 @@ function App() {
     }));
   }
 
-  // ── Add clips from a FOLDER (batch detect) — the header "Add folder…" ──
+  // ── Add a FOLDER of .forge scenes — the header "Add folder…" ──
+  // The standard: a `.forge` file is a finished SCENE, and a scene is a
+  // SECTION (which is what becomes a chapter). So a folder of scenes
+  // becomes a run of sections in name order, ready for the user to
+  // decorate with titles and joiners. Loose videos are not what this
+  // button is for — that's "Add clip" inside a section.
   async function handleAddClips(sectionId, atIndex = null) {
     setIoError(null);
     const folder = await pickFolder();
     if (!folder) return;
     let payload;
     try {
-      payload = await detectFolder(folder);
+      payload = await detectForgeFolder(folder);
     } catch (e) {
-      console.error('[detect] failed', e);
+      console.error('[detect-forge] failed', e);
       setIoError(`Couldn't scan ${folder}: ${e?.message || e}`);
       return;
     }
-    const stamp = Date.now();
-    const newSegs = fromDetected(payload).map((s, i) => ({ ...s, id: `${s.id}-${stamp}-${i}` }));
-    if (!newSegs.length) {
-      setIoError(`No clips found in ${folder}.`);
+    const bundles = payload?.bundles || [];
+    if (!bundles.length) {
+      // Say what this button looks for. Silence here reads as a bug, and
+      // a folder of loose videos is the likeliest reason to find none.
+      setIoError(`No .forge scenes in ${folder}. `
+        + `"Add folder" adds finished .forge scenes — to add a plain video, `
+        + `use "Add clip" inside a section.`);
       return;
     }
-    appendSegments(newSegs, sectionId, atIndex);
+
+    setBatchImport({ done: 0, total: bundles.length, name: bundles[0].stem });
+    const skipped = [];
+    try {
+      for (let i = 0; i < bundles.length; i++) {
+        const b = bundles[i];
+        setBatchImport({ done: i, total: bundles.length, name: b.stem });
+        // `false` = don't prompt for a missing video. Ten dialogs in a row
+        // is not a workflow; collect the unresolved ones and say so once.
+        const ok = await importForgeBundleToSection(b.path, sectionId, { prompt: false });
+        if (!ok) skipped.push(b.stem);
+      }
+    } finally {
+      setBatchImport(null);
+    }
+    if (skipped.length) {
+      setIoError(`Added ${bundles.length - skipped.length} of ${bundles.length} scenes. `
+        + `Couldn't resolve the source video for: ${skipped.join(', ')}. `
+        + `Add those with "Add .forge scene…" to pick each video.`);
+    }
   }
 
-  // ── Add ONE clip — a video file OR a .forge scene (per-section "Add clip") ──
+  // ── Add ONE clip to an existing section (the section header's "Add clip") ──
+  // A video (plus whatever funscripts sit beside it) joins THIS section,
+  // so it shares the section's chapter rather than starting a new one —
+  // that's how you put a title card or a second angle inside a scene.
+  // Finished `.forge` scenes go through "Add .forge scene…" and get their
+  // own section; one picked here is still honoured into this section,
+  // because an explicit target beats the default.
   async function handleAddClip(sectionId, atIndex = null) {
     setIoError(null);
     const path = await pickFile({
-      title: 'Add a clip — pick a video or a .forge scene',
-      filterName: 'Video or .forge scene',
-      extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi', 'forge'],
+      title: 'Add a clip to this section — pick a video or still',
+      filterName: 'Video or still image',
+      extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi', 'png', 'jpg', 'jpeg', 'webp'],
     });
     if (!path) return;
     if (/\.forge$/i.test(path)) {
@@ -580,36 +620,40 @@ function App() {
   // Import a `.forge` bundle into a section: explicit channel map, with a
   // relink prompt when the lean bundle carries no media. Shared by the
   // "Add .forge scene…" header button and the per-section "Add clip".
-  async function importForgeBundleToSection(bundle, sectionId) {
+  // `prompt: false` (batch import) never opens a relink dialog — it
+  // returns false so the caller can collect the unresolved scenes and
+  // report them once, instead of firing one modal per bundle.
+  async function importForgeBundleToSection(bundle, sectionId, { prompt = true } = {}) {
     let payload;
     try {
       payload = await importForgeBundle(bundle);
     } catch (e) {
       console.error('[import-forge] failed', e);
-      setIoError(`Couldn't import ${bundle}: ${e?.message || e}`);
-      return;
+      if (prompt) setIoError(`Couldn't import ${bundle}: ${e?.message || e}`);
+      return false;
     }
     if (payload?.needs_video) {
+      if (!prompt) return false;
       const video = await pickFile({
         title: `Select the source VIDEO for “${payload.stem || 'this scene'}”`,
         filterName: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'],
       });
       if (!video) {
         setIoError(`Import canceled — “${payload.stem || 'scene'}” needs a source video to relink.`);
-        return;
+        return false;
       }
       try {
         payload = await importForgeBundle(bundle, { video });
       } catch (e) {
         console.error('[import-forge] relink failed', e);
         setIoError(`Couldn't relink video: ${e?.message || e}`);
-        return;
+        return false;
       }
     }
     const seg = fromForgeBundleSegment(payload?.segment, payload);
     if (!seg) {
-      setIoError(`Import produced no segment for ${payload?.stem || bundle}.`);
-      return;
+      if (prompt) setIoError(`Import produced no segment for ${payload?.stem || bundle}.`);
+      return false;
     }
     seg.id = `${seg.id || 'seg'}-${Date.now()}`;
     // A `.forge` scene is a finished scene, and a SECTION is what becomes
@@ -619,9 +663,10 @@ function App() {
     // compilation a single chapter marker at 0:00 — nothing to navigate to.
     if (sectionId) {
       appendSegments([seg], sectionId);
-      return;
+      return true;
     }
     appendSegmentsAsNewSection([seg]);
+    return true;
   }
 
   // Append a new section holding `segs`, named after the first one — so
@@ -1112,7 +1157,36 @@ function App() {
       )}
 
       {/* Open/save error toast */}
-      {ioError && (
+      {/* Batch .forge import — each bundle is extracted, so a folder of
+          nine scenes is seconds of work with nothing on screen otherwise. */}
+      {batchImport && (
+        <div style={{
+          position: "fixed", bottom: 56, left: "50%", transform: "translateX(-50%)",
+          zIndex: 60, minWidth: 360, maxWidth: 560,
+          padding: "10px 14px", borderRadius: 8,
+          background: "var(--surface)", border: "1px solid var(--accent)",
+          boxShadow: "var(--elev-3)", color: "var(--text)", fontSize: 12.5,
+        }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ flex: 1 }}>
+              Importing scene {Math.min(batchImport.done + 1, batchImport.total)} of {batchImport.total}
+            </span>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)",
+                                             overflow: "hidden", textOverflow: "ellipsis",
+                                             whiteSpace: "nowrap", maxWidth: 260 }}>
+              {batchImport.name}
+            </span>
+          </div>
+          <div style={{ height: 4, marginTop: 8, borderRadius: 2,
+                         background: "var(--surface-2)", overflow: "hidden" }}>
+            <span style={{ display: "block", height: "100%",
+                            width: `${(batchImport.done / batchImport.total) * 100}%`,
+                            background: "var(--accent)", transition: "width 120ms" }} />
+          </div>
+        </div>
+      )}
+
+      {ioError && !batchImport && (
         <div style={{
           position: "fixed", bottom: 56, left: "50%", transform: "translateX(-50%)",
           zIndex: 60, maxWidth: 560,

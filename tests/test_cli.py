@@ -380,3 +380,23 @@ def test_preview_returns_every_action_when_the_script_is_short(tmp_path):
             "--max-points", "10000")
     out = _json.loads(r.stdout)
     assert len(out["points"]) == out["action_count"]
+
+
+def test_cli_detect_forge_json_lists_bundles(tmp_path):
+    """`detect-forge --format json` backs the Build tab's Add folder,
+    which adds one SECTION per scene."""
+    (tmp_path / "two.forge").write_bytes(b"")
+    (tmp_path / "one.forge").write_bytes(b"")
+    (tmp_path / "ignored.mp4").write_bytes(b"")
+    r = run("detect-forge", str(tmp_path), "--format", "json")
+    assert r.returncode == 0
+    payload = json.loads(r.stdout)
+    assert [b["stem"] for b in payload["bundles"]] == ["one", "two"]
+    assert payload["bundles"][0]["path"].endswith("one.forge")
+
+
+def test_cli_detect_forge_rejects_a_non_directory(tmp_path):
+    r = run("detect-forge", str(tmp_path / "nope"))
+    assert r.returncode == 2
+    assert "not a directory" in r.stderr.lower()
+

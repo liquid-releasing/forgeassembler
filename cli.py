@@ -35,6 +35,7 @@ from forgeassembler_core import (
     Segment,
     categorize_channels,
     detect_folder,
+    forge_bundles_in,
     forge_funscripts,
     forge_video,
     joiner_specs,
@@ -133,6 +134,35 @@ def cmd_list_joiners(args: argparse.Namespace) -> int:
                 label = info.get("label", name)
                 print(f"    {name}  ({typ}, default={default!r}) — {label}")
         print()
+    return 0
+
+
+def cmd_detect_forge(args: argparse.Namespace) -> int:
+    """List the `.forge` bundles in a folder, without opening any of them.
+
+    Backs the Build tab's "Add folder", which adds one SECTION per scene
+    (a section is what becomes a chapter). Shallow and cheap on purpose —
+    the UI imports each bundle separately so it can report progress and
+    keep going when one needs its video relinked.
+    """
+    folder = Path(args.folder)
+    try:
+        bundles = forge_bundles_in(folder)
+    except NotADirectoryError:
+        print(f"ERROR: not a directory: {folder}", file=sys.stderr)
+        return 2
+    payload = {
+        "folder": str(folder),
+        "bundles": [{"path": str(b), "stem": b.stem} for b in bundles],
+    }
+    if getattr(args, "format", "text") == "json":
+        print(json.dumps(payload))
+        return 0
+    if not bundles:
+        print(f"No .forge scenes found in {folder}.")
+        return 0
+    for b in bundles:
+        print(b.name)
     return 0
 
 
@@ -765,6 +795,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_detect.add_argument("--format", choices=("text", "json"), default="text",
                           help="json: emit a {clips:[...]} object for the UI")
     p_detect.set_defaults(func=cmd_detect)
+
+    p_detect_forge = sub.add_parser(
+        "detect-forge", help="list the .forge scenes in a folder")
+    p_detect_forge.add_argument("folder", help="folder to scan")
+    p_detect_forge.add_argument("--format", choices=("text", "json"), default="text",
+                                help="json: emit a {bundles:[...]} object for the UI")
+    p_detect_forge.set_defaults(func=cmd_detect_forge)
 
     p_import = sub.add_parser(
         "import-forge",

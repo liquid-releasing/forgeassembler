@@ -51,6 +51,14 @@ export function detectFolder(path) {
     call('detect_folder', { path }, () => Promise.resolve({ clips: [] })));
 }
 
+// List the `.forge` scenes in a folder. Resolves to
+// { folder, bundles: [{path, stem}] } — shallow, so a folder of 50 scenes
+// answers instantly; the caller imports them one at a time.
+export function detectForgeFolder(path) {
+  return dedupedCall(`detect_forge_folder::${path}`, () =>
+    call('detect_forge_folder', { path }, () => Promise.resolve({ bundles: [] })));
+}
+
 export function validateProject(path) {
   return dedupedCall(`validate_project::${path}`, () =>
     call('validate_project', { path }, () =>

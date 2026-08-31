@@ -43,6 +43,7 @@ from .forge_bundle import (
     ForgeBundle,
     detect_forge_bundle,
     forge_bundle_to_segment,
+    forge_bundles_in,
     is_forge_bundle,
 )
 from .filters import (
@@ -140,6 +141,7 @@ __all__ = [
     "detect_folder_tree",
     "detect_forge_bundle",
     "forge_bundle_to_segment",
+    "forge_bundles_in",
     "is_forge_bundle",
     "fade_to_black_audio_acrossfade",
     "fade_to_black_xfade",

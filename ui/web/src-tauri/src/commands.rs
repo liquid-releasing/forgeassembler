@@ -219,6 +219,14 @@ pub async fn detect_folder(path: String) -> Result<Value, String> {
     run_cli_json(&["detect", &path, "--format", "json"]).await
 }
 
+/// List the `.forge` scenes in a folder (`cli.py detect-forge <folder>
+/// --format json`). Shallow — no bundle is opened — so "Add folder" can
+/// show what it found before importing any of them.
+#[tauri::command]
+pub async fn detect_forge_folder(path: String) -> Result<Value, String> {
+    run_cli_json(&["detect-forge", &path, "--format", "json"]).await
+}
+
 /// Import a FunscriptForge `.forge` bundle as one Segment
 /// (`cli.py import-forge <bundle> [--video PATH] --format json`). Returns the
 /// channel map + (when relinkable) the Segment dict to append.

@@ -617,7 +617,9 @@ function SectionHeader({ section, idx, total, density, chapterStartMs, onAddTitl
         <Pill style={{ fontSize: 10 }}>{section.segments.length} clip{section.segments.length === 1 ? "" : "s"}</Pill>
         <div style={{ flex: 1 }} />
         <Button kind="ghost" size="sm" icon="image-plus" onClick={() => onAddTitle?.(section.id)}>Title card</Button>
-        <Button kind="ghost" size="sm" icon="plus" onClick={() => onAddClip?.(section.id)}>Add clip</Button>
+        <Button kind="ghost" size="sm" icon="plus"
+                 title="Add a video or still to THIS section — it shares this chapter rather than starting a new one"
+                 onClick={() => onAddClip?.(section.id)}>Add clip</Button>
         <Button kind="ghost" size="icon" title="Rename / configure"
                 onClick={() => setEditing(true)}><Icon name="pencil" size={14} /></Button>
         {total > 1 && (
@@ -1121,8 +1123,10 @@ function BuildTab({ project, density, buildLayout, joinerStyle, sectionGrouping,
         right={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Button kind="secondary" size="sm" icon="folder-plus"
+                     title="Pick a folder of finished .forge scenes — each becomes its own section, and its own chapter"
                      onClick={() => onAddClips?.(null)}>Add folder…</Button>
             <Button kind="secondary" size="sm" icon="package"
+                     title="Add one finished .forge scene as its own section (and chapter)"
                      onClick={() => onAddForgeScene?.(null)}>Add .forge scene…</Button>
             <Button kind="primary" size="sm" icon="type"
                      onClick={() => onOpenTitleEditor()}>New title card</Button>

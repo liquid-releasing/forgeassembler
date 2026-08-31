@@ -109,6 +109,23 @@ def _read_manifest_from_zip(p: Path) -> dict:
 # new contents — so a stale cache would quietly outrank the bundle. The
 # `.forge` file is the source of truth about a clip; this stamp is what
 # keeps that true.
+def forge_bundles_in(folder: str | Path) -> list[Path]:
+    """Every `.forge` bundle directly inside `folder`, name-sorted.
+
+    Deliberately shallow and cheap: no zip is opened, so a folder of 50
+    scenes lists instantly and the caller decides which to actually
+    import. Sorted so "Add folder" produces the same section order every
+    time (vol 1, vol 2, ...).
+    """
+    d = Path(folder)
+    if not d.is_dir():
+        raise NotADirectoryError(d)
+    return sorted(
+        (f for f in d.iterdir() if f.is_file() and f.suffix.lower() == ".forge"),
+        key=lambda f: f.name.lower(),
+    )
+
+
 SOURCE_STAMP_NAME = ".source.json"
 
 

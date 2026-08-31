@@ -21,6 +21,7 @@ pub fn run() {
             commands::ping,
             commands::list_joiners,
             commands::detect_folder,
+            commands::detect_forge_folder,
             commands::import_forge_bundle,
             commands::validate_project,
             commands::forge_project,
