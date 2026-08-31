@@ -30,6 +30,7 @@ never cross.
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import zipfile
 from dataclasses import dataclass, field
@@ -100,6 +101,33 @@ def _read_manifest_from_zip(p: Path) -> dict:
         if MANIFEST_NAME not in z.namelist():
             raise ValueError(f"bundle missing {MANIFEST_NAME}: {p}")
         return json.loads(z.read(MANIFEST_NAME).decode("utf-8"))
+
+
+# Records which .forge file an extraction came from. The cache key alone
+# (project_id + version) cannot tell a re-export apart from the export it
+# replaced — FunscriptForge does not have to bump project_version to write
+# new contents — so a stale cache would quietly outrank the bundle. The
+# `.forge` file is the source of truth about a clip; this stamp is what
+# keeps that true.
+SOURCE_STAMP_NAME = ".source.json"
+
+
+def _source_stamp(bundle_path: Path) -> dict:
+    st = bundle_path.stat()
+    return {"path": str(bundle_path), "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def _cache_is_fresh(cache_dir: Path, bundle_path: Path) -> bool:
+    """True when `cache_dir` holds this exact bundle, already extracted."""
+    if not (cache_dir / MANIFEST_NAME).is_file():
+        return False
+    try:
+        stamped = json.loads((cache_dir / SOURCE_STAMP_NAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        # Extracted by an older build that wrote no stamp — re-extract once
+        # rather than trust it.
+        return False
+    return stamped == _source_stamp(bundle_path)
 
 
 def _cache_dir_for(manifest: dict, cache_root: Path) -> Path:
@@ -239,7 +267,12 @@ def detect_forge_bundle(
     root = Path(cache_root) if cache_root else Path(tempfile.gettempdir()) / "forgeassembler_bundles"
     cache_dir = _cache_dir_for(manifest, root)
 
-    if not (cache_dir / MANIFEST_NAME).is_file():
+    if not _cache_is_fresh(cache_dir, p):
+        # Clear it out first: a re-export can drop artifacts as well as add
+        # them, and extracting over the top would leave the deleted ones
+        # lying around to be mapped as though they were still current.
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir, ignore_errors=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(p) as z:
             # Trusted FunscriptForge output; guard against path escape anyway.
@@ -248,6 +281,9 @@ def detect_forge_bundle(
                 if not str(dest).startswith(str(cache_dir.resolve())):
                     raise ValueError(f"unsafe path in bundle: {member}")
             z.extractall(cache_dir)
+        (cache_dir / SOURCE_STAMP_NAME).write_text(
+            json.dumps(_source_stamp(p)), encoding="utf-8",
+        )
 
     # Re-read from the extracted copy (authoritative on disk).
     manifest = json.loads((cache_dir / MANIFEST_NAME).read_text(encoding="utf-8"))

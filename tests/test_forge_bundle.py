@@ -324,3 +324,73 @@ def test_segment_without_bundle_audio_writes_no_audio_key(tmp_path):
     from forgeassembler_core.project import Segment
     seg = Segment(id="s1", video="clip.mp4")
     assert "audio_estim" not in seg.to_dict()
+
+
+# ── the .forge file is the source of truth ───────────────────────────
+# The cache key is project_id + project_version, but FunscriptForge does
+# not have to bump the version to write new contents — so keying on it
+# alone let a stale extraction quietly outrank the bundle the user just
+# re-exported.
+def _versioned_bundle(path: Path, pos: int, *, extra: str | None = None) -> Path:
+    m = {
+        "version": 1, "schema": "ffmeta/v1", "stem": "Scene",
+        "created_with": "FunscriptForge", "duration_ms": 1000,
+        "project_id": "same0001", "project_version": 1,
+        "artifacts": [{"path": "motion.funscript", "kind": "funscript", "role": "stroke", "axis": "L0"}],
+    }
+    files = {"motion.funscript": json.dumps({"actions": [{"at": 0, "pos": pos}]})}
+    if extra:
+        m["artifacts"].append({"path": extra, "kind": "sidecar", "analysis": "beats"})
+        files[extra] = "{}"
+    return _write_bundle(path, m, files)
+
+
+def test_re_export_at_the_same_version_is_picked_up(tmp_path):
+    b = tmp_path / "Scene.forge"
+    cache = tmp_path / "cache"
+    _versioned_bundle(b, 10)
+    first = detect_forge_bundle(b, cache_root=cache)
+    assert json.loads(first.funscripts["main"].read_text())["actions"][0]["pos"] == 10
+
+    _versioned_bundle(b, 99)
+    again = detect_forge_bundle(b, cache_root=cache)
+    assert json.loads(again.funscripts["main"].read_text())["actions"][0]["pos"] == 99
+
+
+def test_re_export_that_drops_an_artifact_drops_it_here_too(tmp_path):
+    """Extracting over the top would leave the removed file behind, and the
+    manifest pass would map it as though it were still current."""
+    b = tmp_path / "Scene.forge"
+    cache = tmp_path / "cache"
+    _versioned_bundle(b, 10, extra="beats.json")
+    assert set(detect_forge_bundle(b, cache_root=cache).sidecars) == {"beats"}
+
+    _versioned_bundle(b, 10)  # same content, sidecar removed
+    assert detect_forge_bundle(b, cache_root=cache).sidecars == {}
+
+
+def test_an_unchanged_bundle_is_not_re_extracted(tmp_path):
+    """The cache still has to earn its keep — re-importing an untouched
+    bundle must not unzip it again."""
+    from forgeassembler_core.forge_bundle import MANIFEST_NAME
+
+    b = tmp_path / "Scene.forge"
+    cache = tmp_path / "cache"
+    first = detect_forge_bundle(b if b.exists() else _versioned_bundle(b, 10), cache_root=cache)
+    stamp = (first.cache_dir / MANIFEST_NAME).stat().st_mtime_ns
+    again = detect_forge_bundle(b, cache_root=cache)
+    assert (again.cache_dir / MANIFEST_NAME).stat().st_mtime_ns == stamp
+
+
+def test_a_cache_from_an_older_build_is_refreshed_once(tmp_path):
+    """Caches written before the stamp existed carry no provenance, so they
+    are re-extracted rather than trusted."""
+    from forgeassembler_core.forge_bundle import SOURCE_STAMP_NAME
+
+    b = _versioned_bundle(tmp_path / "Scene.forge", 10)
+    cache = tmp_path / "cache"
+    first = detect_forge_bundle(b, cache_root=cache)
+    (first.cache_dir / SOURCE_STAMP_NAME).unlink()
+    _versioned_bundle(b, 77)
+    again = detect_forge_bundle(b, cache_root=cache)
+    assert json.loads(again.funscripts["main"].read_text())["actions"][0]["pos"] == 77
