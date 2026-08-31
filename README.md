@@ -4,7 +4,7 @@ Build a long haptic video from many short ones. Edit the individual clips in [Fu
 
 A small, local desktop app — no account, no cloud, no telemetry. Runs on Windows, macOS, and Linux.
 
-**Download:** [latest release](https://github.com/liquid-releasing/forgeassembler-releases/releases/latest) · **Community:** [Discord](https://discord.gg/sZWCqgxY)
+**Download:** [latest release](https://github.com/liquid-releasing/forgeassembler-releases/releases/latest) · **Community:** [Discord](https://discord.gg/UHdJFhEZF)
 
 ---
 

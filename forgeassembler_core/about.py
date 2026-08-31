@@ -54,7 +54,7 @@ Written by human and Claude AI (Anthropic).
 #### Community
 
 Questions, bug reports, and feedback welcome in
-[our Discord](https://discord.gg/sZWCqgxY).
+[our Discord](https://discord.gg/UHdJFhEZF).
 
 ---
 
@@ -80,7 +80,7 @@ def about_text() -> str:
         "  - Streamlit (Apache 2.0)\n"
         "  - PyWebView (BSD 3-Clause)\n\n"
         "Written by human and Claude AI (Anthropic).\n\n"
-        "Community: discord.gg/sZWCqgxY\n\n"
+        "Community: discord.gg/UHdJFhEZF\n\n"
         f"{APP_NAME} is a trademark of Liquid Releasing.\n"
         "(c) 2026 Liquid Releasing. MIT License."
     )

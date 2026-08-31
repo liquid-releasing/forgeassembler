@@ -75,7 +75,7 @@ Example:
 File the report on
 [the ForgeAssembler issue tracker](https://github.com/liquid-releasing/forgeassembler/issues)
 or drop it in the
-[Liquid Releasing Discord](https://discord.gg/sZWCqgxY).
+[Liquid Releasing Discord](https://discord.gg/UHdJFhEZF).
 
 ## When NOT to use debug mode
 

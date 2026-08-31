@@ -223,7 +223,7 @@ jobs:
 
             See the [Getting Started guide](https://liquid-releasing.github.io/forgeassembler/guide/getting-started/) for a first-run walkthrough.
 
-            Questions, bug reports, and feedback welcome in [our Discord](https://discord.gg/sZWCqgxY).
+            Questions, bug reports, and feedback welcome in [our Discord](https://discord.gg/UHdJFhEZF).
           append_body: true
           # Auto-prepend the commit/PR list since the previous tag.
           # Cheap per-version "what's new" without maintaining a

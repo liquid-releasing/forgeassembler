@@ -512,7 +512,7 @@ with st.sidebar:
         &nbsp;·&nbsp;
         <a href="https://github.com/liquid-releasing/forgeassembler/blob/main/LICENSE" target="_blank">MIT License</a>
         &nbsp;·&nbsp;
-        <a href="https://discord.gg/sZWCqgxY" target="_blank">Discord</a>
+        <a href="https://discord.gg/UHdJFhEZF" target="_blank">Discord</a>
         </center>
         """,
         unsafe_allow_html=True,

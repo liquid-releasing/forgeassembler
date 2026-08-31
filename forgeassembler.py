@@ -237,7 +237,7 @@ def main() -> int:
                 ),
                 MenuAction(
                     "Discord (community)",
-                    _open("https://discord.gg/sZWCqgxY"),
+                    _open("https://discord.gg/UHdJFhEZF"),
                 ),
                 MenuAction(
                     "GitHub repo",
