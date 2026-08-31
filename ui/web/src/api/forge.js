@@ -72,6 +72,15 @@ export function loadProject(path) {
     call('load_project', { path }, () => Promise.resolve(null)));
 }
 
+// Summarise the combined funscript for the Build tab's live strip. Takes
+// the project object, not a path, so the strip describes what is being
+// edited right now rather than the last save. Resolves to
+// { channel, duration_ms, action_count, avg_bpm, peak_speed, peak_velocity,
+//   bins: [{speed, v, seg_id, section_id}] }.
+export function previewProject(project, channel = 'main') {
+  return call('preview_project', { project, channel }, () => Promise.resolve(null));
+}
+
 // Read one analysis sidecar a `.forge` bundle carried (peaks / beats /
 // chapters / phrases / characters), from its extraction cache. Resolves to
 // null when the bundle didn't ship that one — a lean bundle has none, and

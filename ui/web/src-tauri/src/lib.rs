@@ -27,6 +27,7 @@ pub fn run() {
             commands::load_project,
             commands::save_project,
             commands::read_sidecar,
+            commands::preview_project,
             commands::probe_duration,
             commands::extract_thumbnail,
             commands::pick_folder,

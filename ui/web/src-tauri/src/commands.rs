@@ -295,6 +295,32 @@ pub async fn load_project(path: String) -> Result<Value, String> {
     serde_json::from_str(&raw).map_err(|e| format!("parse {}: {}", path, e))
 }
 
+/// Summarise the COMBINED funscript for the Build tab's live strip
+/// (`cli.py preview <project.json> --channel <ch>`).
+///
+/// Takes the project object rather than a path: the strip has to describe
+/// what the user is editing right now, including edits not yet saved. The
+/// project is written to a temp file for the CLI and removed afterwards.
+#[tauri::command]
+pub async fn preview_project(project: Value, channel: Option<String>) -> Result<Value, String> {
+    let pid = std::process::id();
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros())
+        .unwrap_or(0);
+    let temp: PathBuf = std::env::temp_dir().join(format!("fa-preview-{}-{}.json", pid, ts));
+    let text =
+        serde_json::to_string(&project).map_err(|e| format!("serialize project: {}", e))?;
+    tokio::fs::write(&temp, text)
+        .await
+        .map_err(|e| format!("write preview project: {}", e))?;
+
+    let ch = channel.unwrap_or_else(|| "main".to_string());
+    let out = run_cli_json(&["preview", &temp.to_string_lossy(), "--channel", &ch]).await;
+    let _ = tokio::fs::remove_file(&temp).await;
+    out
+}
+
 /// Read one analysis sidecar (`audio.json`, `beats.json`, `chapters.json`, …)
 /// that a `.forge` bundle carried, from the bundle's extraction cache.
 ///

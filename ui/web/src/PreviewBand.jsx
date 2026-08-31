@@ -5,35 +5,70 @@ import { fmtTotal } from './AppShell';
 import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
 import { Icon } from './primitives';
+import { previewProject } from './api/forge';
+import { toForgeProject } from './lib/projectAdapter';
 
 // Sticky preview band — sits just above the Accept/Forge bar.
-// Renders the heatmap (per-bin colour), beatmap (peak markers), and
-// running totals. Click-to-seek-style hover line gives a sense of place.
+//
+// Describes the COMBINED funscript the forge would write: the backend runs
+// the same layout + concat the real forge does and reports peak speed per
+// time bucket, so the strip cannot drift from the output. It used to draw a
+// sine wave from mock data with hardcoded totals beside it.
 
 const { useState: pbState } = React;
+
+// The gradient forgeassembler_core/heatmap.py paints into the .heatmap.png
+// the forge writes, in pos-units/sec. Sharing the stops means the strip and
+// the rendered heatmap agree about what "hot" looks like.
+const SPEED_STOPS = [
+  [0, [30, 30, 80]], [50, [30, 100, 180]], [120, [30, 180, 150]],
+  [200, [120, 200, 30]], [300, [240, 200, 30]], [400, [240, 120, 30]],
+  [600, [240, 30, 30]],
+];
+
+function speedColor(speed) {
+  const s = Math.max(0, Math.min(SPEED_STOPS[SPEED_STOPS.length - 1][0], speed || 0));
+  for (let i = 0; i < SPEED_STOPS.length - 1; i++) {
+    const [s0, c0] = SPEED_STOPS[i];
+    const [s1, c1] = SPEED_STOPS[i + 1];
+    if (s <= s1) {
+      const t = s1 > s0 ? (s - s0) / (s1 - s0) : 0;
+      return `rgb(${c0.map((c, k) => Math.round(c + t * (c1[k] - c))).join(',')})`;
+    }
+  }
+  return 'rgb(240,30,30)';
+}
 
 function PreviewBand({ project, totalMs, segCount }) {
   const [hover, setHover] = pbState(null); // 0..1 or null
   const ref = React.useRef();
-  const bins = React.useMemo(() => FA_DATA.makeHeatmap(project), [project]);
+  const [summary, setSummary] = pbState(null);
+  const [pending, setPending] = pbState(false);
 
-  // Pick a velocity → color (mirrors the chart-vN gradient in the design system).
-  function vColor(v) {
-    if (v < 0.10) return "#1f3a8a";
-    if (v < 0.25) return "#2563eb";
-    if (v < 0.45) return "#06b6d4";
-    if (v < 0.62) return "#22c55e";
-    if (v < 0.78) return "#eab308";
-    if (v < 0.90) return "#f97316";
-    return "#ef4444";
-  }
+  // Recompute when the project settles. Every run lays out and concatenates
+  // the whole project, so a debounce keeps a burst of edits (dragging a trim
+  // handle, say) from queuing one pass per frame.
+  React.useEffect(() => {
+    if (!segCount) { setSummary(null); return undefined; }
+    let cancelled = false;
+    setPending(true);
+    const id = setTimeout(() => {
+      previewProject(toForgeProject(project, { folder: project.output?.folder }))
+        .then((res) => { if (!cancelled) { setSummary(res); setPending(false); } })
+        .catch((e) => {
+          if (cancelled) return;
+          // A clip whose media has gone missing fails the layout. The strip
+          // is not the place to report that — Forge validation is — so fall
+          // quiet rather than throwing an error bar under the timeline.
+          console.warn('[preview] unavailable', e);
+          setSummary(null); setPending(false);
+        });
+    }, 450);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [project, segCount]);
 
-  // Beatmap peaks: synthetic peaks every 1/8th of timeline (4 phrases per chapter typical)
-  const peakCount = Math.max(8, Math.round(totalMs / 12000));
-  const peaks = Array.from({ length: peakCount }, (_, i) => {
-    const t = (i + 0.5) / peakCount;
-    return { t, intensity: 0.5 + 0.45 * Math.sin(i * 1.3) };
-  });
+  const bins = summary?.bins || [];
+  const beats = [];
 
   return (
     <div style={{
@@ -47,7 +82,11 @@ function PreviewBand({ project, totalMs, segCount }) {
           Live preview
         </span>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          Heatmap and beatmap of the combined funscript — updated in-process, no render.
+          {pending
+            ? "Reading the combined funscript…"
+            : summary
+              ? `Peak speed per ${Math.max(1, Math.round((summary.duration_ms / Math.max(1, bins.length)) / 100) / 10)}s of the combined ${summary.channel} track — no render.`
+              : "Add clips to see the combined funscript."}
         </span>
         <div style={{ flex: 1 }} />
         <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -55,15 +94,19 @@ function PreviewBand({ project, totalMs, segCount }) {
         </span>
         <span style={{ width: 1, height: 14, background: "var(--border)" }} />
         <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          actions <strong style={{ color: "var(--text)" }}>{Math.round(totalMs / 50).toLocaleString()}</strong>
+          actions <strong style={{ color: "var(--text)" }}>
+            {summary ? summary.action_count.toLocaleString() : "—"}
+          </strong>
         </span>
         <span style={{ width: 1, height: 14, background: "var(--border)" }} />
         <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          avg bpm <strong style={{ color: "var(--text)" }}>108</strong>
+          avg bpm <strong style={{ color: "var(--text)" }}>{summary ? summary.avg_bpm : "—"}</strong>
         </span>
         <span style={{ width: 1, height: 14, background: "var(--border)" }} />
         <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          peak velocity <strong style={{ color: "#f97316" }}>0.82</strong>
+          peak speed <strong style={{ color: summary ? speedColor(summary.peak_speed) : "var(--text-dim)" }}>
+            {summary ? `${summary.peak_speed}/s` : "—"}
+          </strong>
         </span>
       </div>
 
@@ -85,7 +128,7 @@ function PreviewBand({ project, totalMs, segCount }) {
           {bins.map((b, i) => (
             <rect key={i}
                   x={i} y={60 - b.v * 56} width={1.05} height={b.v * 56}
-                  fill={vColor(b.v)} opacity={0.85} />
+                  fill={speedColor(b.speed)} opacity={0.85} />
           ))}
         </svg>
 
@@ -93,7 +136,7 @@ function PreviewBand({ project, totalMs, segCount }) {
         <svg viewBox="0 0 1 1" preserveAspectRatio="none"
              style={{ position: "absolute", left: 0, right: 0, bottom: 0,
                        width: "100%", height: 7, opacity: 0.9 }}>
-          {peaks.map((p, i) => (
+          {beats.map((p, i) => (
             <line key={i} x1={p.t} x2={p.t} y1={1 - p.intensity * 0.85} y2={1}
                   stroke="#fafafa" strokeWidth={0.004} opacity={0.65 + p.intensity * 0.35} />
           ))}

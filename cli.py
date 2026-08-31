@@ -234,6 +234,97 @@ def cmd_import_forge(args: argparse.Namespace) -> int:
     return 0
 
 
+# Reference speed for normalising the preview strip: 500 pos-units/sec is
+# already "hot" on the OpenFunscripter/XBVR gradient the render path uses,
+# so anything at or above it pins the bin to 1.0.
+PREVIEW_HOT_SPEED = 500.0
+
+
+def cmd_preview(args: argparse.Namespace) -> int:
+    """Summarise the COMBINED funscript without rendering anything.
+
+    Runs the same layout + concat the forge does, so the strip in the Build
+    tab describes the file the user would actually get — a preview computed
+    a second way would drift from the output and quietly lie.
+
+    Emits per-bin peak speed (normalised 0-1) plus honest totals. Bins carry
+    the segment and section they fall in so the UI can colour them; naming
+    the section rather than a colour keeps display choices out of here.
+    """
+    from forgeassembler_core.concat_funscript import (
+        _build_parts_for_channel, concat_funscripts,
+    )
+    from forgeassembler_core.heatmap import compute_peak_speeds
+    from forgeassembler_core.project import Segment as _Seg
+
+    try:
+        project = Project.load(args.project)
+    except (OSError, ValueError, KeyError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        ffmpeg_exe = _resolve_ffmpeg_exe()
+        layout = lay_out(project, probe=lambda p: probe_duration_ms(p, ffmpeg_exe))
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    total_ms = layout.total_duration_ms
+    combined = concat_funscripts(_build_parts_for_channel(project, layout, args.channel))
+    actions = combined.get("actions", [])
+
+    bin_count = max(1, min(args.bins, max(1, total_ms // 250) if total_ms else args.bins))
+    speeds = compute_peak_speeds(actions, bin_count, total_ms)
+
+    # Which segment/section owns each bin — walk the layout once.
+    bin_ms = (total_ms / bin_count) if bin_count else 0
+    owner: list[tuple[str | None, str | None]] = [(None, None)] * bin_count
+    section_of: dict[str, str] = {
+        seg.id: sec.id for sec in project.sections for seg in sec.segments
+    }
+    for li in layout.items:
+        if not isinstance(li.item, _Seg) or not bin_ms:
+            continue
+        first = max(0, int(li.start_ms / bin_ms))
+        last = min(bin_count - 1, int(max(li.start_ms, li.end_ms - 1) / bin_ms))
+        for b in range(first, last + 1):
+            owner[b] = (li.item.id, section_of.get(li.item.id))
+
+    # Stroke rate from direction reversals: two reversals make one cycle.
+    reversals = 0
+    if len(actions) > 2:
+        prev_dir = 0
+        for a, b in zip(actions[:-1], actions[1:]):
+            d = (b["pos"] > a["pos"]) - (b["pos"] < a["pos"])
+            if d and prev_dir and d != prev_dir:
+                reversals += 1
+            if d:
+                prev_dir = d
+    minutes = total_ms / 60000.0
+    payload = {
+        "channel": args.channel,
+        "duration_ms": total_ms,
+        "action_count": len(actions),
+        "avg_bpm": round((reversals / 2.0) / minutes, 1) if minutes > 0 else 0.0,
+        "peak_speed": round(max(speeds), 1) if speeds else 0.0,
+        "peak_velocity": round(min(1.0, (max(speeds) if speeds else 0.0) / PREVIEW_HOT_SPEED), 3),
+        "bins": [
+            {"speed": round(sp, 1),
+             "v": round(min(1.0, sp / PREVIEW_HOT_SPEED), 3),
+             "seg_id": owner[i][0], "section_id": owner[i][1]}
+            for i, sp in enumerate(speeds)
+        ],
+    }
+    if getattr(args, "format", "json") == "json":
+        print(json.dumps(payload))
+        return 0
+    print(f"{args.channel}: {payload['action_count']} actions over "
+          f"{total_ms // 1000}s, {payload['avg_bpm']} bpm, "
+          f"peak {payload['peak_speed']} units/s")
+    return 0
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     path = Path(args.project)
     as_json = getattr(args, "format", "text") == "json"
@@ -664,6 +755,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_import.add_argument("--format", choices=("text", "json"), default="text",
                           help="json: emit the segment + channel map for the UI")
     p_import.set_defaults(func=cmd_import_forge)
+
+    p_preview = sub.add_parser(
+        "preview",
+        help="summarise the combined funscript (no render) for the live strip",
+    )
+    p_preview.add_argument("project", help="path to project JSON")
+    p_preview.add_argument("--channel", default="main",
+                           help="which channel to summarise (default: main)")
+    p_preview.add_argument("--bins", type=int, default=600,
+                           help="how many time buckets to report (default: 600)")
+    p_preview.add_argument("--format", choices=("text", "json"), default="json")
+    p_preview.set_defaults(func=cmd_preview)
 
     p_validate = sub.add_parser("validate", help="check a project without forging")
     p_validate.add_argument("project", help="path to project JSON")

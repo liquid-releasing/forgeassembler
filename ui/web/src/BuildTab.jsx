@@ -7,9 +7,6 @@ import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
 import { Button, Field, Icon, Pill, Slider, TextInput } from './primitives';
 import { toMediaUrl } from './lib/mediaUrl';
-import { MediaViewer } from 'forgemoment';
-import { readSidecar } from './api/forge';
-import { toAudioWaveform, toBeats, toChapters, toFunscript } from './lib/sidecars';
 
 // ForgeAssembler — Build tab.
 // Renders the active project as clips you can sequence + a cross-clip
@@ -268,44 +265,6 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
   const [startS, setStartS] = bsState(String((seg.trimStartMs ?? 0) / 1000));
   const [endS, setEndS] = bsState(String((seg.trimEndMs ?? durMs) / 1000));
 
-  // ── Preview clock ────────────────────────────────────────────────
-  // The video element is the master clock: MediaViewer throttles its own
-  // timeupdate and gates seek echoes internally, so writing currentMs
-  // straight from onTimeChange is safe here.
-  const [currentMs, setCurrentMs] = bsState(seg.trimStartMs ?? 0);
-  const [isPlaying, setIsPlaying] = bsState(false);
-  const videoSrc = seg.file ? toMediaUrl(seg.file) : null;
-
-  // Analysis the bundle already carried. Loaded when the editor opens
-  // rather than at import: a compilation can hold a dozen clips and each
-  // peaks sidecar is a few hundred KB. A clip with no sidecars still
-  // previews — the viewer just has less to draw.
-  const [analysis, setAnalysis] = bsState({ waveform: null, beats: null, chapters: [], funscript: null });
-  bsUseEffect(() => {
-    let cancelled = false;
-    const sc = seg.sidecars || {};
-    const mainScript = (seg.explicitFunscripts || {}).main;
-    Promise.all([
-      readSidecar(sc.audio), readSidecar(sc.beats),
-      readSidecar(sc.chapters), readSidecar(mainScript),
-    ]).then(([audioSc, beatsSc, chaptersSc, scriptSc]) => {
-      if (cancelled) return;
-      setAnalysis({
-        waveform: toAudioWaveform(audioSc),
-        beats: toBeats(beatsSc),
-        chapters: toChapters(chaptersSc),
-        funscript: toFunscript(scriptSc),
-      });
-    }).catch((e) => console.warn('[clip preview] sidecars unavailable', e));
-    return () => { cancelled = true; };
-  }, [seg.id]);
-
-  // Set the in/out point from wherever the playhead is sitting. This is
-  // the whole reason the preview is here: scrub to where the standard
-  // title card ends, and cut there.
-  function markIn()  { setStartS((currentMs / 1000).toFixed(2)); }
-  function markOut() { setEndS((currentMs / 1000).toFixed(2)); }
-
   bsUseEffect(() => {
     function k(e) { if (e.key === "Escape") onClose(); }
     window.addEventListener("keydown", k);
@@ -336,7 +295,7 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
       background: "rgba(0,0,0,0.6)", display: "grid", placeItems: "center",
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: 760, maxWidth: "94vw", maxHeight: "94vh", overflowY: "auto",
+        width: 460, maxHeight: "94vh", overflowY: "auto",
         background: "var(--surface)", border: "1px solid var(--border)",
         borderRadius: 12, boxShadow: "var(--elev-3)",
       }}>
@@ -354,63 +313,25 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
         </div>
 
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Preview — scrub the real clip to find the cut points. Spectro is
-              hidden: a bundle ships a spectrogram PNG, not the mel cells the
-              live canvas needs. */}
-          {videoSrc && (
-            <MediaViewer
-              videoSrc={videoSrc}
-              media={{ kind: "video", title: seg.title || "clip" }}
-              totalMs={durMs || analysis.waveform?.durationMs || 0}
-              currentMs={currentMs}
-              isPlaying={isPlaying}
-              onPlayPause={() => setIsPlaying(p => !p)}
-              onSeek={setCurrentMs}
-              onTimeChange={setCurrentMs}
-              funscript={analysis.funscript}
-              audioWaveform={analysis.waveform}
-              beats={analysis.beats}
-              hideEmptySpectro
-              showMark={false}
-              thumbnailAspect="16/9"
-              controls={["back5", "frame-back", "play", "frame-forward", "forward5"]}
-              showSpeed
-              modeToggleAlign="start"
-              modeToggleSize="sm" />
-          )}
-
           {/* Trim */}
           <div>
             <FASectionLabel>Trim window</FASectionLabel>
             <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "2px 0 10px" }}>
               In / out points in seconds. {durMs ? <>Source is <span className="mono" style={{ color: "var(--text)" }}>{_fmtSecs(durMs)}</span>.</> : "Duration not probed yet."}
             </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+            <div style={{ display: "flex", gap: 10 }}>
               <Field label="Start (s)" style={{ flex: 1 }}>
                 <TextInput value={startS} onChange={setStartS} mono />
               </Field>
-              {videoSrc && (
-                <Button kind="secondary" size="sm" icon="chevron-right" onClick={markIn}
-                        title="Set the in-point to the playhead">In</Button>
-              )}
               <Field label="End (s)" style={{ flex: 1 }}>
                 <TextInput value={endS} onChange={setEndS} mono />
               </Field>
-              {videoSrc && (
-                <Button kind="secondary" size="sm" icon="chevron-left" onClick={markOut}
-                        title="Set the out-point to the playhead">Out</Button>
-              )}
             </div>
-            {videoSrc && (
-              <div className="mono" style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
-                playhead {_fmtSecs(currentMs)}
-                {seg.bundleLean && (
-                  <span style={{ color: "var(--warn)", marginLeft: 12 }}>
-                    · no analysis in this bundle — re-export from FunscriptForge for a faster preview
-                  </span>
-                )}
-              </div>
-            )}
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+              To find a cut point by eye, select the clip and use the
+              Inspector's Source tab — it previews the video against these
+              same in / out points.
+            </div>
           </div>
 
           {/* Audio */}

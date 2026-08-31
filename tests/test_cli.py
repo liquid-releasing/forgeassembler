@@ -273,3 +273,80 @@ def test_forge_rejects_all_produce_flags_off_together(tmp_path: Path):
     )
     assert r.returncode != 0
     assert "cannot all be set" in r.stderr
+
+
+# ── preview (the Build tab's live strip) ─────────────────────────────
+# Still segments declare their own duration, so these stay hermetic: a video
+# segment would send the layout to ffmpeg to probe a real file. The script is
+# attached explicitly, which is both what auto-detect refuses to do for a
+# still and what every `.forge` import does anyway.
+def _preview_project(tmp_path, *, with_script: bool):
+    import json as _json
+
+    still = tmp_path / "clip.png"
+    still.write_text("x", encoding="utf-8")
+    funscripts = {"source": "none"}
+    if with_script:
+        # A 2Hz square wave: full-travel moves every 250ms, which is fast.
+        script = tmp_path / "clip.funscript"
+        script.write_text(
+            _json.dumps({"actions": [{"at": t, "pos": 0 if (t // 250) % 2 else 100}
+                                     for t in range(0, 10_000, 250)]}),
+            encoding="utf-8",
+        )
+        funscripts = {"source": "explicit", "files": {"main": str(script)}}
+    project = {
+        "version": "2.0",
+        "output": {"folder": str(tmp_path), "basename": "out"},
+        "output_channels": {"main": True},
+        "sections": [{
+            "id": "s", "leading_joiner": {"id": "j", "joiner_type": "none", "params": {}},
+            "segments": [{"id": "seg1", "video": str(still), "still_duration_s": 10.0,
+                          "funscripts": funscripts}],
+        }],
+    }
+    pj = tmp_path / "p.forgeproject.json"
+    pj.write_text(_json.dumps(project), encoding="utf-8")
+    return pj
+
+
+def test_preview_summarises_the_combined_funscript(tmp_path):
+    """The strip runs the same layout + concat the forge does, so it cannot
+    describe something the output would not contain."""
+    import json as _json
+
+    r = run("preview", str(_preview_project(tmp_path, with_script=True)), "--bins", "20")
+    assert r.returncode == 0, r.stderr
+    out = _json.loads(r.stdout)
+    assert out["channel"] == "main"
+    assert out["duration_ms"] == 10_000
+    assert out["action_count"] > 0
+    assert len(out["bins"]) == 20
+    assert {b["seg_id"] for b in out["bins"]} == {"seg1"}
+    assert {b["section_id"] for b in out["bins"]} == {"s"}
+    # Full travel every 250ms is 400 units/sec — hot, and nowhere near silent.
+    assert out["peak_speed"] == pytest.approx(400.0, abs=1.0)
+    assert out["avg_bpm"] > 0
+
+
+def test_preview_of_a_clip_with_no_funscript_is_quiet_not_broken(tmp_path):
+    """A clip carrying no script for the channel contributes silence, and the
+    strip has to render that rather than fail."""
+    import json as _json
+
+    r = run("preview", str(_preview_project(tmp_path, with_script=False)), "--bins", "8")
+    assert r.returncode == 0, r.stderr
+    out = _json.loads(r.stdout)
+    assert out["action_count"] == 0
+    assert out["peak_speed"] == 0.0
+    assert out["avg_bpm"] == 0.0
+    assert all(b["speed"] == 0.0 for b in out["bins"])
+
+
+def test_preview_reports_a_missing_channel_as_empty(tmp_path):
+    import json as _json
+
+    r = run("preview", str(_preview_project(tmp_path, with_script=True)),
+            "--channel", "alpha", "--bins", "4")
+    assert r.returncode == 0, r.stderr
+    assert _json.loads(r.stdout)["action_count"] == 0

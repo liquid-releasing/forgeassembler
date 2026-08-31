@@ -3,7 +3,10 @@ import React from 'react';
 const { useEffect, useMemo, useRef } = React;
 import { fmtClipDur, fmtTotal } from './AppShell';
 import { ClipThumb, InlineEditor } from './BuildTab';
-import { MediaViewer } from './MediaViewer';
+import { MediaViewer } from 'forgemoment';
+import { toMediaUrl } from './lib/mediaUrl';
+import { readSidecar } from './api/forge';
+import { toAudioWaveform, toBeats, toFunscript } from './lib/sidecars';
 import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
 import { Button, Field, Icon, Segmented, Slider, TextInput } from './primitives';
@@ -21,7 +24,8 @@ function Inspector({ segs, bed, project, onClose, mode, onAddOverlay,
   if ((!segs || segs.length === 0) && !bed) return <InspectorEmpty />;
   if (bed) return <BedInspector bed={bed} project={project} onClose={onClose} />;
   if (segs.length === 1) {
-    return <ClipInspector seg={segs[0]} onClose={onClose} onAddOverlay={onAddOverlay} />;
+    return <ClipInspector seg={segs[0]} onClose={onClose} onAddOverlay={onAddOverlay}
+                          onUpdate={onBulkUpdate} />;
   }
   return <MultiSelectInspector segs={segs} onClose={onClose}
                                   onBulkUpdate={onBulkUpdate}
@@ -55,7 +59,7 @@ function InspectorEmpty() {
 }
 
 // ── Clip inspector ────────────────────────────────────────────────
-function ClipInspector({ seg, onClose, onAddOverlay }) {
+function ClipInspector({ seg, onClose, onAddOverlay, onUpdate }) {
   const [tab, setTab] = insState("source");
   const tabs = [
     { id: "source",   label: "Source",   icon: "film"          },
@@ -116,7 +120,7 @@ function ClipInspector({ seg, onClose, onAddOverlay }) {
 
       {/* Body */}
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
-        {tab === "source"   && <SourcePane seg={seg} />}
+        {tab === "source"   && <SourcePane seg={seg} onUpdate={onUpdate} />}
         {tab === "audio"    && <AudioPane seg={seg} />}
         {tab === "overlays" && <OverlaysPane seg={seg} onAddOverlay={onAddOverlay} />}
         {tab === "color"    && <ColorPane seg={seg} />}
@@ -142,37 +146,56 @@ function PaneSection({ title, hint, children, right }) {
   );
 }
 
-function SourcePane({ seg }) {
-  // Local playback simulation — drives the MediaViewer's playhead.
-  // Real playback in the desktop app would route to whatever video
-  // engine the host uses; here we tick a fake clock so the transport
-  // buttons feel live in the prototype.
+function SourcePane({ seg, onUpdate }) {
+  // The video element is the master clock. forgemoment's MediaViewer
+  // throttles its own timeupdate and gates seek echoes internally, so
+  // currentMs can be written straight from onTimeChange.
   const [currentMs, setCurrentMs] = insState(0);
   const [playing, setPlaying]     = insState(false);
 
-  // Trim state — synthesised source duration is ~30% longer than the
-  // effective duration so the scrubber always has headroom to expose.
-  // The effective duration shown elsewhere = trimOutMs − trimInMs.
-  const sourceDurMs = React.useMemo(() => seg.sourceDurMs ??
-    Math.max(seg.durMs + 1500, Math.round(seg.durMs * 1.3)), [seg]);
+  const videoSrc = seg.kind === "still" || !seg.file ? null : toMediaUrl(seg.file);
+
+  // The clip's real length. A `.forge` bundle reports it in its manifest and
+  // loose clips get probed on add; there is no synthesised headroom, so the
+  // trim window spans exactly what exists.
+  const sourceDurMs = seg.sourceDurMs ?? seg.durMs ?? 0;
   const [trim, setTrim] = insState(() => ({
-    trimInMs: seg.trimInMs ?? Math.round((sourceDurMs - seg.durMs) / 2),
-    trimOutMs: seg.trimOutMs ?? Math.round((sourceDurMs - seg.durMs) / 2) + seg.durMs,
+    trimInMs: seg.trimStartMs ?? 0,
+    trimOutMs: seg.trimEndMs ?? sourceDurMs,
   }));
   React.useEffect(() => {
-    setCurrentMs(0); setPlaying(false);
-    setTrim({
-      trimInMs: seg.trimInMs ?? Math.round((sourceDurMs - seg.durMs) / 2),
-      trimOutMs: seg.trimOutMs ?? Math.round((sourceDurMs - seg.durMs) / 2) + seg.durMs,
-    });
+    setCurrentMs(seg.trimStartMs ?? 0);
+    setPlaying(false);
+    setTrim({ trimInMs: seg.trimStartMs ?? 0, trimOutMs: seg.trimEndMs ?? sourceDurMs });
+  }, [seg.id, sourceDurMs]);
+
+  // Analysis the bundle already carried — peaks, beats and the motion
+  // track. Read when a clip is selected rather than at import: each peaks
+  // sidecar is a few hundred KB and a compilation holds many clips.
+  const [analysis, setAnalysis] = insState({ waveform: null, beats: null, funscript: null });
+  React.useEffect(() => {
+    let cancelled = false;
+    setAnalysis({ waveform: null, beats: null, funscript: null });
+    const sc = seg.sidecars || {};
+    Promise.all([
+      readSidecar(sc.audio), readSidecar(sc.beats),
+      readSidecar((seg.explicitFunscripts || {}).main),
+    ]).then(([a, b, f]) => {
+      if (cancelled) return;
+      setAnalysis({ waveform: toAudioWaveform(a), beats: toBeats(b), funscript: toFunscript(f) });
+    }).catch((e) => console.warn('[inspector] sidecars unavailable', e));
+    return () => { cancelled = true; };
   }, [seg.id]);
 
+  // Only tick a clock ourselves when there is no video to keep time —
+  // a still, or a clip whose file hasn't resolved. With a video attached
+  // the two clocks fight and the viewer's seek-sync snaps the picture back.
   React.useEffect(() => {
-    if (!playing) return;
+    if (!playing || videoSrc) return undefined;
     let raf, last = performance.now();
     const tick = (now) => {
       const dt = now - last; last = now;
-      setCurrentMs(t => {
+      setCurrentMs((t) => {
         const next = t + dt;
         if (next >= sourceDurMs) { setPlaying(false); return sourceDurMs; }
         return next;
@@ -181,13 +204,18 @@ function SourcePane({ seg }) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, sourceDurMs]);
+  }, [playing, videoSrc, sourceDurMs]);
 
-  // Synthetic "chapter" for the MediaViewer's playhead — the chapter
-  // span IS the trim window, so the baton's position reflects where
-  // playback would be relative to the trimmed range.
-  const chapter = { id: seg.id, title: seg.title, color: "#ff8c42",
-                     start: trim.trimInMs, end: trim.trimOutMs };
+  // Push a trim edit into the project. The view model names these
+  // trimStartMs / trimEndMs; a window covering the whole clip means "no
+  // trim", which is stored as null so the engine plays to the real end.
+  function commitTrim(t) {
+    setTrim(t);
+    onUpdate?.({
+      trimStartMs: t.trimInMs > 0 ? Math.round(t.trimInMs) : 0,
+      trimEndMs: (sourceDurMs && t.trimOutMs >= sourceDurMs) ? null : Math.round(t.trimOutMs),
+    });
+  }
 
   const effectiveMs = trim.trimOutMs - trim.trimInMs;
 
@@ -196,16 +224,40 @@ function SourcePane({ seg }) {
       <PaneSection title="Preview"
                     hint={seg.kind === "still"
                       ? "Still image — shown for its hold duration."
-                      : "Video preview with frame-step transport."}>
-        <window.MediaViewer
-          currentMs={currentMs}
-          isPlaying={playing}
-          onPlayPause={() => setPlaying(p => !p)}
-          onSeek={(ms) => setCurrentMs(Math.max(0, Math.min(sourceDurMs, ms)))}
-          chapter={chapter}
-          showCreateChapter={false}
-          media={{ kind: seg.kind === "still" ? "audio" : "video", title: seg.title }}
-          width="100%" height={180} />
+                      : "Scrub to a cut point, then set it as the in or out."}>
+        {videoSrc ? (
+          <MediaViewer
+            videoSrc={videoSrc}
+            media={{ kind: "video", title: seg.title }}
+            totalMs={sourceDurMs}
+            currentMs={currentMs}
+            isPlaying={playing}
+            onPlayPause={() => setPlaying((p) => !p)}
+            onSeek={(ms) => setCurrentMs(Math.max(0, Math.min(sourceDurMs, ms)))}
+            onTimeChange={setCurrentMs}
+            funscript={analysis.funscript}
+            audioWaveform={analysis.waveform}
+            beats={analysis.beats}
+            hideEmptySpectro
+            showMark={false}
+            thumbnailAspect="16/9"
+            controls={["back5", "frame-back", "play", "frame-forward", "forward5"]}
+            modeToggleAlign="start"
+            modeToggleSize="sm"
+            showModeLabel={false} />
+        ) : (
+          <div style={{ padding: "18px 12px", textAlign: "center", fontSize: 11.5,
+                        color: "var(--text-dim)", background: "var(--surface-2)",
+                        border: "1px solid var(--border)", borderRadius: 8 }}>
+            {seg.kind === "still" ? "Still image — nothing to scrub." : "No video file resolved for this clip."}
+          </div>
+        )}
+        {seg.bundleLean && (
+          <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 8, lineHeight: 1.45 }}>
+            This bundle carries no analysis — re-export it from FunscriptForge
+            for a waveform and beats here.
+          </div>
+        )}
       </PaneSection>
 
       <PaneSection title="File">
@@ -214,26 +266,39 @@ function SourcePane({ seg }) {
 
       {seg.kind === "video" ? (
         <PaneSection title="Trim window"
-                      hint="Drag the handles to set in / out. The dimmed regions are cut from the source.">
+                      hint="Drag the handles to set in / out, or park the playhead and use the buttons. The dimmed regions are cut from the source.">
           <TrimScrubber sourceDurMs={sourceDurMs}
                           trimInMs={trim.trimInMs} trimOutMs={trim.trimOutMs}
                           currentMs={currentMs}
-                          onChange={(t) => setTrim(t)}
+                          onChange={commitTrim}
                           onSeek={(ms) => setCurrentMs(ms)} />
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <Button kind="secondary" size="sm" style={{ flex: 1 }}
+                    onClick={() => commitTrim({ ...trim, trimInMs: Math.min(currentMs, trim.trimOutMs) })}>
+              Set in
+            </Button>
+            <Button kind="secondary" size="sm" style={{ flex: 1 }}
+                    onClick={() => commitTrim({ ...trim, trimOutMs: Math.max(currentMs, trim.trimInMs) })}>
+              Set out
+            </Button>
+            <Button kind="ghost" size="sm"
+                    title="Clear the trim — use the whole clip"
+                    onClick={() => commitTrim({ trimInMs: 0, trimOutMs: sourceDurMs })}>
+              Reset
+            </Button>
+          </div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
+            keeps {fmtClipDur(effectiveMs)} of {fmtClipDur(sourceDurMs)}
+          </div>
         </PaneSection>
       ) : (
         <PaneSection title="Still duration"
                       hint="How long the image is held on screen.">
           <Slider value={seg.durMs / 1000} min={0.5} max={20} step={0.1}
-                  onChange={() => {}} valueLabel={`${(seg.durMs / 1000).toFixed(1)}s`} />
+                  onChange={(v) => onUpdate?.({ durMs: Math.round(v * 1000) })}
+                  valueLabel={`${(seg.durMs / 1000).toFixed(1)}s`} />
         </PaneSection>
       )}
-
-      <PaneSection title="Scaling"
-                    hint="How this clip fills the project resolution.">
-        <Segmented value="fit" onChange={() => {}}
-                    options={[{ value: "fit", label: "Fit (bars)" }, { value: "fill", label: "Crop fill" }]} />
-      </PaneSection>
     </>
   );
 }
