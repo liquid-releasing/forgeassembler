@@ -9,7 +9,8 @@ import { Button, Icon, Pill } from './primitives';
 // one. When a project is already loaded (e.g. the demo sample, or work in
 // progress), a "Continue" card jumps straight back into Build.
 function HomeScreen({ recents = [], hasWork, projectName, segCount, sectionCount,
-                      totalLabel, onNew, onOpen, onOpenRecent, onContinue }) {
+                      totalLabel, onNew, onOpen, onOpenRecent, onContinue,
+                      onLoadSample }) {
   return (
     <div style={{
       flex: 1, minHeight: 0, overflow: "auto", background: "var(--bg)",
@@ -68,6 +69,25 @@ function HomeScreen({ recents = [], hasWork, projectName, segCount, sectionCount
             </div>
           </button>
         </div>
+
+        {/* Sample project — design reference, labelled as such. It used to
+            BE the boot state, which meant every launch opened on a
+            compilation the user never made, pointing at files that don't
+            exist. Reachable on purpose is fine; arriving unannounced is not. */}
+        {onLoadSample && (
+          <button onClick={onLoadSample} style={{
+            display: "flex", alignItems: "center", gap: 10, width: "100%",
+            padding: "10px 14px", textAlign: "left", cursor: "pointer",
+            background: "transparent", border: "1px dashed var(--border)",
+            borderRadius: 8, fontFamily: "inherit", color: "var(--text-muted)",
+          }}>
+            <Icon name="flask-conical" size={15} />
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Load the sample compilation</span>
+            <span style={{ fontSize: 11.5 }}>
+              — 8 clips of placeholder data, to see the layout. Its files aren't real.
+            </span>
+          </button>
+        )}
 
         {/* Recents */}
         <div>

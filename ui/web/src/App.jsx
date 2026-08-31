@@ -298,6 +298,20 @@ function App() {
   // ── New (empty) project ────────────────────────────────────────
   // Clears the canvas to a single empty section — the starting point for
   // building a compilation from scratch (Add folder / Add .forge scene).
+  // Load the design fixture on purpose. Same reset as opening a project,
+  // and it stays "unsaved" so Save-As is the only way to keep anything
+  // built on top of it — its clip paths are placeholders, not files.
+  function loadSampleProject() {
+    setProject(structuredClone(baseProject));
+    setSavedPath(null);
+    setDirty(true);
+    setLastSavedAtMs(null);
+    clearClipSelection();
+    setSelectedBedId(null);
+    setIoError(null);
+    setTab('build');
+  }
+
   function handleNewProject() {
     setProject(emptyProject());
     setSavedPath(null);
@@ -810,7 +824,8 @@ function App() {
         onNew={handleNewProject}
         onOpen={handleOpenClick}
         onOpenRecent={openRecent}
-        onContinue={() => setTab('build')} />
+        onContinue={() => setTab('build')}
+        onLoadSample={loadSampleProject} />
     );
   } else if (tab === "build") {
     acceptKey = "build";
