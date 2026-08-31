@@ -314,6 +314,14 @@ def forge_funscripts(
     # keep the import optional for environments that don't have Pillow.
     from .heatmap import write_heatmap
 
+    # The MP4's chapter list, in the funscript's own shape. Built once and
+    # applied to every channel so all outputs of one forge agree.
+    from .chapters import build_chapters
+    chapters_for_funscript: list[dict] | None = [
+        {"name": c.name, "startTime": c.start_ms, "endTime": c.end_ms}
+        for c in build_chapters(project, layout)
+    ]
+
     written: list[Path] = []
     total_duration_ms = layout.total_duration_ms
     for channel, suffix in _selected_channels(project):
@@ -321,6 +329,18 @@ def forge_funscripts(
         if not any(p.funscript.get("actions") for p in parts):
             continue  # nothing to write for this channel
         combined = concat_funscripts(parts)
+        # ONE chapter derivation for both outputs. `concat_funscripts` is
+        # pure and marks a chapter per bookmarked part, but the MP4 takes
+        # its chapters from `build_chapters`, which works per SECTION. The
+        # two disagreed: a 2-clip / 1-section compilation got 2 chapters in
+        # the funscript and 1 in the video. Override with the same list the
+        # video uses so a player and an editor can never show different
+        # chapters for the same forge.
+        if chapters_for_funscript is not None:
+            if chapters_for_funscript:
+                combined["chapters"] = chapters_for_funscript
+            else:
+                combined.pop("chapters", None)
         out_path = folder / f"{stem}{suffix}.funscript"
         write_funscript(out_path, combined)
         written.append(out_path)

@@ -3,10 +3,9 @@ import React from 'react';
 const { useMemo, useRef } = React;
 import { fmtTotal } from './AppShell';
 import { Section } from './TitleEditor';
-import { FA_DATA } from './data';
 import { Icon } from './primitives';
 import { previewProject } from './api/forge';
-import { segmentHasChannel, toForgeProject } from './lib/projectAdapter';
+import { projectChannelCoverage, segmentHasChannel, toForgeProject } from './lib/projectAdapter';
 
 // Sticky preview band — sits just above the Accept/Forge bar.
 //
@@ -221,21 +220,39 @@ function PreviewBand({ project, totalMs, segCount }) {
           channels in output:
         </span>
         {(() => {
-          // Detection-driven: any channel that appears on any clip.
+          // The forge writes every channel the clips carry, so count them
+          // the way the engine does. Filtering a fixed 7-item menu by
+          // category listed four groups for a 20-channel compilation and
+          // never mentioned the device or restim-parameter tracks at all.
+          const cov = projectChannelCoverage(project);
+          const groups = cov.groups.filter(g => g.included);
           const flat = project.sections.flatMap(s => s.segments);
-          const detected = FA_DATA.CHANNELS.filter(c => !c.future)
-            .filter(c => flat.some(s => segmentHasChannel(s, c.id)));
-          return detected.map(c => (
-            <span key={c.id} style={{
+          const hasEstimAudio = flat.some(s => segmentHasChannel(s, "audio_estim"))
+            && project.channels?.audio_estim !== false;
+          const chip = (key, label, title) => (
+            <span key={key} title={title} style={{
               display: "inline-flex", alignItems: "center", gap: 4,
               padding: "1px 7px", fontFamily: "var(--font-mono)",
               fontSize: 10, fontWeight: 600, letterSpacing: "0.04em",
               background: "rgba(62,213,152,0.08)", color: "#3ed598",
               border: "1px solid rgba(62,213,152,0.3)", borderRadius: 3,
             }}>
-              <Icon name="check" size={9} /> {c.label}
+              <Icon name="check" size={9} /> {label}
             </span>
-          ));
+          );
+          return (
+            <>
+              <span className="mono" style={{ fontSize: 10.5, color: "var(--text)", fontWeight: 600 }}>
+                {cov.detected}
+              </span>
+              {groups.map(g => chip(
+                g.id,
+                g.channels.length > 1 ? `${g.label} ×${g.channels.length}` : g.label,
+                g.channels.map(c => c.id).join(", ")))}
+              {hasEstimAudio && chip("audio_estim", "Haptic-estim audio",
+                "one WAV per e-stim audio channel")}
+            </>
+          );
         })()}
         <div style={{ flex: 1 }} />
         <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>

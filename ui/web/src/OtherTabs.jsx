@@ -456,10 +456,11 @@ function ChapterMarkersCard({ project }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>Chapter markers</div>
           <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.5 }}>
-            Every section becomes a chapter in the output MP4 (playable in any modern player) and a
-            chapter marker in the output funscript (consumed by FunscriptForge and haptic players
-            that respect chapter metadata). Section names go into the chapter title —
-            rename them on the Build tab.
+            Every section becomes one chapter — in the output MP4 (playable in any modern player)
+            and in the output funscript (read by FunscriptForge and haptic players that respect
+            chapter metadata). Both get the same list. Each <span className="mono">.forge</span> scene
+            you import lands in its own section, so it's its own chapter; the section name is the
+            chapter title, and you can rename it on the Build tab.
           </div>
         </div>
         <Pill tone="accent" style={{ fontSize: 10 }}>{rows.length} chapter{rows.length === 1 ? "" : "s"}</Pill>

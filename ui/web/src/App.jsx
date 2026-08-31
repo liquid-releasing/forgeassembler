@@ -612,7 +612,57 @@ function App() {
       return;
     }
     seg.id = `${seg.id || 'seg'}-${Date.now()}`;
-    appendSegments([seg], sectionId);
+    // A `.forge` scene is a finished scene, and a SECTION is what becomes
+    // a chapter in the output. So each imported scene gets its own section
+    // unless the caller aimed at a specific one (the per-section "Add
+    // clip"). Dropping every scene into one section gave a two-scene
+    // compilation a single chapter marker at 0:00 — nothing to navigate to.
+    if (sectionId) {
+      appendSegments([seg], sectionId);
+      return;
+    }
+    appendSegmentsAsNewSection([seg]);
+  }
+
+  // Append a new section holding `segs`, named after the first one — so
+  // the chapter title is the scene's name without the user renaming
+  // anything. Reuses a trailing EMPTY section (the boot state has one)
+  // instead of leaving a blank chapter in front of the first scene.
+  function appendSegmentsAsNewSection(segs) {
+    if (!segs.length) return;
+    markDirty();
+    const title = segs[0].title || '';
+    setProject(p => {
+      const last = p.sections[p.sections.length - 1];
+      if (last && last.segments.length === 0) {
+        return {
+          ...p,
+          sections: p.sections.map((s, i) => i === p.sections.length - 1
+            ? { ...s, title: s.title || title, segments: [...segs] }
+            : s),
+        };
+      }
+      return {
+        ...p,
+        sections: [...p.sections, {
+          id: `sec-${Date.now()}`, title, color: '#ff8c42',
+          joiner: { type: 'none' }, segments: [...segs], overlays: [],
+        }],
+      };
+    });
+    for (const seg of segs) {
+      if (seg.kind === 'still' || !seg.file || seg.durMs) continue;
+      probeDuration(seg.file).then(ms => {
+        if (!ms) return;
+        setProject(p => ({
+          ...p,
+          sections: p.sections.map(s => ({
+            ...s,
+            segments: s.segments.map(x => x.id === seg.id ? { ...x, durMs: ms } : x),
+          })),
+        }));
+      }).catch(() => { /* leave durMs at 0 if probe fails */ });
+    }
   }
 
   // ── Add a finished FunscriptForge `.forge` scene (header button) ──
@@ -756,8 +806,28 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedIds.length]);
 
-  const accept = (key) => setPipeline(p => ({ ...p, [key]: { ...p[key], accepted: true } }));
-  const reset  = (key) => setPipeline(p => ({ ...p, [key]: { ...p[key], accepted: false } }));
+  // The pipeline order the tab strip enforces (FA_TABS in AppShell): each
+  // tab unlocks the next. The button says "Accept and chain" — it has to
+  // actually chain, which it never did; it only set the flag and left you
+  // on the same tab wondering why nothing happened. Re-accept advances
+  // too, since that's the same gesture on an already-accepted step.
+  const TAB_CHAIN = ["build", "output", "forge"];
+
+  const accept = (key) => {
+    setPipeline(p => ({ ...p, [key]: { ...p[key], accepted: true } }));
+    const next = TAB_CHAIN[TAB_CHAIN.indexOf(key) + 1];
+    if (next) setTab(next);
+  };
+  // Un-accepting a step invalidates everything downstream of it — an
+  // Output that was accepted against a different Build isn't accepted.
+  const reset = (key) => setPipeline(p => {
+    const from = TAB_CHAIN.indexOf(key);
+    const next = { ...p };
+    for (const k of TAB_CHAIN.slice(from < 0 ? 0 : from)) {
+      if (next[k]) next[k] = { ...next[k], accepted: false };
+    }
+    return next;
+  });
 
   // Real forge: ensure the project is saved to disk, subscribe to the
   // `fa:progress` stream, run `forge`, then reveal the output.

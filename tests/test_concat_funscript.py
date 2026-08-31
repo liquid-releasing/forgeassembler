@@ -416,3 +416,52 @@ def test_channels_for_segment_is_empty_for_a_still(tmp_path: Path):
     seg = Segment(id="s1", video=str(tmp_path / "card.png"), still_duration_s=3)
     assert channels_for_segment(seg) == set()
 
+
+def test_funscript_chapters_match_the_mp4s(tmp_path: Path):
+    """The video takes chapters from `build_chapters` (one per SECTION);
+    the funscript used to mark one per bookmarked SEGMENT. A two-clip,
+    one-section compilation therefore shipped 2 chapters in the funscript
+    and 1 in the MP4 — same forge, different navigation."""
+    from forgeassembler_core.chapters import build_chapters
+    from forgeassembler_core.project import Section
+
+    v1 = _make_clip(tmp_path / "a", "a", [(0, 10)])
+    v2 = _make_clip(tmp_path / "b", "b", [(0, 20)])
+    out_folder = tmp_path / "out"
+    p = Project(
+        sections=[Section(id="sec1", segments=[
+            Segment(id="s1", video=str(v1), bookmark="One"),
+            Segment(id="s2", video=str(v2), bookmark="Two"),
+        ])],
+        output=Output(folder=str(out_folder), basename="out"),
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    written = forge_funscripts(p, layout)
+    data = json.loads(written[0].read_text(encoding="utf-8"))
+
+    expected = [
+        {"name": c.name, "startTime": c.start_ms, "endTime": c.end_ms}
+        for c in build_chapters(p, layout)
+    ]
+    assert data["chapters"] == expected
+    assert len(data["chapters"]) == 1  # one section == one chapter
+
+
+def test_each_section_becomes_a_funscript_chapter(tmp_path: Path):
+    """Two sections -> two chapters, in both outputs."""
+    from forgeassembler_core.project import Section
+    v1 = _make_clip(tmp_path / "a", "a", [(0, 10)])
+    v2 = _make_clip(tmp_path / "b", "b", [(0, 20)])
+    out_folder = tmp_path / "out"
+    p = Project(
+        sections=[
+            Section(id="sec1", segments=[Segment(id="s1", video=str(v1), bookmark="One")]),
+            Section(id="sec2", segments=[Segment(id="s2", video=str(v2), bookmark="Two")]),
+        ],
+        output=Output(folder=str(out_folder), basename="out"),
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    data = json.loads(forge_funscripts(p, layout)[0].read_text(encoding="utf-8"))
+    assert [c["name"] for c in data["chapters"]] == ["One", "Two"]
+    assert data["chapters"][1]["startTime"] == 1000
+
