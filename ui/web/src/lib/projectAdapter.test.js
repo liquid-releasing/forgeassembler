@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toForgeProject, fromForgeProject, fromDetected, fromForgeBundleSegment,
   msToTimecode, timecodeToMs, segmentHasChannel,
-  channelGroup, projectChannelCoverage,
+  channelGroup, projectChannelCoverage, channelGapsFor,
 } from './projectAdapter.js';
 
 // A representative .forgeproject.json (the contract). real → view → real must
@@ -435,6 +435,45 @@ describe('legacy channel flags are migrated on load', () => {
     expect(vm.channels.multi_axis).toBe(true);
     expect(vm.channels.prostate).toBe(false);
     expect(vm.channels.estim_3p).toBe(true);   // omitted == on
+  });
+});
+
+
+describe('channelGapsFor', () => {
+  const proj = {
+    sections: [{
+      segments: [
+        { id: 'a', kind: 'video', channels: ['main', 'alpha', 'handy'] },
+        { id: 'b', kind: 'video', channels: ['main', 'alpha'] },
+        { id: 'card', kind: 'still', channels: [] },
+      ],
+    }],
+  };
+
+  it('names what a clip lacks that its neighbours have', () => {
+    expect(channelGapsFor(proj.sections[0].segments[1], proj)).toEqual(['handy']);
+  });
+
+  it('is empty for the richest clip', () => {
+    expect(channelGapsFor(proj.sections[0].segments[0], proj)).toEqual([]);
+  });
+
+  it('exempts stills in both directions', () => {
+    // A title card is not "missing" anything...
+    expect(channelGapsFor(proj.sections[0].segments[2], proj)).toEqual([]);
+    // ...and its empty channel list never makes a neighbour look richer.
+    const onlyStills = { sections: [{ segments: [
+      { id: 'a', kind: 'video', channels: ['main'] },
+      { id: 'card', kind: 'still', channels: [] },
+    ] }] };
+    expect(channelGapsFor(onlyStills.sections[0].segments[0], onlyStills)).toEqual([]);
+  });
+
+  it('survives a lone clip and a missing project', () => {
+    const solo = { sections: [{ segments: [{ id: 'a', kind: 'video', channels: ['main'] }] }] };
+    expect(channelGapsFor(solo.sections[0].segments[0], solo)).toEqual([]);
+    expect(channelGapsFor(null, proj)).toEqual([]);
+    expect(channelGapsFor({ id: 'x', kind: 'video', channels: [] }, null)).toEqual([]);
   });
 });
 

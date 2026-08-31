@@ -7,6 +7,7 @@ import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
 import { Button, Field, Icon, Pill, Slider, TextInput } from './primitives';
 import { toMediaUrl } from './lib/mediaUrl';
+import { channelGapsFor } from './lib/projectAdapter';
 
 // ForgeAssembler — Build tab.
 // Renders the active project as clips you can sequence + a cross-clip
@@ -74,6 +75,41 @@ function bucketChannels(channels) {
   }
   return g;
 }
+// A `.forge` that shipped no analysis sidecars. Not an output problem —
+// the forge is identical either way — but the preview has to decode the
+// video to draw a waveform, so it's worth knowing before you wonder why
+// scrubbing is slow. Quieter than the gap flag on purpose.
+function LeanPill() {
+  return (
+    <span title="This bundle carries no analysis — waveform and beats are derived from the video, which is slower. Re-export from FunscriptForge to include them."
+           style={{
+      display: "inline-flex", alignItems: "center",
+      padding: "1px 6px", borderRadius: 4, fontSize: 10.5,
+      fontFamily: "var(--font-mono)", color: "var(--text-dim)",
+      border: "1px solid var(--border)",
+    }}>
+      <Icon name="file-question" size={10} />
+    </span>
+  );
+}
+
+// A clip that's missing what its neighbours have. Hover names them.
+function GapPill({ gaps }) {
+  if (!gaps.length) return null;
+  return (
+    <span title={`Blank for this clip: ${gaps.join(", ")}`} style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "1px 8px", borderRadius: 4, fontSize: 10.5, fontWeight: 600,
+      fontFamily: "var(--font-mono)", letterSpacing: "0.02em",
+      background: "#ffb54722", color: "var(--warn)",
+      border: "1px solid #ffb54744",
+    }}>
+      <Icon name="triangle-alert" size={10} />
+      {gaps.length} gap{gaps.length === 1 ? "" : "s"}
+    </span>
+  );
+}
+
 function DevicePills({ channels = [] }) {
   if (!channels.length)
     return <span style={{ fontSize: 10.5, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>—</span>;
@@ -174,7 +210,7 @@ function ClipThumb({ seg, w }) {
 }
 
 // ── Clip row (used by sections + flat layouts) ─────────────────────
-function ClipRow({ seg, sectionColor, sectionId, density, selected, onSelect, expanded, onToggleExpand, inspectorMode, isStillRow, onEditClip }) {
+function ClipRow({ seg, sectionColor, sectionId, density, selected, onSelect, expanded, onToggleExpand, inspectorMode, isStillRow, onEditClip, gaps = [] }) {
   const d = DENSITY[density];
   const [hover, setHover] = bsState(false);
   const dragHandle = useDraggable({ kind: "clip", id: seg.id, fromSectionId: sectionId });
@@ -233,6 +269,8 @@ function ClipRow({ seg, sectionColor, sectionId, density, selected, onSelect, ex
 
         <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
           <DevicePills channels={seg.channels} />
+          <GapPill gaps={gaps} />
+          {seg.bundleLean && <LeanPill />}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -627,7 +665,8 @@ function LayoutSections({ project, density, joinerStyle, selectedIds, onSelect, 
                            selected={selectedIds.includes(seg.id)}
                            onSelect={(e) => onSelect(seg.id, e)}
                            expanded={expandedId === seg.id} onToggleExpand={() => onToggleExpand(seg.id)}
-                           inspectorMode={inspectorMode} onEditClip={onEditClip} />
+                           inspectorMode={inspectorMode} onEditClip={onEditClip}
+                           gaps={channelGapsFor(seg, project)} />
                   {expandedId === seg.id && inspectorMode === "inline" &&
                     <InlineEditor seg={seg} onClose={() => onToggleExpand(seg.id)} />}
                   {i < sec.segments.length - 1 && (
@@ -779,7 +818,8 @@ function LayoutFlat({ project, density, joinerStyle, selectedIds, onSelect, expa
                      selected={selectedIds.includes(seg.id)}
                      onSelect={(e) => onSelect(seg.id, e)}
                      expanded={expandedId === seg.id} onToggleExpand={() => onToggleExpand(seg.id)}
-                     inspectorMode={inspectorMode} onEditClip={onEditClip} />
+                     inspectorMode={inspectorMode} onEditClip={onEditClip}
+                     gaps={channelGapsFor(seg, project)} />
             {expandedId === seg.id && inspectorMode === "inline" &&
               <InlineEditor seg={seg} onClose={() => onToggleExpand(seg.id)} />}
           </React.Fragment>

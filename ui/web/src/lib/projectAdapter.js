@@ -121,6 +121,28 @@ export function projectChannelCoverage(project) {
   return { groups, detected, vetoed, clips: clips.length };
 }
 
+/**
+ * Which channels the OTHER clips carry that `seg` doesn't.
+ *
+ * The forge writes every channel any clip has, so a clip missing one
+ * leaves that stretch of the combined script blank — silent for however
+ * long that clip runs. Invisible until playback, which is the wrong time
+ * to discover it, so the Build tab flags it on the row.
+ *
+ * Stills are exempt in both directions: a title card is never expected to
+ * carry a funscript, and it never makes its neighbours look deficient.
+ */
+export function channelGapsFor(seg, project) {
+  if (!seg || seg.kind === 'still') return [];
+  const mine = new Set(seg.channels || []);
+  const others = new Set();
+  for (const s of (project?.sections || []).flatMap(x => x.segments || [])) {
+    if (s.id === seg.id || s.kind === 'still') continue;
+    for (const c of s.channels || []) others.add(c);
+  }
+  return [...others].filter(c => !mine.has(c)).sort();
+}
+
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 
 // ── time helpers: ms ↔ "HH:MM:SS.mmm" ─────────────────────────────────
