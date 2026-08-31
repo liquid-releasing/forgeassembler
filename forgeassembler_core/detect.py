@@ -123,10 +123,21 @@ def funscripts_for_stem(folder: Path, stem: str) -> dict[str, Path]:
             for f in d.iterdir():
                 if not f.is_file() or not f.name.endswith(".funscript"):
                     continue
-                base, channel = _split_ff_suffix(f.name)
-                if base != stem:
+                # Match against the KNOWN stem rather than splitting on the
+                # last dot: a stem that itself contains dots
+                # ("IPZZ-125.molester.omfg_iris3") would otherwise have its
+                # own main funscript read as channel "omfg_iris3" of a
+                # shorter stem, and the clip would detect with no scripts
+                # at all. Same anchoring `audio_estim_for_stem` uses.
+                name = f.name
+                if name == f"{stem}.funscript":
+                    key = "main"
+                elif name.startswith(f"{stem}."):
+                    key = name[len(stem) + 1 : -len(".funscript")]
+                    if not key:
+                        continue
+                else:
                     continue
-                key = channel if channel else "main"
                 # First hit wins — the main folder takes precedence
                 # over any duplicate in a sub-folder.
                 out.setdefault(key, f)

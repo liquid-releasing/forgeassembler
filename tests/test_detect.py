@@ -122,6 +122,35 @@ def test_funscripts_for_stem_filters_correctly(tmp_path: Path):
     assert set(bob.keys()) == {"main", "alpha"}
 
 
+def test_funscripts_for_stem_handles_dotted_stems(tmp_path: Path):
+    """A stem with dots of its own ("IPZZ-125.molester.omfg_iris3") must
+    still find its main + channel scripts. Splitting on the last dot
+    read the main script as channel "omfg_iris3" of a shorter stem and
+    the clip detected with nothing attached."""
+    stem = "IPZZ-125.molester.omfg_iris3"
+    _stub_funscript(tmp_path / f"{stem}.funscript")
+    _stub_funscript(tmp_path / f"{stem}.alpha.funscript")
+    # A sibling clip whose stem is a prefix of this one must not bleed in.
+    _stub_funscript(tmp_path / "IPZZ-125.molester.funscript")
+
+    found = funscripts_for_stem(tmp_path, stem)
+    assert set(found.keys()) == {"main", "alpha"}
+    assert found["main"].name == f"{stem}.funscript"
+
+    shorter = funscripts_for_stem(tmp_path, "IPZZ-125.molester")
+    assert shorter["main"].name == "IPZZ-125.molester.funscript"
+
+
+def test_detect_file_dotted_stem_keeps_its_scripts(tmp_path: Path):
+    """End-to-end of the same bug through detect_file()."""
+    stem = "scene.part2.1080p"
+    _touch(tmp_path / f"{stem}.mp4", "x")
+    _stub_funscript(tmp_path / f"{stem}.funscript")
+
+    clip = detect_file(tmp_path / f"{stem}.mp4")
+    assert clip.has_main_funscript
+
+
 def test_funscripts_for_stem_scans_channel_subfolders(tmp_path: Path):
     """FunscriptForge writes main funscript next to the .mp4 but
     nests estim/multi-axis/prostate channel funscripts into
