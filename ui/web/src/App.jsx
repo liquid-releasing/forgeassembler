@@ -14,10 +14,11 @@ import { loadProject, saveProject, pickFolder, pickFile, detectFolder, probeDura
          forgeProject, onForgeProgress, revealPath, validateProject,
          importForgeBundle } from './api/forge';
 import { fromForgeProject, toForgeProject, fromDetected, fromForgeBundleSegment } from './lib/projectAdapter';
+import { parseProgressLine } from './lib/forgeProgress';
 import { DragDropProvider, reorderClipInProject, reorderSectionInProject } from './dragdrop';
 import { TweakRadio, TweakSection, TweakToggle, TweaksPanel, useTweaks } from './tweaks-panel';
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 // Tweak defaults — edit-mode markers so the host can persist changes.
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -29,14 +30,32 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "sampleSize": "medium"
 }/*EDITMODE-END*/;
 
+// A brand-new, empty project — the state the app boots into. The
+// fixtures in data.js are design-time material for the Tweaks panel;
+// booting into one showed every user a compilation they never made,
+// whose segments point at files that don't exist.
+function emptyProject() {
+  return {
+    name: 'untitled',
+    output: { folder: null, resolution: '1080p', quality: 'medium',
+              frameRate: 'source', normalizeAudio: true, video: true, funscripts: true },
+    channels: { main: true, multi_axis: false, estim_3p: false, estim_4p: false,
+                prostate: false, pulse_freq: false, audio_estim: true },
+    sections: [{ id: `sec-${Date.now()}`, title: '', color: '#ff8c42',
+                 joiner: { type: 'none' }, segments: [], overlays: [] }],
+    audioBeds: [],
+    userJoiners: [], userGlyphs: [], userTitleTemplates: [],
+  };
+}
+
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [tab, setTab] = useState("home");
   // Multi-select model. `selectedIds` is the current selection set;
   // `selectionAnchor` is the last clip clicked without modifiers — used
   // as the pivot for shift-range expansion.
-  const [selectedIds, setSelectedIds]         = useState(["m3"]);
-  const [selectionAnchor, setSelectionAnchor] = useState("m3");
+  const [selectedIds, setSelectedIds]         = useState([]);
+  const [selectionAnchor, setSelectionAnchor] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [selectedBedId, setSelectedBedId] = useState(null);
   const [editingClip, setEditingClip] = useState(null); // segment open in the ClipEditor dialog
@@ -46,10 +65,14 @@ function App() {
 
   const baseProject = useMemo(() => FA_DATA.PROJECTS[t.sampleSize] || FA_DATA.PROJECTS.medium, [t.sampleSize]);
 
-  // Editable project state — deep-cloned from the sample so the user
-  // can change joiners + user-joiners and see the result.
-  const [project, setProject] = useState(() => structuredClone(baseProject));
+  // Editable project state. Starts empty; Home's New / Open / recents
+  // fill it with the user's own work.
+  const [project, setProject] = useState(emptyProject);
+  // Swapping Tweaks → Sample project loads a fixture for design work.
+  // Skip the mount pass so a fresh launch keeps the empty project.
+  const sampleLoaded = useRef(false);
   useEffect(() => {
+    if (!sampleLoaded.current) { sampleLoaded.current = true; return; }
     setProject(structuredClone(baseProject));
     // New sample loaded — reset I/O state to "fresh unsaved" so the
     // user sees the Save-As flow on first save.
@@ -79,7 +102,7 @@ function App() {
   //   ioDialog         "save" | "open" | "unsaved-then-open" | null
   //   pendingAfterSave function() — what to do once dirty is resolved
   const [savedPath,     setSavedPath]     = useState(null);
-  const [dirty,         setDirty]         = useState(true);   // demo starts dirty
+  const [dirty,         setDirty]         = useState(false);  // empty project: nothing to lose yet
   const [lastSavedAtMs, setLastSavedAtMs] = useState(null);
   const [ioDialog,      setIoDialog]      = useState(null);
   const [pendingAfterSave, setPendingAfterSave] = useState(null);
@@ -299,17 +322,7 @@ function App() {
   // Clears the canvas to a single empty section — the starting point for
   // building a compilation from scratch (Add folder / Add .forge scene).
   function handleNewProject() {
-    setProject({
-      name: 'untitled',
-      output: { folder: null, resolution: '1080p', quality: 'medium',
-                frameRate: 'source', normalizeAudio: true, video: true, funscripts: true },
-      channels: { main: true, multi_axis: false, estim_3p: false, estim_4p: false,
-                  prostate: false, pulse_freq: false, audio_estim: true },
-      sections: [{ id: `sec-${Date.now()}`, title: '', color: '#ff8c42',
-                   joiner: { type: 'none' }, segments: [], overlays: [] }],
-      audioBeds: [],
-      userJoiners: [], userGlyphs: [], userTitleTemplates: [],
-    });
+    setProject(emptyProject());
     setSavedPath(null);
     setDirty(true);
     setLastSavedAtMs(null);
@@ -709,9 +722,7 @@ function App() {
   const reset  = (key) => setPipeline(p => ({ ...p, [key]: { ...p[key], accepted: false } }));
 
   // Real forge: ensure the project is saved to disk, subscribe to the
-  // `fa:progress` stage stream, run `forge`, then reveal the output. The CLI
-  // emits stage-text lines ("progress: forging video…") rather than a percent,
-  // so the bar advances coarsely by counting the enabled output stages.
+  // `fa:progress` stream, run `forge`, then reveal the output.
   async function startForge() {
     if (forging) return; // no mid-run cancel yet — button is disabled while forging
     let path = savedPath;
@@ -741,29 +752,54 @@ function App() {
       console.warn('[forge] validation unavailable, continuing', e);
     }
 
-    // Rough determinate progress: one tick per enabled output stage.
-    const stageCount = Math.max(1,
+    // Progress model: every backend stage claims an equal slice of the
+    // bar, and each stage fills its own slice from ffmpeg's `time=`
+    // reports measured against the output duration the CLI sends up
+    // front. Stage ticks alone left the bar parked at one third for the
+    // whole encode — the only part that takes minutes.
+    //
+    // The count below is a guess from our copy of the project, used only
+    // until the CLI's `meta:` line tells us how many stages it will
+    // actually run.
+    let stageCount = Math.max(1,
       (project.output?.video !== false ? 1 : 0) +
       (project.output?.funscripts !== false ? 1 : 0) +
       (project.channels?.audio_estim ? 1 : 0));
-    let done = 0;
+    let stage = 0;          // 1-based index of the stage in flight
+    let durationMs = 0;     // output length, from the CLI's `meta:` line
+    let shown = 0;          // last value pushed — the bar never walks back
+    const advance = (frac) => {
+      const v = Math.min(0.95,
+        (Math.max(0, stage - 1) + Math.min(1, Math.max(0, frac))) / stageCount);
+      if (v > shown) { shown = v; setProgress(v); }
+    };
 
     setIoError(null);
     setForging(true); setProgress(0); setForgeStage('Starting…');
     let unlisten = () => {};
     try {
       unlisten = await onForgeProgress((line) => {
-        const text = String(line || '');
-        if (text.startsWith('progress:')) {
-          done = Math.min(stageCount, done + 1);
-          setProgress(Math.min(0.95, done / (stageCount + 0.001)));
-          setForgeStage(text.replace(/^progress:\s*/, ''));
+        const ev = parseProgressLine(line);
+        if (!ev) return;
+        if (ev.kind === 'meta') {
+          if (ev.durationMs) durationMs = ev.durationMs;
+          if (ev.stages) stageCount = Math.max(1, ev.stages);
+          return;
         }
+        if (ev.kind === 'stage') {
+          stage = Math.min(stageCount, stage + 1);
+          advance(0);
+          setForgeStage(ev.text);
+          return;
+        }
+        if (ev.kind === 'done') { setForgeStage('Finishing…'); return; }
+        // 'encoded' — ffmpeg told us how much of the output exists.
+        if (durationMs > 0) advance(ev.ms / durationMs);
       });
       const summaryStr = await forgeProject(path, {});
       let summary = null;
       try { summary = JSON.parse(summaryStr); } catch { /* non-JSON summary */ }
-      setProgress(1); setForgeStage('Done');
+      shown = 1; setProgress(1); setForgeStage('Done');
       accept('forge');
       const reveal = summary?.video || project.output?.folder;
       if (reveal) revealPath(reveal).catch(() => {});
