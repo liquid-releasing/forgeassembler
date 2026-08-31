@@ -249,7 +249,9 @@ function TitleEditor({ initial, selectedSeg, userGlyphs = [], userTemplates = []
       overlayPosition: layoutById(initLayout).natural,
       // mode + insertion
       useAs: selectedSeg ? "overlay" : "standalone",
-      insertionPoint: selectedSeg ? "after" : "end", // before | after | end
+      // before | after | end (anchored to a clip) · start | end (not anchored).
+      // Unanchored defaults to the top: a title card is a lead-in.
+      insertionPoint: selectedSeg ? "after" : "start",
       ...(initial || {}),
     };
   });
@@ -498,12 +500,17 @@ function TitleEditor({ initial, selectedSeg, userGlyphs = [], userTemplates = []
                                     { value: "after",  label: "After clip"  },
                                     { value: "end",    label: "End of section" },
                                   ]
-                                : [{ value: "end", label: "End of section" }]} />
+                                : [
+                                    { value: "start", label: "Top" },
+                                    { value: "end",   label: "End" },
+                                  ]} />
                   <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-dim)", lineHeight: 1.45 }}>
                     {selectedSeg
                       ? <>Inserts {draft.insertionPoint === "end" ? "at the end of the section that contains" : draft.insertionPoint}{" "}
                           <strong style={{ color: "var(--text-muted)" }}>{selectedSeg.title}</strong>.</>
-                      : "No clip selected — the new segment lands at the end of the last section."}
+                      : draft.insertionPoint === "end"
+                        ? "No clip selected — the card lands after the last clip."
+                        : "No clip selected — the card lands above the first clip, leading into it."}
                   </div>
                 </Section>
               </>
