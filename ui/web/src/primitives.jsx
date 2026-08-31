@@ -42,7 +42,10 @@ const ffBtnBase = {
   display: "inline-flex", alignItems: "center", gap: 8,
   padding: "8px 14px", borderRadius: 8,
   fontSize: 13, fontWeight: 600, cursor: "pointer",
-  border: "1px solid transparent",
+  // Longhand, not the `border` shorthand: kinds and the active state set
+  // borderColor on their own, and React warns (then misbehaves) when a
+  // shorthand and its longhand are mixed across rerenders.
+  borderWidth: 1, borderStyle: "solid", borderColor: "transparent",
   transition: "transform 150ms var(--ease-standard), box-shadow 150ms var(--ease-standard), background 150ms, border-color 150ms, color 150ms",
   background: "transparent", color: "var(--text)",
   whiteSpace: "nowrap", userSelect: "none",

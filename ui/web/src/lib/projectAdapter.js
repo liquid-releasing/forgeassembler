@@ -24,6 +24,27 @@ const CHANNEL_MAP = {
 const CHANNEL_MAP_INV = Object.fromEntries(
   Object.entries(CHANNEL_MAP).map(([v, r]) => [r, v]));
 
+/**
+ * Does `seg` carry anything for the UI channel category `uiChannelId`?
+ *
+ * A segment's `channels` are RAW funscript channel names — pitch, alpha,
+ * beta, handy — while the UI asks in categories: multi_axis, estim_3p. Only
+ * `main` happens to spell the same both ways, which is why a naive
+ * `channels.includes(id)` reported a 19-channel bundle as "2D main" and
+ * nothing else. The backend already groups them; use its answer.
+ */
+export function segmentHasChannel(seg, uiChannelId) {
+  if (!seg) return false;
+  if (uiChannelId === 'audio_estim') {
+    return !!((seg.audioEstim || []).length
+      || Object.keys(seg.explicitAudioEstim || {}).length);
+  }
+  if ((seg.channels || []).includes(uiChannelId)) return true;
+  const group = CHANNEL_MAP[uiChannelId];
+  const groups = seg.channelGroups || {};
+  return !!(group && Array.isArray(groups[group]) && groups[group].length);
+}
+
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 
 // ── time helpers: ms ↔ "HH:MM:SS.mmm" ─────────────────────────────────
@@ -254,6 +275,9 @@ export function fromForgeBundleSegment(realSegment, payload = null) {
   if (thumbnails.hero) v.thumbPath = thumbnails.hero;
   if (Object.keys(thumbnails).length) v.thumbnails = thumbnails;
   if (Object.keys(sidecars).length) v.sidecars = sidecars;
+  // The backend's grouping of the raw channel names, so the UI can ask by
+  // category without re-deriving it.
+  if (payload.channel_groups) v.channelGroups = payload.channel_groups;
   if (payload.duration_ms) v.durMs = payload.duration_ms;
   // A bundle with no analysis sidecars still previews — just slowly, by
   // decoding the video. Flagged so the UI can say so and point at a

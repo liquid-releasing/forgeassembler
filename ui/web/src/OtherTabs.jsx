@@ -5,7 +5,8 @@ import { FASectionLabel, FATabBody, FATabHeader, fmtTotal } from './AppShell';
 import { ParamControl, TimingVisual } from './JoinerEditor';
 import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
-import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
+import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
+import { segmentHasChannel } from './lib/projectAdapter';
 
 // Sketched other pipeline tabs. Intentionally light — the Build tab is
 // where the design work is concentrated; these convey the structure
@@ -130,7 +131,7 @@ function OutputChannelsCard({ project, channelGapPolicy, onSetChannelGapPolicy }
     // For "still" segments we don't expect a funscript — those are
     // exempt rather than counted as "missing".
     const eligible = flat.filter(s => s.kind !== "still" || c.id === "audio_estim");
-    const have = eligible.filter(s => s.channels.includes(c.id));
+    const have = eligible.filter(s => segmentHasChannel(s, c.id));
     return {
       ...c,
       detected: have.length > 0,

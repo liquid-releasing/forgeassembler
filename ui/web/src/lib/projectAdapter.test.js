@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   toForgeProject, fromForgeProject, fromDetected, fromForgeBundleSegment,
-  msToTimecode, timecodeToMs,
+  msToTimecode, timecodeToMs, segmentHasChannel,
 } from './projectAdapter.js';
 
 // A representative .forgeproject.json (the contract). real → view → real must
@@ -288,5 +288,51 @@ describe('fromForgeBundleSegment', () => {
       sections: [{ id: 's', joiner: { type: 'none' }, segments: [plain] }],
     });
     expect(real.sections[0].segments[0]).not.toHaveProperty('audio_estim');
+  });
+});
+
+// ── channel categories ───────────────────────────────────────────────
+// A segment's `channels` are raw funscript names; the UI asks in
+// categories. Only "main" spells the same both ways, which is why a
+// 19-channel bundle used to report as "2D main" and nothing else.
+describe('segmentHasChannel', () => {
+  const bundleSeg = {
+    channels: ['main', 'pitch', 'roll', 'twist', 'alpha', 'beta', 'handy'],
+    channelGroups: {
+      main: ['main'],
+      multi_axis: ['pitch', 'roll', 'twist'],
+      three_phase_estim: ['alpha', 'beta'],
+      other: ['handy'],
+    },
+    explicitAudioEstim: { 'mp3': '/cache/stim.mp3' },
+  };
+
+  it('matches a category via the backend grouping, not the raw name', () => {
+    expect(segmentHasChannel(bundleSeg, 'multi_axis')).toBe(true);
+    expect(segmentHasChannel(bundleSeg, 'estim_3p')).toBe(true);
+  });
+
+  it('still matches main, which spells the same either way', () => {
+    expect(segmentHasChannel(bundleSeg, 'main')).toBe(true);
+  });
+
+  it('reports a category the segment has nothing for', () => {
+    expect(segmentHasChannel(bundleSeg, 'estim_4p')).toBe(false);
+    expect(segmentHasChannel(bundleSeg, 'pulse_freq')).toBe(false);
+  });
+
+  it('treats audio as its own thing — it is not a funscript group', () => {
+    expect(segmentHasChannel(bundleSeg, 'audio_estim')).toBe(true);
+    expect(segmentHasChannel({ ...bundleSeg, explicitAudioEstim: {} }, 'audio_estim')).toBe(false);
+    expect(segmentHasChannel({ audioEstim: ['stereostim.wav'] }, 'audio_estim')).toBe(true);
+  });
+
+  it('falls back to raw names for segments with no grouping', () => {
+    expect(segmentHasChannel({ channels: ['main'] }, 'main')).toBe(true);
+    expect(segmentHasChannel({ channels: ['main'] }, 'multi_axis')).toBe(false);
+  });
+
+  it('survives a null segment', () => {
+    expect(segmentHasChannel(null, 'main')).toBe(false);
   });
 });

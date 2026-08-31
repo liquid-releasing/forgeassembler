@@ -6,7 +6,7 @@ import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
 import { Icon } from './primitives';
 import { previewProject } from './api/forge';
-import { toForgeProject } from './lib/projectAdapter';
+import { segmentHasChannel, toForgeProject } from './lib/projectAdapter';
 
 // Sticky preview band — sits just above the Accept/Forge bar.
 //
@@ -176,7 +176,7 @@ function PreviewBand({ project, totalMs, segCount }) {
           // Detection-driven: any channel that appears on any clip.
           const flat = project.sections.flatMap(s => s.segments);
           const detected = FA_DATA.CHANNELS.filter(c => !c.future)
-            .filter(c => flat.some(s => s.channels.includes(c.id)));
+            .filter(c => flat.some(s => segmentHasChannel(s, c.id)));
           return detected.map(c => (
             <span key={c.id} style={{
               display: "inline-flex", alignItems: "center", gap: 4,

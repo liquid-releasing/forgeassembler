@@ -240,6 +240,7 @@ function SourcePane({ seg, onUpdate }) {
             beats={analysis.beats}
             hideEmptySpectro
             showMark={false}
+            railGuides
             thumbnailAspect="16/9"
             controls={["back5", "frame-back", "play", "frame-forward", "forward5"]}
             modeToggleAlign="start"
@@ -267,12 +268,7 @@ function SourcePane({ seg, onUpdate }) {
       {seg.kind === "video" ? (
         <PaneSection title="Trim window"
                       hint="Drag the handles to set in / out, or park the playhead and use the buttons. The dimmed regions are cut from the source.">
-          <TrimScrubber sourceDurMs={sourceDurMs}
-                          trimInMs={trim.trimInMs} trimOutMs={trim.trimOutMs}
-                          currentMs={currentMs}
-                          onChange={commitTrim}
-                          onSeek={(ms) => setCurrentMs(ms)} />
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             <Button kind="secondary" size="sm" style={{ flex: 1 }}
                     onClick={() => commitTrim({ ...trim, trimInMs: Math.min(currentMs, trim.trimOutMs) })}>
               Set in
@@ -287,6 +283,11 @@ function SourcePane({ seg, onUpdate }) {
               Reset
             </Button>
           </div>
+          <TrimScrubber sourceDurMs={sourceDurMs}
+                          trimInMs={trim.trimInMs} trimOutMs={trim.trimOutMs}
+                          currentMs={currentMs}
+                          onChange={commitTrim}
+                          onSeek={(ms) => setCurrentMs(ms)} />
           <div className="mono" style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
             keeps {fmtClipDur(effectiveMs)} of {fmtClipDur(sourceDurMs)}
           </div>
