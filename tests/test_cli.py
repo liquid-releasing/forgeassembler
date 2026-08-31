@@ -350,3 +350,33 @@ def test_preview_reports_a_missing_channel_as_empty(tmp_path):
             "--channel", "alpha", "--bins", "4")
     assert r.returncode == 0, r.stderr
     assert _json.loads(r.stdout)["action_count"] == 0
+
+
+def test_preview_thins_the_stroke_line_but_keeps_its_extremes(tmp_path):
+    """A plain every-Nth stride would flatten a fast passage. Bucketed
+    min/max keeps the envelope, which is the point of drawing the line."""
+    import json as _json
+
+    # The fixture holds 40 actions, so the cap has to be well under that
+    # for any thinning to happen at all.
+    r = run("preview", str(_preview_project(tmp_path, with_script=True)),
+            "--max-points", "12")
+    assert r.returncode == 0, r.stderr
+    out = _json.loads(r.stdout)
+    pts = out["points"]
+    assert 0 < len(pts) <= 12
+    assert len(pts) < out["action_count"]
+    # The square wave's rails survive the thinning.
+    assert min(p[1] for p in pts) == 0
+    assert max(p[1] for p in pts) == 100
+    # And time never runs backwards, or the polyline would fold over itself.
+    assert all(pts[i][0] <= pts[i + 1][0] for i in range(len(pts) - 1))
+
+
+def test_preview_returns_every_action_when_the_script_is_short(tmp_path):
+    import json as _json
+
+    r = run("preview", str(_preview_project(tmp_path, with_script=True)),
+            "--max-points", "10000")
+    out = _json.loads(r.stdout)
+    assert len(out["points"]) == out["action_count"]

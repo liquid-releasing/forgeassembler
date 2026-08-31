@@ -26,6 +26,15 @@ const SPEED_STOPS = [
   [600, [240, 30, 30]],
 ];
 
+// Which gradient band a speed falls in. Runs of the same band become one
+// polyline, so the stroke line is velocity-coloured without emitting a
+// separate element per action.
+function speedBand(speed) {
+  const s = Math.max(0, speed || 0);
+  for (let i = SPEED_STOPS.length - 1; i >= 0; i--) if (s >= SPEED_STOPS[i][0]) return i;
+  return 0;
+}
+
 function speedColor(speed) {
   const s = Math.max(0, Math.min(SPEED_STOPS[SPEED_STOPS.length - 1][0], speed || 0));
   for (let i = 0; i < SPEED_STOPS.length - 1; i++) {
@@ -44,23 +53,29 @@ function PreviewBand({ project, totalMs, segCount }) {
   const ref = React.useRef();
   const [summary, setSummary] = pbState(null);
   const [pending, setPending] = pbState(false);
+  const [note, setNote] = pbState(null);
 
   // Recompute when the project settles. Every run lays out and concatenates
   // the whole project, so a debounce keeps a burst of edits (dragging a trim
   // handle, say) from queuing one pass per frame.
   React.useEffect(() => {
-    if (!segCount) { setSummary(null); return undefined; }
+    if (!segCount) { setSummary(null); setNote(null); return undefined; }
     let cancelled = false;
     setPending(true);
     const id = setTimeout(() => {
       previewProject(toForgeProject(project, { folder: project.output?.folder }))
-        .then((res) => { if (!cancelled) { setSummary(res); setPending(false); } })
+        .then((res) => { if (!cancelled) { setSummary(res); setNote(null); setPending(false); } })
         .catch((e) => {
           if (cancelled) return;
-          // A clip whose media has gone missing fails the layout. The strip
-          // is not the place to report that — Forge validation is — so fall
-          // quiet rather than throwing an error bar under the timeline.
-          console.warn('[preview] unavailable', e);
+          // Reading the combined track needs every clip's real duration, so
+          // a missing file stops it. Say so in a line rather than falling
+          // silently blank — the sample compilation's placeholder paths hit
+          // this every time, and a blank strip looks broken. The detail
+          // belongs to Forge validation, not to a strip under the timeline.
+          const missing = /Could not determine duration of .*?['"]([^'"]+)['"]/.exec(String(e?.message || e));
+          setNote(missing
+            ? `Can't read the combined track — no media for ${missing[1].split(/[\/]/).pop()}.`
+            : "Can't read the combined track for this project.");
           setSummary(null); setPending(false);
         });
     }, 450);
@@ -68,7 +83,30 @@ function PreviewBand({ project, totalMs, segCount }) {
   }, [project, segCount]);
 
   const bins = summary?.bins || [];
-  const beats = [];
+
+  // The joined funscript as drawn segments, grouped into runs of one colour
+  // band. This IS the artifact being assembled, so seams at joins show up
+  // where a heatmap only hinted at them.
+  const strokeRuns = React.useMemo(() => {
+    const pts = summary?.points || [];
+    const total = summary?.duration_ms || 0;
+    if (pts.length < 2 || !total) return [];
+    const runs = [];
+    let current = null;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [at0, pos0] = pts[i];
+      const [at1, pos1] = pts[i + 1];
+      const dt = at1 - at0;
+      const speed = dt > 0 ? (Math.abs(pos1 - pos0) * 1000) / dt : 0;
+      const band = speedBand(speed);
+      if (!current || current.band !== band) {
+        current = { band, color: speedColor(speed), pts: [[at0 / total, pos0]] };
+        runs.push(current);
+      }
+      current.pts.push([at1 / total, pos1]);
+    }
+    return runs;
+  }, [summary]);
 
   return (
     <div style={{
@@ -82,10 +120,12 @@ function PreviewBand({ project, totalMs, segCount }) {
           Live preview
         </span>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {pending
+          {note
+            ? note
+            : pending
             ? "Reading the combined funscript…"
             : summary
-              ? `Peak speed per ${Math.max(1, Math.round((summary.duration_ms / Math.max(1, bins.length)) / 100) / 10)}s of the combined ${summary.channel} track — no render.`
+              ? `The joined ${summary.channel} track, velocity-coloured, with peak speed along the bottom — no render.`
               : "Add clips to see the combined funscript."}
         </span>
         <div style={{ flex: 1 }} />
@@ -118,27 +158,35 @@ function PreviewBand({ project, totalMs, segCount }) {
         }}
         onMouseLeave={() => setHover(null)}
         style={{
-          position: "relative", height: 56, borderRadius: 6,
+          position: "relative", height: 84, borderRadius: 6,
           background: "var(--surface-2)", border: "1px solid var(--border)",
           overflow: "hidden", cursor: "crosshair",
         }}>
-        {/* Heatmap: stacked vertical bars from baseline up */}
-        <svg viewBox={`0 0 ${bins.length} 60`} preserveAspectRatio="none"
+        {/* The joined funscript. Position maps to the full 0-100 domain, so a
+            script that never reaches the rails visibly doesn't. */}
+        <svg viewBox="0 0 1 100" preserveAspectRatio="none"
              style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
-          {bins.map((b, i) => (
-            <rect key={i}
-                  x={i} y={60 - b.v * 56} width={1.05} height={b.v * 56}
-                  fill={speedColor(b.speed)} opacity={0.85} />
+          {[0, 50, 100].map(r => (
+            <line key={r} x1={0} x2={1} y1={100 - r} y2={100 - r}
+                  stroke="var(--text-dim)" strokeWidth={0.3} opacity={0.18} />
+          ))}
+          {strokeRuns.map((run, i) => (
+            <polyline key={i} fill="none" stroke={run.color}
+                      strokeWidth={0.9} vectorEffect="non-scaling-stroke"
+                      strokeLinejoin="round" strokeLinecap="round"
+                      points={run.pts.map(([t, pos]) => `${t},${100 - pos}`).join(' ')} />
           ))}
         </svg>
 
-        {/* Beatmap: thin peak ticks along the bottom */}
-        <svg viewBox="0 0 1 1" preserveAspectRatio="none"
+        {/* Peak speed per bucket, as a slim lane along the bottom — the
+            heatmap this strip used to be, demoted to context. */}
+        <svg viewBox={`0 0 ${Math.max(1, bins.length)} 10`} preserveAspectRatio="none"
              style={{ position: "absolute", left: 0, right: 0, bottom: 0,
-                       width: "100%", height: 7, opacity: 0.9 }}>
-          {beats.map((p, i) => (
-            <line key={i} x1={p.t} x2={p.t} y1={1 - p.intensity * 0.85} y2={1}
-                  stroke="#fafafa" strokeWidth={0.004} opacity={0.65 + p.intensity * 0.35} />
+                       width: "100%", height: 10 }}>
+          {bins.map((b, i) => (
+            <rect key={i} x={i} y={10 - Math.max(0.6, b.v * 10)}
+                  width={1.05} height={Math.max(0.6, b.v * 10)}
+                  fill={speedColor(b.speed)} opacity={0.9} />
           ))}
         </svg>
 

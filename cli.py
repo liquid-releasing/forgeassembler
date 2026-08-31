@@ -301,8 +301,30 @@ def cmd_preview(args: argparse.Namespace) -> int:
                 reversals += 1
             if d:
                 prev_dir = d
+    # The stroke line itself, thinned to something a strip can draw. Peak-
+    # preserving: each bucket keeps its highest and lowest action, so the
+    # envelope survives and a fast passage cannot thin down to a flat line
+    # the way a plain every-Nth stride would make it.
+    points: list[list[int]] = []
+    if actions:
+        if len(actions) <= args.max_points:
+            points = [[int(a["at"]), int(a["pos"])] for a in actions]
+        else:
+            buckets = max(1, args.max_points // 2)
+            width = max(1, (total_ms or 1) / buckets)
+            by_bucket: dict[int, list[dict]] = {}
+            for a in actions:
+                by_bucket.setdefault(int(int(a["at"]) / width), []).append(a)
+            for _b, group in sorted(by_bucket.items()):
+                lo = min(group, key=lambda a: int(a["pos"]))
+                hi = max(group, key=lambda a: int(a["pos"]))
+                for a in sorted({id(lo): lo, id(hi): hi}.values(),
+                                key=lambda a: int(a["at"])):
+                    points.append([int(a["at"]), int(a["pos"])])
+
     minutes = total_ms / 60000.0
     payload = {
+        "points": points,
         "channel": args.channel,
         "duration_ms": total_ms,
         "action_count": len(actions),
@@ -765,6 +787,8 @@ def build_parser() -> argparse.ArgumentParser:
                            help="which channel to summarise (default: main)")
     p_preview.add_argument("--bins", type=int, default=600,
                            help="how many time buckets to report (default: 600)")
+    p_preview.add_argument("--max-points", type=int, default=2000,
+                           help="cap on returned [at, pos] pairs (default: 2000)")
     p_preview.add_argument("--format", choices=("text", "json"), default="json")
     p_preview.set_defaults(func=cmd_preview)
 
