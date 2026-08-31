@@ -542,16 +542,17 @@ class Joiner:
 # ── Output channels ────────────────────────────────────────────────────
 @dataclass
 class OutputChannels:
-    # All implemented channels default ON. Users typically want every
-    # detected channel in the output; off-by-default would silently
-    # drop e1/e2/prostate tracks even when they exist on the source
-    # clips. Phase-2 channels stay off until they're implemented.
+    # Every field defaults ON, because these are VETOES over detection,
+    # not an allow-list: `concat_funscript._selected_channels` produces
+    # whatever channels the clips actually carry, and a False here
+    # subtracts a group from that. Off-by-default would silently drop
+    # e1/e2/prostate tracks that exist on the source clips.
     main: bool = True
     multi_axis: bool = True
     three_phase_estim: bool = True
-    four_phase_estim: bool = False  # Phase 2
+    four_phase_estim: bool = True
     prostate: bool = True
-    pulse_frequency: bool = False  # Phase 2
+    pulse_frequency: bool = True
     # NOTE: `audio_estim` was a Phase-2 placeholder here that never got
     # wired through. It moved to `Output.produce_audio_estim` in v0.0.4
     # since it controls a top-level artifact (one WAV per channel),
@@ -571,13 +572,17 @@ class OutputChannels:
     def from_dict(d: dict | None) -> "OutputChannels":
         if not d:
             return OutputChannels()
+        # Defaults MATCH the dataclass. They used to be False here and
+        # True there, so a project file that merely omitted a key lost
+        # that channel -- the opposite of what constructing an
+        # OutputChannels() gave you.
         return OutputChannels(
             main=d.get("main", True),
-            multi_axis=d.get("multi_axis", False),
-            three_phase_estim=d.get("three_phase_estim", False),
-            four_phase_estim=d.get("four_phase_estim", False),
-            prostate=d.get("prostate", False),
-            pulse_frequency=d.get("pulse_frequency", False),
+            multi_axis=d.get("multi_axis", True),
+            three_phase_estim=d.get("three_phase_estim", True),
+            four_phase_estim=d.get("four_phase_estim", True),
+            prostate=d.get("prostate", True),
+            pulse_frequency=d.get("pulse_frequency", True),
         )
 
     def selected(self) -> list[str]:

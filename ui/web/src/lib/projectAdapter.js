@@ -45,6 +45,82 @@ export function segmentHasChannel(seg, uiChannelId) {
   return !!(group && Array.isArray(groups[group]) && groups[group].length);
 }
 
+// ── channel grouping — mirrors forgeassembler_core/detect.categorize_channels
+// A FunscriptForge scene ships ~20 channels. Ten of them fall into named
+// groups; the rest are device and restim-parameter tracks (handy, shaker,
+// volume, frequency, pulse_rise_time, …) that the engine forges too. `veto`
+// names the project.channels flag that can switch a whole group OFF —
+// "other" has none, so it always rides along.
+const MULTI_AXIS = ['pitch', 'roll', 'surge', 'sway', 'twist'];
+const ESTIM_3PHASE = ['alpha', 'beta'];
+const PROSTATE_CH = ['alpha-prostate', 'beta-prostate'];
+
+export const CHANNEL_GROUPS = [
+  { id: 'main',              label: '2D main',           veto: 'main' },
+  { id: 'multi_axis',        label: 'Multi-axis',        veto: 'multi_axis' },
+  { id: 'three_phase_estim', label: '3-phase e-stim',    veto: 'estim_3p' },
+  { id: 'prostate',          label: 'Prostate',          veto: 'prostate' },
+  { id: 'pulse_frequency',   label: 'Pulse frequency',   veto: 'pulse_freq' },
+  { id: 'other',             label: 'Device & parameter', veto: null },
+];
+
+export function channelGroup(channel) {
+  if (channel === 'main') return 'main';
+  if (MULTI_AXIS.includes(channel)) return 'multi_axis';
+  if (ESTIM_3PHASE.includes(channel)) return 'three_phase_estim';
+  if (PROSTATE_CH.includes(channel)) return 'prostate';
+  if (channel === 'pulse_frequency') return 'pulse_frequency';
+  return 'other';
+}
+
+/**
+ * What the forge will actually write, and how much of the timeline each
+ * channel covers.
+ *
+ * The engine is DETECTION-driven: it forges every channel the clips carry
+ * and skips the ones nothing carries, with `project.channels` acting only
+ * as a per-group veto. This mirrors that, so the Output tab can state what
+ * is going to happen rather than describing a fixed menu.
+ *
+ * Stills (title cards) carry no funscript by definition, so they are
+ * exempt rather than counted as a clip that's missing every channel.
+ *
+ * @returns {{groups: Array, detected: number, vetoed: number, clips: number}}
+ */
+export function projectChannelCoverage(project) {
+  const clips = (project?.sections || [])
+    .flatMap(s => s.segments || [])
+    .filter(s => s.kind !== 'still');
+  const flags = project?.channels || {};
+
+  const counts = new Map();
+  for (const clip of clips) {
+    for (const ch of clip.channels || []) {
+      counts.set(ch, (counts.get(ch) || 0) + 1);
+    }
+  }
+
+  let detected = 0;
+  let vetoed = 0;
+  const groups = CHANNEL_GROUPS.map(g => {
+    const included = g.veto == null ? true : flags[g.veto] !== false;
+    const channels = [...counts.keys()]
+      .filter(ch => channelGroup(ch) === g.id)
+      .sort()
+      .map(ch => ({
+        id: ch,
+        have: counts.get(ch),
+        eligible: clips.length,
+        full: counts.get(ch) === clips.length,
+      }));
+    if (included) detected += channels.length;
+    else vetoed += channels.length;
+    return { ...g, included, channels };
+  }).filter(g => g.channels.length);
+
+  return { groups, detected, vetoed, clips: clips.length };
+}
+
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 
 // ── time helpers: ms ↔ "HH:MM:SS.mmm" ─────────────────────────────────
@@ -227,7 +303,17 @@ export function fromForgeProject(json) {
   const oc = json.output_channels || {};
   const channels = {};
   for (const [rk, vk] of Object.entries(CHANNEL_MAP_INV)) {
-    channels[vk] = !!oc[rk];
+    channels[vk] = oc[rk] !== false;  // an omitted flag is ON, as in the backend
+  }
+  // MIGRATION — the one break in the lossless round-trip. Projects saved
+  // before channels became detection-driven recorded `main` on and every
+  // other channel off, because that was the boot state and no UI ever
+  // exposed a toggle. Reading that literally would keep forging one
+  // funscript out of a 20-channel scene. Nobody chose it, so upgrade it.
+  const others = Object.entries(CHANNEL_MAP_INV).filter(([rk]) => rk !== 'main');
+  const legacyAllOff = oc.main === true && others.every(([rk]) => oc[rk] === false);
+  if (legacyAllOff) {
+    for (const [, vk] of others) channels[vk] = true;
   }
   channels.audio_estim = json.output?.produce_audio_estim ?? true;
   return {

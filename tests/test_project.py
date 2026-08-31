@@ -880,3 +880,17 @@ def test_validate_overlay_negative_times(tmp_path: Path):
     issues = validate(p)
     assert any("start_s must be non-negative" in i.message for i in issues)
     assert any("duration_s must be non-negative" in i.message for i in issues)
+
+
+def test_output_channels_from_dict_defaults_match_the_dataclass():
+    """An omitted key must not silently disable a channel. `from_dict`
+    used to default everything but `main` to False while the dataclass
+    defaulted them True, so a hand-written or partial project file lost
+    channels it never asked to lose."""
+    partial = OutputChannels.from_dict({"main": True})
+    assert partial.to_dict() == OutputChannels().to_dict()
+    # An EXPLICIT false is still honoured -- these are vetoes.
+    vetoed = OutputChannels.from_dict({"three_phase_estim": False})
+    assert vetoed.three_phase_estim is False
+    assert vetoed.main is True
+

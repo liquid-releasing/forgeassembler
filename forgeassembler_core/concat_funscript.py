@@ -25,26 +25,13 @@ if TYPE_CHECKING:  # avoid circular at runtime
 
 __all__ = [
     "FunscriptPart",
+    "channels_for_segment",
     "concat_funscripts",
+    "detected_channels",
     "forge_funscripts",
     "read_funscript",
     "write_funscript",
 ]
-
-# Channel sets per OutputChannels toggle. Values are (in-detect name,
-# filename suffix) pairs. Suffix "" means the plain `{basename}.funscript`.
-_CHANNELS_MAIN: tuple[tuple[str, str], ...] = (("main", ""),)
-_CHANNELS_MULTI_AXIS: tuple[tuple[str, str], ...] = tuple(
-    (axis, f".{axis}") for axis in ("pitch", "roll", "surge", "sway", "twist")
-)
-_CHANNELS_3PHASE: tuple[tuple[str, str], ...] = (
-    ("alpha", ".alpha"), ("beta", ".beta"),
-)
-_CHANNELS_PROSTATE: tuple[tuple[str, str], ...] = (
-    ("alpha-prostate", ".alpha-prostate"),
-    ("beta-prostate", ".beta-prostate"),
-)
-
 
 @dataclass
 class FunscriptPart:
@@ -206,21 +193,104 @@ def _build_parts_for_channel(
     return parts
 
 
+def channels_for_segment(segment: "Segment") -> set[str]:
+    """Every funscript channel `segment` can contribute, by name.
+
+    Mirrors `_resolve_funscript_path_for_segment`'s three sources so the
+    two can never disagree about what a segment carries.
+    """
+    if segment.funscripts_source == "none":
+        return set()
+    if segment.funscripts_source == "explicit":
+        return {ch for ch, raw in segment.explicit_funscripts.items() if raw}
+    if segment.is_still():
+        return set()  # PNG/title-card segments carry no funscripts
+    from .detect import funscripts_for_stem
+    video_path = Path(segment.video)
+    folder = (
+        Path(segment.funscripts_folder)
+        if segment.funscripts_folder else video_path.parent
+    )
+    try:
+        return set(funscripts_for_stem(folder, video_path.stem))
+    except OSError:
+        return set()
+
+
+def detected_channels(project: "Project") -> set[str]:
+    """The union of every funscript channel present on any segment."""
+    from .project import Segment as _Seg
+    found: set[str] = set()
+    for section in project.sections:
+        for item in section.segments:
+            if isinstance(item, _Seg):
+                found |= channels_for_segment(item)
+    return found
+
+
+# Group (as `categorize_channels` buckets them) -> the OutputChannels field
+# that can veto it. "other" deliberately has no toggle: a channel we have no
+# category for still rides through, because concatenating `volume` is the
+# same operation as concatenating `alpha`.
+_GROUP_VETO: dict[str, str] = {
+    "main": "main",
+    "multi_axis": "multi_axis",
+    "three_phase_estim": "three_phase_estim",
+    "prostate": "prostate",
+    "pulse_frequency": "pulse_frequency",
+}
+
+# Emission order, so a forge is reproducible. Anything not named here sorts
+# alphabetically after these.
+_CHANNEL_ORDER: tuple[str, ...] = (
+    "main",
+    "pitch", "roll", "surge", "sway", "twist",
+    "alpha", "beta",
+    "alpha-prostate", "beta-prostate",
+    "pulse_frequency",
+)
+
+
 def _selected_channels(project: "Project") -> list[tuple[str, str]]:
-    """Expand OutputChannels toggles into a flat list of (channel, suffix)
-    pairs in a deterministic order."""
+    """Which (channel, filename-suffix) pairs this forge should write.
+
+    DETECTION drives the list -- every channel found on the clips is
+    produced, which is the promise the Output tab makes. `OutputChannels`
+    is a set of VETOES over that, not an allow-list: the old allow-list
+    silently dropped 10 of the 20 channels a real FunscriptForge scene
+    ships (volume, frequency, pulse_rise_time, handy, shaker, ...).
+
+    Channels with no actions anywhere are still skipped downstream by
+    `forge_funscripts`, so nothing empty gets written either way.
+
+    Suffix follows FunscriptForge's own naming: `<stem>.funscript` for
+    main, `<stem>.<channel>.funscript` for everything else.
+    """
+    from .detect import categorize_channels
+
     oc = project.output_channels
-    out: list[tuple[str, str]] = []
-    if oc.main:
-        out.extend(_CHANNELS_MAIN)
-    if oc.multi_axis:
-        out.extend(_CHANNELS_MULTI_AXIS)
-    if oc.three_phase_estim:
-        out.extend(_CHANNELS_3PHASE)
-    if oc.prostate:
-        out.extend(_CHANNELS_PROSTATE)
-    # four_phase_estim / audio_estim / pulse_frequency deferred to Phase 2.
-    return out
+    found = detected_channels(project)
+    if not found:
+        return []
+    groups = categorize_channels({ch: Path(ch) for ch in found})
+
+    allowed: set[str] = set()
+    for group, members in groups.items():
+        veto_field = _GROUP_VETO.get(group)
+        if veto_field is not None and not getattr(oc, veto_field, True):
+            continue
+        allowed |= set(members)
+
+    def order_key(ch: str) -> tuple[int, str]:
+        try:
+            return (_CHANNEL_ORDER.index(ch), "")
+        except ValueError:
+            return (len(_CHANNEL_ORDER), ch)
+
+    return [
+        (ch, "" if ch == "main" else f".{ch}")
+        for ch in sorted(allowed, key=order_key)
+    ]
 
 
 def forge_funscripts(

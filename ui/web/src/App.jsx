@@ -40,8 +40,12 @@ function emptyProject() {
     name: 'untitled',
     output: { folder: null, resolution: '1080p', quality: 'medium',
               frameRate: 'source', normalizeAudio: true, video: true, funscripts: true },
-    channels: { main: true, multi_axis: false, estim_3p: false, estim_4p: false,
-                prostate: false, pulse_freq: false, audio_estim: true },
+    // Channel flags are VETOES over what the clips actually carry, not an
+    // allow-list — the engine forges every DETECTED channel and skips the
+    // ones nothing carries. All-on is therefore the correct empty state;
+    // all-off-but-main used to reduce a 20-channel scene to one funscript.
+    channels: { main: true, multi_axis: true, estim_3p: true, estim_4p: true,
+                prostate: true, pulse_freq: true, audio_estim: true },
     sections: [{ id: `sec-${Date.now()}`, title: '', color: '#ff8c42',
                  joiner: { type: 'none' }, segments: [], overlays: [] }],
     audioBeds: [],
@@ -481,6 +485,49 @@ function App() {
         }));
       }).catch(() => { /* leave durMs at 0 if probe fails */ });
     }
+    fillDetectedChannels(segs);
+  }
+
+  // A clip added one file at a time arrives with `channels: []` — nothing
+  // has looked at its siblings yet, so the Output tab would report it as
+  // carrying nothing at all. `detect_folder` is a directory listing (no
+  // probing), so this is cheap; it runs after the insert and patches the
+  // segments in place. `.forge` imports skip it — the bundle already told
+  // us its channels, and the bundle is the source of truth.
+  const toPosix = (p) => String(p || '').split('\\').join('/');
+
+  async function fillDetectedChannels(segs) {
+    const pending = segs.filter(s => s.file && s.kind !== 'still'
+      && (s.funscriptsSource || 'auto_detect') === 'auto_detect'
+      && !(s.channels || []).length);
+    if (!pending.length) return;
+    const folders = [...new Set(pending.map(
+      s => toPosix(s.file).replace(/\/[^/]*$/, '')))];
+    const byStem = new Map();
+    for (const folder of folders) {
+      let payload;
+      try { payload = await detectFolder(folder); } catch { continue; }
+      for (const clip of payload?.clips || []) byStem.set(clip.stem, clip);
+    }
+    if (!byStem.size) return;
+    setProject(p => ({
+      ...p,
+      sections: p.sections.map(s => ({
+        ...s,
+        segments: s.segments.map(x => {
+          if (!pending.some(q => q.id === x.id)) return x;
+          const stem = toPosix(x.file).split('/').pop().replace(/\.[^.]+$/, '');
+          const clip = byStem.get(stem);
+          if (!clip) return x;
+          return {
+            ...x,
+            channels: Object.keys(clip.funscripts || {}),
+            channelGroups: clip.channel_groups || {},
+            audioEstim: Object.keys(clip.audio_estim || {}),
+          };
+        }),
+      })),
+    }));
   }
 
   // ── Add clips from a FOLDER (batch detect) — the header "Add folder…" ──
@@ -690,11 +737,6 @@ function App() {
     forge:    { accepted: false, chainFile: "forged/" + project.name + ".mp4" },
   });
 
-  // Per-channel "what to do at the gaps" policy. Defaults to "blank"
-  // (don't synthesise anything for clips that lack this channel).
-  const [channelGapPolicy, setChannelGapPolicy] = useState({});
-  const setChannelGap = (id, v) => setChannelGapPolicy(p => ({ ...p, [id]: v }));
-
   // re-derive chainFile when project changes
   useEffect(() => {
     setPipeline(p => ({
@@ -882,8 +924,6 @@ function App() {
     );
   } else if (tab === "output") {
     body = <OutputTab project={project}
-                       channelGapPolicy={channelGapPolicy}
-                       onSetChannelGapPolicy={setChannelGap}
                        onSetOutput={setOutput}
                        onSetChannels={setChannels} />;
     acceptKey = "output";

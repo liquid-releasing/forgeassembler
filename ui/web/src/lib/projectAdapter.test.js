@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toForgeProject, fromForgeProject, fromDetected, fromForgeBundleSegment,
   msToTimecode, timecodeToMs, segmentHasChannel,
+  channelGroup, projectChannelCoverage,
 } from './projectAdapter.js';
 
 // A representative .forgeproject.json (the contract). real → view → real must
@@ -336,3 +337,104 @@ describe('segmentHasChannel', () => {
     expect(segmentHasChannel(null, 'main')).toBe(false);
   });
 });
+
+
+describe('channelGroup mirrors the backend buckets', () => {
+  it('names the categorised channels', () => {
+    expect(channelGroup('main')).toBe('main');
+    expect(channelGroup('twist')).toBe('multi_axis');
+    expect(channelGroup('alpha')).toBe('three_phase_estim');
+    expect(channelGroup('beta-prostate')).toBe('prostate');
+    expect(channelGroup('pulse_frequency')).toBe('pulse_frequency');
+  });
+  it('sends device and parameter tracks to "other" — they still forge', () => {
+    for (const ch of ['handy', 'shaker', 'volume', 'frequency',
+                      'pulse_rise_time', 'lovense', 'ossm', 'vacuglide']) {
+      expect(channelGroup(ch)).toBe('other');
+    }
+  });
+});
+
+describe('projectChannelCoverage', () => {
+  const project = (channelsA, channelsB, flags = {}) => ({
+    channels: { main: true, multi_axis: true, estim_3p: true,
+                prostate: true, pulse_freq: true, ...flags },
+    sections: [{
+      segments: [
+        { id: 'a', kind: 'video', channels: channelsA },
+        { id: 'b', kind: 'video', channels: channelsB },
+        { id: 'card', kind: 'still', channels: [] },
+      ],
+    }],
+  });
+
+  it('counts every clip, ignoring stills', () => {
+    const cov = projectChannelCoverage(project(['main'], ['main']));
+    expect(cov.clips).toBe(2);
+    const main = cov.groups.find(g => g.id === 'main').channels[0];
+    expect(main).toMatchObject({ id: 'main', have: 2, eligible: 2, full: true });
+  });
+
+  it('reports a channel only one clip carries as a partial', () => {
+    const cov = projectChannelCoverage(project(['main', 'twist'], ['main']));
+    const axis = cov.groups.find(g => g.id === 'multi_axis');
+    expect(axis.channels).toEqual([
+      { id: 'twist', have: 1, eligible: 2, full: false },
+    ]);
+  });
+
+  it('surfaces uncategorised device channels rather than dropping them', () => {
+    const cov = projectChannelCoverage(
+      project(['main', 'handy', 'shaker'], ['main', 'handy']));
+    const other = cov.groups.find(g => g.id === 'other');
+    expect(other.channels.map(c => c.id)).toEqual(['handy', 'shaker']);
+    expect(other.included).toBe(true);   // "other" has no veto flag
+    expect(cov.detected).toBe(3);        // main + handy + shaker
+  });
+
+  it('moves a vetoed group out of the detected count', () => {
+    const cov = projectChannelCoverage(
+      project(['main', 'alpha', 'beta'], ['main'], { estim_3p: false }));
+    const estim = cov.groups.find(g => g.id === 'three_phase_estim');
+    expect(estim.included).toBe(false);
+    expect(cov.detected).toBe(1);
+    expect(cov.vetoed).toBe(2);
+  });
+
+  it('lists no groups for a project with no clips', () => {
+    expect(projectChannelCoverage({ sections: [] }))
+      .toEqual({ groups: [], detected: 0, vetoed: 0, clips: 0 });
+  });
+});
+
+describe('legacy channel flags are migrated on load', () => {
+  // Everything-off-but-main was the OLD boot state, not a user choice —
+  // no UI ever exposed these toggles. Read literally it forges one
+  // funscript out of a 20-channel scene.
+  const LEGACY = {
+    version: '2.0', sections: [], output: { basename: 'x' },
+    output_channels: {
+      main: true, multi_axis: false, three_phase_estim: false,
+      four_phase_estim: false, prostate: false, pulse_frequency: false,
+    },
+  };
+
+  it('turns the legacy all-off shape back on', () => {
+    const vm = fromForgeProject(LEGACY);
+    expect(vm.channels).toMatchObject({
+      main: true, multi_axis: true, estim_3p: true,
+      estim_4p: true, prostate: true, pulse_freq: true,
+    });
+  });
+
+  it('leaves a deliberate partial veto alone', () => {
+    const vm = fromForgeProject({
+      ...LEGACY,
+      output_channels: { main: true, multi_axis: true, prostate: false },
+    });
+    expect(vm.channels.multi_axis).toBe(true);
+    expect(vm.channels.prostate).toBe(false);
+    expect(vm.channels.estim_3p).toBe(true);   // omitted == on
+  });
+});
+

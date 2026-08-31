@@ -6,7 +6,7 @@ import { ParamControl, TimingVisual } from './JoinerEditor';
 import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
-import { segmentHasChannel } from './lib/projectAdapter';
+import { projectChannelCoverage, segmentHasChannel } from './lib/projectAdapter';
 
 // Sketched other pipeline tabs. Intentionally light — the Build tab is
 // where the design work is concentrated; these convey the structure
@@ -20,12 +20,11 @@ import { segmentHasChannel } from './lib/projectAdapter';
 // ── Channels tab removed — folded into Output. Detection-driven now.
 
 // ── Output tab (also absorbs channel coverage) ───────────────────
-// Channels aren't opt-in. Detection scans the clip folders; the user's
-// real decision is: when a clip is MISSING this channel, do we
-// (a) generate a basic fallback so the channel is continuous, or
-// (b) leave that section blank (silence / no actions)?
-function OutputTab({ project, channelGapPolicy, onSetChannelGapPolicy,
-                    onSetOutput, onSetChannels }) {
+// Channels aren't opt-in: detection decides what exists, and the switches
+// here only ever SUBTRACT a group from that. Gaps (a channel one clip
+// lacks) are left blank — the engine has no fallback synthesis, and the
+// picker that used to offer one wasn't wired to anything.
+function OutputTab({ project, onSetOutput, onSetChannels }) {
   const out = project.output || {};
   const chans = project.channels || {};
   return (
@@ -110,39 +109,26 @@ function OutputTab({ project, channelGapPolicy, onSetChannelGapPolicy,
       </div>
 
       <div style={{ marginTop: 20 }}>
-        <OutputChannelsCard project={project}
-                              channelGapPolicy={channelGapPolicy}
-                              onSetChannelGapPolicy={onSetChannelGapPolicy} />
+        <OutputChannelsCard project={project} onSetChannels={onSetChannels} />
       </div>
     </FATabBody>
   );
 }
 
-// ── Output channels card (was its own tab) ───────────────────────
-// Detected channels appear automatically; the user decides per
-// partially-covered channel how to fill the gaps.
-function OutputChannelsCard({ project, channelGapPolicy, onSetChannelGapPolicy }) {
-  const flat = project.sections.flatMap(s => s.segments);
-  const segCount = flat.length;
-
-  // Build per-channel coverage from per-clip detection
-  const all = FA_DATA.CHANNELS.filter(c => !c.future);
-  const channels = all.map(c => {
-    // For "still" segments we don't expect a funscript — those are
-    // exempt rather than counted as "missing".
-    const eligible = flat.filter(s => s.kind !== "still" || c.id === "audio_estim");
-    const have = eligible.filter(s => segmentHasChannel(s, c.id));
-    return {
-      ...c,
-      detected: have.length > 0,
-      have: have.length,
-      eligible: eligible.length,
-      pct: eligible.length ? (have.length / eligible.length) * 100 : 0,
-    };
-  });
-
-  const detected = channels.filter(c => c.detected);
-  const notDetected = channels.filter(c => !c.detected);
+// ── Output channels card (was its own tab) ───────────────────
+// Reports what the forge will ACTUALLY write. The engine is
+// detection-driven: every channel found on the clips is produced, and
+// the group switches here are vetoes over that. A real FunscriptForge
+// scene carries ~20 channels — ten categorised, the rest device and
+// restim-parameter tracks — so this card reads them off the clips
+// rather than off a fixed menu, which used to report a 20-channel
+// scene as "2D main".
+function OutputChannelsCard({ project, onSetChannels }) {
+  const cov = projectChannelCoverage(project);
+  const estimClips = project.sections.flatMap(s => s.segments)
+    .filter(s => s.kind !== "still");
+  const estimHave = estimClips.filter(s => segmentHasChannel(s, "audio_estim")).length;
+  const produceEstim = project.channels?.audio_estim !== false;
 
   return (
     <Card padding={18}>
@@ -151,105 +137,117 @@ function OutputChannelsCard({ project, channelGapPolicy, onSetChannelGapPolicy }
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Output channels</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, maxWidth: 720 }}>
-            Every funscript channel ForgeAssembler detected in your clips is included in the output. When a channel
-            is only on some clips, you decide what happens at the gaps: synthesise a basic fallback so the channel
-            is continuous, or leave those sections blank.
+            Every funscript channel found on your clips is forged — you don't opt in. Where a
+            channel is missing from a clip, that stretch of the combined script is left blank,
+            so the channels that <em>are</em> there stay in lockstep with the video.
           </div>
         </div>
-        <Pill tone="accent" style={{ fontSize: 10 }}>{detected.length} detected</Pill>
+        <Pill tone="accent" style={{ fontSize: 10 }}>
+          {cov.detected} channel{cov.detected === 1 ? "" : "s"}
+        </Pill>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {detected.map(c => {
-          const full = c.have === c.eligible;
-          const policy = channelGapPolicy[c.id] || "blank";
-          return (
-            <div key={c.id} style={{
-              display: "grid", gridTemplateColumns: "180px 1fr 220px",
-              alignItems: "center", gap: 14,
-              padding: "10px 12px",
-              background: "var(--surface-2)", border: "1px solid var(--border)",
-              borderRadius: 8,
-            }}>
-              <div>
-                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.label}</div>
-                <div className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)", marginTop: 1 }}>{c.desc}</div>
-              </div>
+      {cov.clips === 0 ? (
+        <div style={{ padding: "18px 14px", borderRadius: 8, textAlign: "center",
+                       background: "var(--surface-2)", border: "1px dashed var(--border)",
+                       fontSize: 12, color: "var(--text-dim)" }}>
+          No clips yet. Add a <span className="mono">.forge</span> scene on the Build tab and its
+          channels appear here.
+        </div>
+      ) : cov.groups.length === 0 ? (
+        <div style={{ padding: "18px 14px", borderRadius: 8, textAlign: "center",
+                       background: "var(--surface-2)", border: "1px dashed var(--border)",
+                       fontSize: 12, color: "var(--text-dim)" }}>
+          None of the {cov.clips} clip{cov.clips === 1 ? "" : "s"} carries a funscript, so there's
+          nothing to forge on the haptic side.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {cov.groups.map(g => (
+            <ChannelGroupRow key={g.id} group={g} clips={cov.clips}
+                              onToggle={g.veto
+                                ? (on) => onSetChannels({ [g.veto]: on })
+                                : null} />
+          ))}
+        </div>
+      )}
 
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <div style={{ flex: 1, height: 6, background: "var(--bg)",
-                                  borderRadius: 3, overflow: "hidden" }}>
-                    <span style={{
-                      display: "block", width: `${c.pct}%`, height: "100%",
-                      background: full ? "var(--success)" : "var(--warn)",
-                    }} />
-                  </div>
-                  <span className="mono" style={{ fontSize: 11, color: full ? "var(--success)" : "var(--warn)",
-                                                    fontWeight: 600, width: 84, textAlign: "right" }}>
-                    {c.have} / {c.eligible} clips
-                  </span>
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                  {full
-                    ? "Full coverage — no gaps to resolve."
-                    : `Missing on ${c.eligible - c.have} clip${(c.eligible - c.have) === 1 ? "" : "s"}.`}
-                </div>
-              </div>
-
-              {full ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 6,
-                                color: "var(--success)", fontSize: 11.5, fontWeight: 600,
-                                justifyContent: "flex-end" }}>
-                  <Icon name="circle-check-big" size={13} />
-                  Continuous
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
-                  <span className="mono" style={{ fontSize: 10, color: "var(--text-dim)",
-                                                    textTransform: "uppercase", letterSpacing: "0.06em",
-                                                    fontWeight: 700 }}>
-                    Fill gaps with
-                  </span>
-                  <Segmented value={policy} onChange={(v) => onSetChannelGapPolicy(c.id, v)}
-                              options={[
-                                { value: "blank",    label: c.id === "audio_estim" ? "Silence" : "Blank" },
-                                { value: "generate", label: c.id === "audio_estim" ? "Tone" : "Basic" },
-                              ]} />
-                  <span style={{ fontSize: 10.5, color: "var(--text-dim)", textAlign: "right",
-                                  maxWidth: 220, lineHeight: 1.45 }}>
-                    {policy === "blank"
-                      ? (c.id === "audio_estim"
-                          ? "Insert silence for missing sections (lockstep with video)."
-                          : "Hold the last position — no new actions during the gap.")
-                      : (c.id === "audio_estim"
-                          ? "Generate a low-level guide tone derived from the main channel."
-                          : "Synthesise basic motion from the main channel as a fallback.")}
-                  </span>
-                </div>
-              )}
+      {/* Haptic e-stim audio is a separate artifact (one file per channel),
+          not a sub-channel of the funscript output — hence its own row and
+          its own produce flag. */}
+      {estimClips.length > 0 && (
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 14,
+                       padding: "10px 12px", borderRadius: 8,
+                       background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>Haptic e-stim audio</div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+              {estimHave === 0
+                ? "No clip carries e-stim audio."
+                : `Carried by ${estimHave} of ${estimClips.length} clip${estimClips.length === 1 ? "" : "s"}` +
+                  (estimHave === estimClips.length ? "." : " — silence elsewhere.")}
             </div>
-          );
-        })}
-      </div>
-
-      {notDetected.length > 0 && (
-        <details style={{ marginTop: 12 }}>
-          <summary style={{ cursor: "pointer", fontSize: 11.5, color: "var(--text-dim)",
-                              padding: "6px 10px", borderRadius: 6,
-                              background: "var(--surface-2)", border: "1px solid var(--border)",
-                              listStyle: "none", userSelect: "none" }}>
-            <span style={{ fontWeight: 600 }}>{notDetected.length} channel{notDetected.length === 1 ? "" : "s"} not detected</span>
-            <span style={{ marginLeft: 8 }}>· {notDetected.map(c => c.label).join(" · ")}</span>
-          </summary>
-          <div style={{ marginTop: 6, padding: "8px 12px", fontSize: 11.5, color: "var(--text-muted)",
-                          lineHeight: 1.5 }}>
-            These weren't found alongside any clip in this project, so they aren't in the output.
-            Add a clip that carries one of them to the Build tab and it'll appear here.
           </div>
-        </details>
+          <Segmented value={produceEstim ? "on" : "off"}
+                      onChange={(v) => onSetChannels({ audio_estim: v === "on" })}
+                      options={[{ value: "on", label: "Produce" },
+                                { value: "off", label: "Skip" }]} />
+        </div>
       )}
     </Card>
+  );
+}
+
+// One channel group: its switch, and a compact line per member channel
+// showing how many clips carry it. Partial coverage is the thing worth
+// seeing — it's exactly where the combined script goes quiet.
+function ChannelGroupRow({ group, clips, onToggle }) {
+  const partial = group.channels.filter(c => !c.full);
+  const off = !group.included;
+  return (
+    <div style={{ padding: "10px 12px", borderRadius: 8,
+                   background: "var(--surface-2)",
+                   border: "1px solid var(--border)",
+                   opacity: off ? 0.55 : 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600 }}>
+            {group.label}
+            <span style={{ fontWeight: 400, color: "var(--text-dim)", marginLeft: 8 }}>
+              {group.channels.length} channel{group.channels.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: off ? "var(--text-dim)" : "var(--text-muted)", marginTop: 2 }}>
+            {off
+              ? "Skipped — not written to the output."
+              : partial.length === 0
+                ? "On every clip — continuous across the whole compilation."
+                : `Blank where missing: ${partial.map(c => c.id).join(", ")}.`}
+          </div>
+        </div>
+        {onToggle ? (
+          <Segmented value={group.included ? "on" : "off"}
+                      onChange={(v) => onToggle(v === "on")}
+                      options={[{ value: "on", label: "Forge" },
+                                { value: "off", label: "Skip" }]} />
+        ) : (
+          <Pill tone="neutral" style={{ fontSize: 10 }}>always</Pill>
+        )}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+        {group.channels.map(c => (
+          <span key={c.id} className="mono" title={`${c.have} of ${c.eligible} clips`}
+                 style={{ fontSize: 10.5, padding: "2px 7px", borderRadius: 5,
+                          border: `1px solid ${c.full ? "var(--border)" : "var(--warn)"}`,
+                          color: c.full ? "var(--text-muted)" : "var(--warn)",
+                          background: "var(--bg)" }}>
+            {c.id}
+            {!c.full && <span style={{ marginLeft: 5 }}>{c.have}/{c.eligible}</span>}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -306,12 +304,10 @@ function ResolutionPicker({ value }) {
 }
 
 // ── Forge tab ─────────────────────────────────────────────────────
-function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage, channelGapPolicy }) {
-  // Detect channels present anywhere in the project (detection-driven output).
+function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) {
+  // What the forge will write, counted the same way the engine counts it.
   const flat = project.sections.flatMap(s => s.segments);
-  const detected = FA_DATA.CHANNELS.filter(c => !c.future)
-    .filter(c => flat.some(s => s.channels.includes(c.id)));
-  const has = (id) => detected.some(c => c.id === id);
+  const cov = projectChannelCoverage(project);
 
   return (
     <FATabBody>
@@ -332,7 +328,10 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage, ch
                 ["Total duration", fmtTotal(totalMs)],
                 ["Resolution",    project.output.resolution],
                 ["Loudness",      project.output.normalizeAudio ? "−16 LUFS" : "off"],
-                ["Channels",      detected.length ? detected.map(c => c.label).join(" · ") : "none detected"],
+                ["Funscripts",    cov.detected
+                                    ? `${cov.detected} channel${cov.detected === 1 ? "" : "s"} · `
+                                      + cov.groups.filter(g => g.included).map(g => g.label).join(" · ")
+                                    : "none detected"],
               ].map(([k, v]) => (
                 <tr key={k}>
                   <td style={{ padding: "6px 0", color: "var(--text-muted)", width: 140 }}>{k}</td>
@@ -346,15 +345,21 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage, ch
           <FASectionLabel>Outputs that will be written</FASectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {[
-              { f: `${project.name}.mp4`,                       on: project.output.video },
-              { f: `${project.name}.funscript`,                 on: has("main") },
-              { f: `${project.name}.pitch.funscript`,           on: has("multi_axis"), sub: true },
-              { f: `${project.name}.roll.funscript`,            on: has("multi_axis"), sub: true },
-              { f: `${project.name}.alpha.funscript`,           on: has("estim_3p"),   sub: true },
-              { f: `${project.name}.beta.funscript`,            on: has("estim_3p"),   sub: true },
-              { f: `${project.name}.alt.funscript`,             on: has("alt"),        sub: true },
-              { f: `${project.name}.stereostim.wav`,            on: has("audio_estim") },
-              { f: `${project.name}.forgeproject.json`,         on: true },
+              { f: `${project.name}.mp4`, on: project.output.video },
+              // One row per channel the engine will actually forge, named
+              // the way it names them: main is the bare .funscript, every
+              // other channel takes its own suffix. This list used to be
+              // hardcoded — it advertised a .alt.funscript and a
+              // .stereostim.wav that nothing produces, and never mentioned
+              // the device channels that do get written.
+              ...cov.groups.filter(g => g.included).flatMap(g => g.channels.map(c => ({
+                f: c.id === "main"
+                  ? `${project.name}.funscript`
+                  : `${project.name}.${c.id}.funscript`,
+                on: project.output.funscripts !== false,
+                sub: c.id !== "main",
+              }))),
+              { f: `${project.name}.forgeproject.json`, on: true },
             ].filter(x => x.on).map((x, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8,
                                       padding: "5px 8px", paddingLeft: x.sub ? 22 : 8,

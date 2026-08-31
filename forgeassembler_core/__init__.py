@@ -14,7 +14,9 @@ from .concat_audio_estim import (
 )
 from .concat_funscript import (
     FunscriptPart,
+    channels_for_segment,
     concat_funscripts,
+    detected_channels,
     forge_funscripts,
     read_funscript,
     write_funscript,
@@ -129,7 +131,9 @@ __all__ = [
     "categorize_channels",
     "compute_peak_speeds",
     "concat_filter",
+    "channels_for_segment",
     "concat_funscripts",
+    "detected_channels",
     "corner_position_expr",
     "detect_file",
     "detect_folder",
