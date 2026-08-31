@@ -30,6 +30,26 @@ def test_version():
     assert "ForgeAssembler" in r.stdout
 
 
+def test_cli_survives_a_legacy_codepage_console():
+    """Windows hands a spawned CLI a cp1252 stdout; the forge log's "→"
+    used to raise UnicodeEncodeError and kill the run. Force UTF-8 on
+    both streams instead — the Tauri shell decodes UTF-8 anyway."""
+    import os
+
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    r = subprocess.run(
+        CLI + ["list-joiners"],
+        capture_output=True,
+        env=env,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert r.returncode == 0
+    assert "UnicodeEncodeError" not in r.stderr
+    # The em-dash in the joiner descriptions round-trips as UTF-8.
+    assert "—" in r.stdout
+
+
 def test_list_joiners_shows_core_types():
     r = run("list-joiners")
     assert r.returncode == 0

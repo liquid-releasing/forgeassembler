@@ -85,6 +85,22 @@ def _progress_writer():
     return emit
 
 
+def _force_utf8_streams() -> None:
+    """Print UTF-8 whatever console the CLI inherits.
+
+    Windows hands a spawned process a cp1252 stdout, which raises
+    UnicodeEncodeError on any character outside Latin-1 — the "→" in
+    the forge log killed a real run. The Tauri shell decodes our stdout
+    as UTF-8 regardless, so force it on both streams and never die on a
+    glyph.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def cmd_version(_args: argparse.Namespace) -> int:
     print(f"{APP_NAME} {VERSION}")
     return 0
@@ -462,6 +478,18 @@ def cmd_forge(args: argparse.Namespace) -> int:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
 
+    # Tell the UI how long the finished video will be, so it can turn
+    # ffmpeg's `time=` reports into a real percentage, and how many stages
+    # are coming, so it doesn't have to guess our stage count from its own
+    # copy of the project. `meta:` lines carry data, not stage text — the
+    # footer shows `progress:` lines only.
+    stage_total = sum((
+        bool(out.produce_video),
+        bool(out.produce_funscripts),
+        bool(out.produce_audio_estim),
+    ))
+    emit(f"meta: duration_ms={layout.total_duration_ms} stages={stage_total}")
+
     # Resolve "source" resolution by probing the first video segment.
     resolution_override = None
     if out.produce_video and out.resolution == "source":
@@ -655,6 +683,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_streams()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.version:
