@@ -19,7 +19,7 @@ function HomeScreen({ recents = [], hasWork, projectName, segCount, sectionCount
 
         {/* Hero */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <FAGlyph size={44} />
+          <FAGlyph size={88} />
           <div>
             <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em" }}>
               ForgeAssembler

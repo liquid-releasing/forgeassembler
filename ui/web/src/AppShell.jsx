@@ -13,14 +13,17 @@ import { Button, Icon, Pill } from './primitives';
 const { useState: faShState } = React;
 
 // ── Project family glyph (anvil silhouette stand-in) ───────────────
-function FAGlyph({ size = 28 }) {
+// The product mark, scaled. Same artwork as the window/taskbar icon and
+// the favicon, so the app looks like itself everywhere it appears.
+// Decorative in both placements — the TopBar wraps it in a titled Home
+// button, and the Home hero sets the name in text right beside it.
+//
+// `size` is the height: the artwork is taller than it is wide, so the
+// width follows to keep it from squashing.
+function FAGlyph({ size = 44 }) {
   return (
-    <div style={{
-      width: size, height: size, background: "var(--accent)", borderRadius: 6,
-      display: "grid", placeItems: "center", color: "#fff", fontWeight: 800,
-      fontFamily: "var(--font-mono)", fontSize: Math.round(size * 0.5),
-      letterSpacing: "-0.04em", flexShrink: 0,
-    }}>FA</div>
+    <img src="/app-icon.png" alt=""
+         style={{ display: "block", flexShrink: 0, height: size, width: "auto" }} />
   );
 }
 
