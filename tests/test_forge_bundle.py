@@ -433,3 +433,57 @@ def test_forge_bundles_in_rejects_a_file(tmp_path):
     with pytest.raises(NotADirectoryError):
         forge_bundles_in(f)
 
+
+def test_re_export_with_identical_size_and_mtime_is_still_picked_up(tmp_path):
+    """The stale-cache trap, forced deterministically.
+
+    A re-export can be the same LENGTH as the one before it (an action
+    going from `"pos":10` to `"pos":99` costs no bytes), and on a coarse
+    filesystem clock it can land on the same mtime. Size + mtime then say
+    "unchanged" and the extraction cache hands back the PREVIOUS export --
+    the "I fixed it and nothing changed" failure. The stamp carries a zip
+    content fingerprint so it can't.
+    """
+    import os as _os
+    b = tmp_path / "Scene.forge"
+    cache = tmp_path / "cache"
+
+    _versioned_bundle(b, 10)
+    st = b.stat()
+    first = detect_forge_bundle(b, cache_root=cache)
+    assert json.loads(first.funscripts["main"].read_text())["actions"][0]["pos"] == 10
+
+    _versioned_bundle(b, 99)
+    # Force the pathological case: same size, and stamp back the OLD mtime.
+    assert b.stat().st_size == st.st_size, "fixture must keep the size equal"
+    _os.utime(b, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+    again = detect_forge_bundle(b, cache_root=cache)
+    assert json.loads(again.funscripts["main"].read_text())["actions"][0]["pos"] == 99
+
+
+def test_zip_fingerprint_changes_with_content_not_with_mtime(tmp_path):
+    from forgeassembler_core.forge_bundle import _zip_fingerprint
+    import os as _os
+    b = tmp_path / "Scene.forge"
+
+    _versioned_bundle(b, 10)
+    fp_a = _zip_fingerprint(b)
+    st = b.stat()
+
+    # Touching the file must NOT change the fingerprint -- otherwise every
+    # copy or sync would force a pointless re-extraction.
+    _os.utime(b, ns=(st.st_atime_ns + 10**9, st.st_mtime_ns + 10**9))
+    assert _zip_fingerprint(b) == fp_a
+
+    # Changing a member's content must.
+    _versioned_bundle(b, 99)
+    assert _zip_fingerprint(b) != fp_a
+
+
+def test_zip_fingerprint_of_an_unreadable_file_never_matches(tmp_path):
+    from forgeassembler_core.forge_bundle import _zip_fingerprint
+    junk = tmp_path / "broken.forge"
+    junk.write_bytes(b"not a zip at all")
+    assert _zip_fingerprint(junk) == "unreadable"
+

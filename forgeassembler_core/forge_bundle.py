@@ -29,6 +29,7 @@ never cross.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import tempfile
@@ -129,9 +130,48 @@ def forge_bundles_in(folder: str | Path) -> list[Path]:
 SOURCE_STAMP_NAME = ".source.json"
 
 
+def _zip_fingerprint(bundle_path: Path) -> str:
+    """A content fingerprint of the bundle, from its zip CENTRAL DIRECTORY.
+
+    Every member's name, CRC-32 and uncompressed size — read from the
+    directory at the end of the file, so nothing is decompressed and a
+    20 MB bundle fingerprints in milliseconds.
+
+    Size + mtime alone is NOT enough. FunscriptForge can re-export a
+    scene whose zip is byte-for-byte the same LENGTH (an action changing
+    from `"pos":10` to `"pos":99` costs no bytes), and if that lands in
+    the same filesystem timestamp tick — Windows timestamps are coarse —
+    the cache looks fresh and hands back the PREVIOUS export. That is the
+    "I fixed it and nothing changed" failure this stamp exists to stop.
+    """
+    h = hashlib.sha256()
+    try:
+        with zipfile.ZipFile(bundle_path) as z:
+            for info in z.infolist():
+                # Separators are plain ASCII so the fingerprint is easy to
+                # eyeball in a stamp file; they only need to be characters a
+                # member name can't contain unescaped.
+                h.update(info.filename.encode("utf-8", "replace"))
+                h.update(b"|")
+                h.update(str(info.CRC).encode("ascii"))
+                h.update(b"|")
+                h.update(str(info.file_size).encode("ascii"))
+                h.update(b";")
+    except (OSError, zipfile.BadZipFile):
+        # Unreadable here means unreadable everywhere downstream; return a
+        # value that never matches so the cache is treated as stale.
+        return "unreadable"
+    return h.hexdigest()
+
+
 def _source_stamp(bundle_path: Path) -> dict:
     st = bundle_path.stat()
-    return {"path": str(bundle_path), "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+    return {
+        "path": str(bundle_path),
+        "size": st.st_size,
+        "mtime_ns": st.st_mtime_ns,
+        "fingerprint": _zip_fingerprint(bundle_path),
+    }
 
 
 def _cache_is_fresh(cache_dir: Path, bundle_path: Path) -> bool:
@@ -144,7 +184,12 @@ def _cache_is_fresh(cache_dir: Path, bundle_path: Path) -> bool:
         # Extracted by an older build that wrote no stamp — re-extract once
         # rather than trust it.
         return False
-    return stamped == _source_stamp(bundle_path)
+    fresh = _source_stamp(bundle_path)
+    # An older stamp has no fingerprint; re-extract once to gain one rather
+    # than trusting size+mtime, which is what let a stale export through.
+    if "fingerprint" not in stamped:
+        return False
+    return stamped == fresh
 
 
 def _cache_dir_for(manifest: dict, cache_root: Path) -> Path:

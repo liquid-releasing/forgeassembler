@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .filters import (
+    SCALE_FLAGS as _SCALE_FLAGS,
     bug_overlay_filter,
     bug_prepare_filter,
     concat_filter,
@@ -550,7 +551,7 @@ def build_ffmpeg_command(
                 filter_parts.append(
                     f"[{image_label}]"
                     f"format=rgba,"
-                    f"scale=iw*{ratio:g}:ih*{ratio:g},"
+                    f"scale=iw*{ratio:g}:ih*{ratio:g}:flags={_SCALE_FLAGS},"
                     f"setsar=1"
                     f"[{scaled_label}]",
                 )

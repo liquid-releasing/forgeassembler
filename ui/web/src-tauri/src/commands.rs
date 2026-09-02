@@ -219,6 +219,14 @@ pub async fn detect_folder(path: String) -> Result<Value, String> {
     run_cli_json(&["detect", &path, "--format", "json"]).await
 }
 
+/// Report the video encoder this machine will use, plus rough throughput
+/// (`cli.py encoder --format json`), so the Forge tab can estimate time
+/// from the real hardware instead of a fixed guess.
+#[tauri::command]
+pub async fn video_encoder() -> Result<Value, String> {
+    run_cli_json(&["encoder", "--format", "json"]).await
+}
+
 /// List the `.forge` scenes in a folder (`cli.py detect-forge <folder>
 /// --format json`). Shallow — no bundle is opened — so "Add folder" can
 /// show what it found before importing any of them.

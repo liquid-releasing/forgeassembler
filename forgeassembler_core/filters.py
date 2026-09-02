@@ -17,6 +17,16 @@ from typing import Iterable
 from .project import BugCorner
 
 
+# Resampling kernel for every resize we do. ffmpeg's swscale default is
+# BICUBIC; Lanczos is sharper in both directions and costs nothing
+# measurable next to the encode.
+#
+# It is a RESAMPLER, not an enhancer. Scaling 1080p to 4K interpolates
+# the pixels it has -- it invents no detail, and neither does any other
+# setting in this app. See docs/guide/resolution.md.
+SCALE_FLAGS = "lanczos"
+
+
 # ffmpeg's `colortemperature` filter range. Outside it the filter refuses
 # to initialise and the render dies before a single frame is written.
 COLOR_TEMP_MIN_K = 1000
@@ -36,11 +46,12 @@ def normalize_segment_filter(
 
     Produces a single comma-separated filter chain, e.g.::
 
-        [v_in]scale=1920:1080:force_original_aspect_ratio=decrease,
-        pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[v_out]
+        [v_in]scale=1920:1080:force_original_aspect_ratio=decrease
+        :flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[v_out]
     """
     chain = (
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease"
+        f":flags={SCALE_FLAGS},"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
         f"setsar=1"
     )

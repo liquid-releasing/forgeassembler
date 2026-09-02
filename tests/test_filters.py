@@ -8,6 +8,7 @@ import pytest
 
 from forgeassembler_core.filters import (
     COLOR_TEMP_MAX_K,
+    SCALE_FLAGS,
     COLOR_TEMP_MIN_K,
     bug_overlay_filter,
     bug_prepare_filter,
@@ -216,4 +217,25 @@ def test_normalize_segment_filter_passes_a_legal_temperature_through():
 def test_normalize_segment_filter_omits_the_filter_when_unset():
     chain = normalize_segment_filter("in", "out", 1920, 1080)
     assert "colortemperature" not in chain
+
+
+# ── the resampler ─────────────────────────────────────────────────────
+# ffmpeg's swscale default is BICUBIC. Lanczos is sharper both up and
+# down and costs nothing next to the encode. It is still only a
+# resampler — see docs/guide/resolution.md; nothing here enhances.
+
+def test_normalize_segment_filter_pins_the_scaler():
+    s = normalize_segment_filter("v_in", "v_out", 1920, 1080)
+    assert f"flags={SCALE_FLAGS}" in s
+    assert SCALE_FLAGS == "lanczos"
+
+
+def test_scaler_flag_rides_on_the_scale_not_the_pad():
+    """`flags=` is an option of `scale`, so it has to sit inside that
+    filter's argument list — after pad it would be a parse error and the
+    whole graph would fail to build."""
+    s = normalize_segment_filter("v_in", "v_out", 3840, 2160)
+    scale_part = s.split("scale=", 1)[1].split(",", 1)[0]
+    assert f"flags={SCALE_FLAGS}" in scale_part
+    assert "pad=" not in scale_part
 

@@ -51,6 +51,14 @@ export function detectFolder(path) {
     call('detect_folder', { path }, () => Promise.resolve({ clips: [] })));
 }
 
+// Which video encoder this machine will use, and roughly how fast.
+// Resolves to { encoder, hardware, label, rate_1080p, resolution_cost }.
+// Cached for the session — probing spawns ffmpeg.
+export function videoEncoder() {
+  return dedupedCall('video_encoder', () =>
+    call('video_encoder', {}, () => Promise.resolve(null)));
+}
+
 // List the `.forge` scenes in a folder. Resolves to
 // { folder, bundles: [{path, stem}] } — shallow, so a folder of 50 scenes
 // answers instantly; the caller imports them one at a time.

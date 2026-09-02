@@ -137,6 +137,55 @@ def cmd_list_joiners(args: argparse.Namespace) -> int:
     return 0
 
 
+# Rough encode throughput, in seconds of OUTPUT per second of wall clock,
+# at 1080p. Measured on this project's own runs (13:14 of 1080p in about a
+# minute on NVENC ~ 13x) and deliberately conservative. The Forge tab used
+# to hardcode 0.5x -- a CPU-ish guess -- and told a GPU machine 27 minutes
+# for a 2-minute job.
+_ENCODE_RATE_1080P = {
+    "nvenc": 11.0,
+    "qsv": 8.0,
+    "amf": 8.0,
+    "libx264": 0.8,
+}
+# Pixel cost relative to 1080p. 4K is 4x the pixels and encodes roughly
+# that much slower.
+_RESOLUTION_COST = {
+    "1080p": 1.0, "1440p": 1.8, "4k": 4.0,
+    "uw_1080p": 1.35, "uw_1440p": 2.4,
+    "4_3_hd": 0.75, "3_4_hd": 0.75, "9_16_hd": 1.0,
+    "source": 1.0,
+}
+
+
+def cmd_encoder(args: argparse.Namespace) -> int:
+    """Report the encoder THIS machine will actually use, and how fast it
+    is, so the UI can estimate forge time instead of guessing."""
+    from forgeassembler_core.concat_video import resolve_video_encoder
+    try:
+        exe = _resolve_ffmpeg_exe()
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 3
+    encoder = resolve_video_encoder(exe)
+    hardware = encoder != "libx264"
+    payload = {
+        "encoder": encoder,
+        "hardware": hardware,
+        "label": {"nvenc": "NVIDIA NVENC", "qsv": "Intel Quick Sync",
+                  "amf": "AMD AMF"}.get(encoder, "CPU (libx264)"),
+        # seconds of output encoded per second of wall clock, at 1080p
+        "rate_1080p": _ENCODE_RATE_1080P.get(encoder, 0.8),
+        "resolution_cost": _RESOLUTION_COST,
+    }
+    if getattr(args, "format", "text") == "json":
+        print(json.dumps(payload))
+        return 0
+    print(f"{payload['label']}  ({encoder}, "
+          f"{'hardware' if hardware else 'software'})")
+    return 0
+
+
 def cmd_detect_forge(args: argparse.Namespace) -> int:
     """List the `.forge` bundles in a folder, without opening any of them.
 
@@ -469,7 +518,7 @@ def cmd_thumbnail(args: argparse.Namespace) -> int:
         [
             ffmpeg_exe, "-hide_banner", "-loglevel", "error",
             "-ss", f"{seconds:.3f}", "-i", str(video),
-            "-frames:v", "1", "-vf", "scale=320:-2", "-update", "1",
+            "-frames:v", "1", "-vf", "scale=320:-2:flags=lanczos", "-update", "1",
             "-y", str(out),
         ],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -795,6 +844,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_detect.add_argument("--format", choices=("text", "json"), default="text",
                           help="json: emit a {clips:[...]} object for the UI")
     p_detect.set_defaults(func=cmd_detect)
+
+    p_encoder = sub.add_parser(
+        "encoder", help="report the video encoder this machine will use")
+    p_encoder.add_argument("--format", choices=("text", "json"), default="text",
+                           help="json: emit encoder + throughput for the UI")
+    p_encoder.set_defaults(func=cmd_encoder)
 
     p_detect_forge = sub.add_parser(
         "detect-forge", help="list the .forge scenes in a folder")

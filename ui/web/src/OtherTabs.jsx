@@ -5,7 +5,7 @@ import { FASectionLabel, FATabBody, FATabHeader, fmtTotal } from './AppShell';
 import { ParamControl, TimingVisual } from './JoinerEditor';
 import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
-import { pickFile } from './api/forge';
+import { pickFile, videoEncoder } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
 import { projectChannelCoverage, segmentHasChannel } from './lib/projectAdapter';
 
@@ -388,6 +388,12 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) 
         </Card>
         <Card>
           <FASectionLabel>Outputs that will be written</FASectionLabel>
+          <div style={{ marginBottom: 8, fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+            into{" "}
+            <span className="mono" style={{ color: "var(--text-muted)", wordBreak: "break-all" }}>
+              {project.output.folder || "the folder you chose in Save As"}
+            </span>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {[
               { f: `${project.name}.mp4`, on: project.output.video },
@@ -509,7 +515,37 @@ function ChapterMarkersCard({ project }) {
   );
 }
 
+// How long the forge will take, from the encoder this machine will
+// ACTUALLY use. The old line was `totalMs / 30000` — a fixed ~0.5x
+// realtime guess that ignored both the encoder and the resolution it
+// claimed to account for, so a GPU box was quoted 27 minutes for a job
+// that took two.
+function useForgeEstimate(project, totalMs) {
+  const [enc, setEnc] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    videoEncoder()
+      .then((e) => { if (!cancelled) setEnc(e); })
+      .catch(() => { /* fall back to the unqualified estimate */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!totalMs) return "Add clips on the Build tab to see an estimate.";
+  if (project.output?.video === false) {
+    return "Video is off — funscripts and haptic audio only, which take seconds.";
+  }
+  if (!enc) return "Estimating forge time…";
+
+  const cost = enc.resolution_cost?.[project.output?.resolution] ?? 1;
+  const seconds = (totalMs / 1000) / ((enc.rate_1080p || 0.8) / cost);
+  const pretty = seconds < 90
+    ? `about ${Math.max(10, Math.round(seconds / 10) * 10)} seconds`
+    : `about ${Math.max(2, Math.round(seconds / 60))} minutes`;
+  return `Roughly ${pretty} on ${enc.label}.`;
+}
+
 function ForgePanel({ project, onForge, forging, progress, forgeStage, totalMs }) {
+  const estimate = useForgeEstimate(project, totalMs);
   return (
     <Card padding={20} style={{
       background: "linear-gradient(135deg, #1a0e1e 0%, #1a1d27 60%, #0e1117 100%)",
@@ -531,7 +567,8 @@ function ForgePanel({ project, onForge, forging, progress, forgeStage, totalMs }
           <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "4px 0 0", lineHeight: 1.5 }}>
             {forging
               ? "Running ffmpeg passes. Don't close the app — output appears in your project folder as each step completes."
-              : <>About <span className="mono" style={{ color: "var(--text)" }}>{fmtTotal(totalMs)}</span> of output. Estimated forge time at this resolution: <span className="mono" style={{ color: "var(--text)" }}>~{Math.max(1, Math.round(totalMs / 30000))} minutes</span>.</>}
+              : <>About <span className="mono" style={{ color: "var(--text)" }}>{fmtTotal(totalMs)}</span> of
+                  output{project.output.video === false ? "" : ` at ${project.output.resolution}`}. {estimate}</>}
           </p>
         </div>
         <Button kind="primary" size="md" icon="hammer" onClick={onForge} disabled={forging}>

@@ -67,6 +67,7 @@ nav:
     - Overlays: guide/overlays.md
     - Joiners: guide/joiners.md
     - Output Channels: guide/channels.md
+    - Resolution & Scaling: guide/resolution.md
     - GPU Acceleration: guide/gpu-acceleration.md
     - Debug Mode: guide/debug-mode.md
     - CLI: guide/cli.md
