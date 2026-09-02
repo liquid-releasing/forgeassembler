@@ -432,6 +432,12 @@ export function fromDetected(detectPayload) {
       channels: Object.keys(clip.funscripts || {}),
       channelGroups: clip.channel_groups || {},
       audioEstim: Object.keys(clip.audio_estim || {}),
+      // VIEW-ONLY. `detect` hands back channel -> PATH, and we were keeping
+      // only the keys — so an auto-detected clip's motion track couldn't be
+      // drawn even though we knew exactly where it was. Not serialized:
+      // segToReal writes an explicit field list, and the source of truth for
+      // an auto_detect segment stays the folder beside the video.
+      detectedFunscripts: clip.funscripts || {},
       overlays: 0,
       overlaysList: [],
       audio: 'keep',

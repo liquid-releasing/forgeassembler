@@ -531,6 +531,7 @@ function App() {
             channels: Object.keys(clip.funscripts || {}),
             channelGroups: clip.channel_groups || {},
             audioEstim: Object.keys(clip.audio_estim || {}),
+            detectedFunscripts: clip.funscripts || {},
           };
         }),
       })),

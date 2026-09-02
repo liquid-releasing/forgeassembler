@@ -556,3 +556,34 @@ describe('schema fields with no UI survive a load/save', () => {
   });
 });
 
+
+describe('detected funscript paths reach the preview but not the file', () => {
+  // `detect` returns channel -> PATH. Keeping only the keys meant an
+  // auto-detected clip's motion track couldn't be drawn in the scene
+  // overview even though we knew exactly where it was.
+  const payload = { clips: [{
+    video: 'C:/clips/a.mp4', stem: 'a',
+    funscripts: { main: 'C:/clips/a.funscript', alpha: 'C:/clips/a.alpha.funscript' },
+    channel_groups: { main: ['main'], three_phase_estim: ['alpha'] },
+  }] };
+
+  it('carries the paths on the view model', () => {
+    const seg = fromDetected(payload)[0];
+    expect(seg.detectedFunscripts.main).toBe('C:/clips/a.funscript');
+    expect(seg.channels).toEqual(['main', 'alpha']);
+  });
+
+  it('never writes them to the project file', () => {
+    // An auto_detect segment resolves its funscripts from the folder beside
+    // the video at forge time; baking paths in would freeze that.
+    const seg = fromDetected(payload)[0];
+    const out = toForgeProject({
+      channels: {}, output: {},
+      sections: [{ id: 's', joiner: { type: 'none' }, segments: [seg] }],
+    });
+    const written = out.sections[0].segments[0];
+    expect(written.funscripts).toEqual({ source: 'auto_detect' });
+    expect(JSON.stringify(written)).not.toContain('detectedFunscripts');
+  });
+});
+

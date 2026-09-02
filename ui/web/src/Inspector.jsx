@@ -3,7 +3,7 @@ import React from 'react';
 const { useEffect, useMemo, useRef } = React;
 import { fmtClipDur, fmtTotal } from './AppShell';
 import { ClipThumb, InlineEditor } from './BuildTab';
-import { MediaViewer } from 'forgemoment';
+import { MediaViewer, TrackStack } from 'forgemoment';
 import { toMediaUrl } from './lib/mediaUrl';
 import { pickFile, readSidecar } from './api/forge';
 import { toAudioWaveform, toBeats, toFunscript } from './lib/sidecars';
@@ -179,7 +179,8 @@ function SourcePane({ seg, onUpdate }) {
     const sc = seg.sidecars || {};
     Promise.all([
       readSidecar(sc.audio), readSidecar(sc.beats),
-      readSidecar((seg.explicitFunscripts || {}).main),
+      readSidecar((seg.explicitFunscripts || {}).main
+                  || (seg.detectedFunscripts || {}).main),
     ]).then(([a, b, f]) => {
       if (cancelled) return;
       setAnalysis({ waveform: toAudioWaveform(a), beats: toBeats(b), funscript: toFunscript(f) });
@@ -219,12 +220,63 @@ function SourcePane({ seg, onUpdate }) {
 
   const effectiveMs = trim.trimOutMs - trim.trimInMs;
 
+  // The regions the trim throws away, as generic TrackStack spans, so the
+  // overview shows what's being cut rather than only what's kept.
+  const cutBands = [];
+  if (trim.trimInMs > 0) {
+    cutBands.push({ id: "cut-head", start: 0, end: trim.trimInMs,
+                    color: "rgba(255,181,71,0.30)", label: "cut" });
+  }
+  if (sourceDurMs && trim.trimOutMs < sourceDurMs) {
+    cutBands.push({ id: "cut-tail", start: trim.trimOutMs, end: sourceDurMs,
+                    color: "rgba(255,181,71,0.30)", label: "cut" });
+  }
+  // Only ask for lanes that have something to show — TrackStack always
+  // renders the events lane once it's listed, and an empty 16px band above
+  // the picture is just noise.
+  const sceneLanes = [
+    ...(cutBands.length ? ["events"] : []),
+    "funscript",
+    ...(analysis.waveform ? ["audio"] : []),
+  ];
+
   return (
     <>
       <PaneSection title="Preview"
                     hint={seg.kind === "still"
                       ? "Still image — shown for its hold duration."
                       : "Scrub to a cut point, then set it as the in or out."}>
+      {/* Scene overview — the whole clip on one axis, above the picture and
+          the same width as it. The video shows you WHERE YOU ARE; this shows
+          you where that is IN THE SCENE, so you can jump straight to the last
+          few seconds instead of scrubbing for them. Click anywhere to seek;
+          the baton is the same clock as the player below. */}
+      {videoSrc && sourceDurMs > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <TrackStack
+            scope={{ start: 0, end: sourceDurMs }}
+            actions={analysis.funscript?.actions || []}
+            waveform={analysis.waveform}
+            events={cutBands}
+            lanes={sceneLanes}
+            laneHeights={{ funscript: 64, audio: 34, events: 16 }}
+            eventRows={1}
+            currentMs={currentMs}
+            onSeek={(ms) => setCurrentMs(Math.max(0, Math.min(sourceDurMs, ms)))}
+            funscriptColorMode="velocity"
+            baton="line"
+            showRuler />
+          <div style={{ display: "flex", justifyContent: "space-between",
+                         marginTop: 4, fontSize: 10.5, color: "var(--text-dim)" }}>
+            <span>{analysis.funscript ? "Whole scene — click to jump" : "No motion track in this bundle"}</span>
+            {cutBands.length > 0 && (
+              <span className="mono" style={{ color: "var(--warn)" }}>
+                shaded = trimmed off
+              </span>
+            )}
+          </div>
+        </div>
+      )}
         {videoSrc ? (
           <MediaViewer
             videoSrc={videoSrc}
