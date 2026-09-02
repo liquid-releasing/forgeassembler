@@ -250,12 +250,84 @@ function prettyStem(path) {
   return base.replace(/\.[^.]+$/, '');
 }
 
+// ── joiners ─────────────────────────────────────────────────────────
+// The UI catalog and the engine speak different languages, and nothing
+// translated between them. The UI writes `{kind:'fade_through_black',
+// fadeOutS, holdS, fadeInS, color}`; the engine wants
+// `{joiner_type:'fade_to_black', params:{fade_out_s, duration_s,
+// fade_in_s, color}}`.
+//
+// Worse, this mapped `sec.joiner.type` while the editor writes `kind`, so
+// `joiner_type` came out "none" and every setting was preserved perfectly
+// in `params` where nothing would ever read it. A fade through red with a
+// 1.4s hold saved as a hard cut. That's why the forge ignored it.
+//
+// The engine implements TWO joiners: `none` and `fade_to_black` (whose
+// name is legacy — it's a fade to any colour). `dip_to_color` is the same
+// operation with a different default, so it maps here too. `crossfade`
+// and `swipe` have no engine implementation at all; see UNIMPLEMENTED.
+export const UNIMPLEMENTED_JOINERS = ['crossfade', 'swipe'];
+
+const FADE_KINDS = ['fade_through_black', 'dip_to_color'];
+
+export function joinerToReal(joiner) {
+  const kind = joiner?.kind || joiner?.type || 'none';
+  if (FADE_KINDS.includes(kind)) {
+    const out = num(joiner.fadeOutS, 1);
+    const inn = num(joiner.fadeInS, 1);
+    const params = { duration_s: num(joiner.holdS, 0), fade_s: Math.max(out, inn) };
+    // Only spell out the two sides when they actually differ. A symmetric
+    // fade stays the two-param form the engine and the CLI already use, so
+    // real -> view -> real is byte-identical for every existing project.
+    if (out !== inn) {
+      params.fade_out_s = out;
+      params.fade_in_s = inn;
+    }
+    if (joiner.color) params.color = joiner.color;
+    return { joiner_type: 'fade_to_black', params };
+  }
+  if (kind === 'none') return { joiner_type: 'none', params: {} };
+  // A joiner type we don't translate — it came from the file and goes back
+  // unchanged. Rewriting it to a cut would delete it on the first GUI save,
+  // the same way Output.bug used to vanish.
+  if (joiner && joiner._rawParams) {
+    return { joiner_type: kind, params: joiner._rawParams };
+  }
+  return { joiner_type: 'none', params: {} };
+}
+
+export function joinerFromReal(lj) {
+  const type = lj?.joiner_type || 'none';
+  const p = lj?.params || {};
+  if (type === 'fade_to_black') {
+    const sym = num(p.fade_s, 1);
+    return {
+      kind: 'fade_through_black',
+      fadeOutS: num(p.fade_out_s, sym),
+      holdS: num(p.duration_s, 0),
+      fadeInS: num(p.fade_in_s, sym),
+      color: p.color || '#000000',
+    };
+  }
+  if (type === 'none') return { kind: 'none' };
+  // Unknown to this translator (a hand-written file, or a joiner a later
+  // engine adds). Surface it under its own name and keep the params so the
+  // round trip is lossless — the editor can show it without being able to
+  // edit it, which beats silently turning it into a cut.
+  return { kind: type, _rawParams: p };
+}
+
+function num(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 // ── section ─────────────────────────────────────────────────────────
 function sectionToReal(sec) {
-  const { type = 'none', ...params } = sec.joiner || {};
+  const j = joinerToReal(sec.joiner);
   return {
     id: sec.id,
-    leading_joiner: { id: `j-${sec.id}`, joiner_type: type, params },
+    leading_joiner: { id: `j-${sec.id}`, joiner_type: j.joiner_type, params: j.params },
     segments: (sec.segments || []).map(segToReal),
     overlays: sec.overlays || [],
     ...(sec.title ? { name: sec.title } : {}),
@@ -268,7 +340,7 @@ function sectionFromReal(sec) {
     id: sec.id,
     title: sec.name || '',
     color: '#ff8c42',
-    joiner: { type: lj.joiner_type || 'none', ...(lj.params || {}) },
+    joiner: joinerFromReal(lj),
     segments: (sec.segments || []).map(segFromReal),
     overlays: sec.overlays || [],
   };

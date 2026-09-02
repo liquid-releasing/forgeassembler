@@ -51,7 +51,7 @@
     sections: [
       {
         id: "sec-1", title: "Opening title", color: "#ff8c42",
-        joiner: { type: "none" },
+        joiner: { kind: "none" },
         segments: [
           { id: "s1", title: "Steel pour", file: "149727107-tank-pours-liquid-metal-steel.mp4",
             kind: "video", durMs: 6200, thumb: thumb("steel pour", 28),
@@ -89,7 +89,7 @@
     sections: [
       {
         id: "m-sec-1", title: "Cold open", color: "#ff8c42",
-        joiner: { type: "none" },
+        joiner: { kind: "none" },
         segments: [
           { id: "m1", title: "Liquid releasing — open", file: "lqr_open.mp4",
             kind: "video", durMs: 4000, thumb: thumb("open", 28),
@@ -147,7 +147,7 @@
     sections: [
       {
         id: "l-sec-1", title: "Opening", color: "#ff8c42",
-        joiner: { type: "none" },
+        joiner: { kind: "none" },
         segments: [
           { id: "l1", title: "Steel pour intro", file: "steel_pour.mp4",
             kind: "video", durMs: 6200, thumb: thumb("steel", 28),

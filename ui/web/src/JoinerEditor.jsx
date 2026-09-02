@@ -3,6 +3,7 @@ import React from 'react';
 import { JoinerEl } from './BuildTab';
 import { VideoPoster } from './MediaViewer';
 import { FA_DATA } from './data';
+import { UNIMPLEMENTED_JOINERS } from './lib/projectAdapter';
 import { Button, Field, Icon, Pill, Slider, TextInput } from './primitives';
 
 // JoinerEditor — popover anchored to a JoinerEl click.
@@ -281,16 +282,31 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
               {FA_DATA.JOINER_KINDS.map(k => {
                 const active = joiner.kind === k.kind;
+                // The engine renders `none` and `fade_to_black` (a fade to
+                // any colour) and nothing else. Offering crossfade or swipe
+                // would let the user configure a transition that forges as a
+                // hard cut — the joiner settings would be written to the
+                // project and silently ignored, which is exactly the failure
+                // this whole change is fixing. Show them, disabled, so the
+                // roadmap is visible without being a trap.
+                const unavailable = UNIMPLEMENTED_JOINERS.includes(k.kind);
                 return (
-                  <button key={k.kind} onClick={() => setKind(k.kind)} style={{
+                  <button key={k.kind} disabled={unavailable}
+                          title={unavailable
+                            ? `${k.label} isn't rendered by the forge engine yet — picking it would produce a straight cut.`
+                            : k.desc}
+                          onClick={() => { if (!unavailable) setKind(k.kind); }} style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
                     padding: "5px 10px", borderRadius: 6,
                     background: active ? "rgba(255,75,75,0.08)" : "var(--surface-2)",
                     border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
                     color: active ? "var(--text)" : "var(--text-muted)",
-                    fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 11.5, fontWeight: 600,
+                    cursor: unavailable ? "not-allowed" : "pointer",
+                    opacity: unavailable ? 0.4 : 1,
                   }}>
                     <Icon name={k.icon} size={11} /> {k.label}
+                    {unavailable && <span style={{ fontSize: 9.5, fontWeight: 700 }}>soon</span>}
                   </button>
                 );
               })}

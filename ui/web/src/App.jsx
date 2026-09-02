@@ -47,7 +47,7 @@ function emptyProject() {
     channels: { main: true, multi_axis: true, estim_3p: true, estim_4p: true,
                 prostate: true, pulse_freq: true, audio_estim: true },
     sections: [{ id: `sec-${Date.now()}`, title: '', color: '#ff8c42',
-                 joiner: { type: 'none' }, segments: [], overlays: [] }],
+                 joiner: { kind: 'none' }, segments: [], overlays: [] }],
     audioBeds: [],
     userJoiners: [], userGlyphs: [], userTitleTemplates: [],
   };
@@ -258,7 +258,7 @@ function App() {
       ...p,
       sections: [...p.sections, {
         id, title: '', color: '#ff8c42',
-        joiner: { type: 'none' }, segments: [], overlays: [],
+        joiner: { kind: 'none' }, segments: [], overlays: [],
       }],
     }));
   }
@@ -280,7 +280,7 @@ function App() {
         sections.push({ ...s, segments: s.segments.slice(0, i + 1) });
         sections.push({
           id: newId, title: after[0]?.title || '', color: '#ff8c42',
-          joiner: { type: 'none' }, segments: after, overlays: [],
+          joiner: { kind: 'none' }, segments: after, overlays: [],
         });
       }
       return { ...p, sections };
@@ -466,7 +466,7 @@ function App() {
     setProject(p => {
       const sections = p.sections.length ? p.sections : [{
         id: `sec-${stamp}`, title: '', color: '#ff8c42',
-        joiner: { type: 'none' }, segments: [], overlays: [],
+        joiner: { kind: 'none' }, segments: [], overlays: [],
       }];
       const targetId = sectionId || sections[sections.length - 1].id;
       return {
@@ -692,7 +692,7 @@ function App() {
         ...p,
         sections: [...p.sections, {
           id: `sec-${Date.now()}`, title, color: '#ff8c42',
-          joiner: { type: 'none' }, segments: [...segs], overlays: [],
+          joiner: { kind: 'none' }, segments: [...segs], overlays: [],
         }],
       };
     });

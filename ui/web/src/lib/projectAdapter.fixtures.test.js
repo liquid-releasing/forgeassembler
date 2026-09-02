@@ -28,7 +28,7 @@ function assertWellFormed(vm) {
   expect(vm.channels).not.toBeNull();
   for (const sec of vm.sections) {
     expect(sec.joiner).toBeTruthy();
-    expect(typeof sec.joiner.type).toBe('string');
+    expect(typeof sec.joiner.kind).toBe('string');
     expect(Array.isArray(sec.segments)).toBe(true);
     for (const seg of sec.segments) {
       expect(typeof seg.file).toBe('string');
@@ -134,15 +134,16 @@ describe('v1.0 lqr_marketing migration matches the Python rule', () => {
   });
 
   it('first section has a default "none" leading joiner', () => {
-    expect(vm.sections[0].joiner.type).toBe('none');
+    expect(vm.sections[0].joiner.kind).toBe('none');
   });
 
   it('subsequent sections are led by the splitting fade joiner', () => {
     for (let i = 1; i < vm.sections.length; i++) {
-      expect(vm.sections[i].joiner.type).toBe('fade_to_black');
+      // Engine vocabulary in the file; UI vocabulary in the view model.
+      expect(vm.sections[i].joiner.kind).toBe('fade_through_black');
     }
-    // join-3 had duration_s 2.0 → leads the closing section.
-    expect(vm.sections[3].joiner.duration_s).toBe(2.0);
+    // join-3 had duration_s 2.0 → the UI calls the hold `holdS`.
+    expect(vm.sections[3].joiner.holdS).toBe(2.0);
   });
 
   it('classifies the .png banner as a still, .mp4 clips as video', () => {
@@ -186,8 +187,11 @@ describe('migration: a "none" joiner is absorbed (not a section split)', () => {
     expect(vm.sections[1].segments.map((s) => s.file)).toEqual(['C:/c.mp4']);
   });
   it('the crossfade leads section 1', () => {
-    expect(vm.sections[1].joiner.type).toBe('crossfade');
-    expect(vm.sections[1].joiner.duration_s).toBe(1.5);
+    // The engine implements no crossfade, so there's nothing to translate
+    // it INTO. It keeps its name and its params ride along verbatim, so a
+    // load/save round trip doesn't quietly turn it into a hard cut.
+    expect(vm.sections[1].joiner.kind).toBe('crossfade');
+    expect(vm.sections[1].joiner._rawParams.duration_s).toBe(1.5);
   });
 });
 

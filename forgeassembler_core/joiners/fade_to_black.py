@@ -60,6 +60,26 @@ class FadeToBlack(Joiner):
             v = self.DEFAULT_FADE_S
         return max(0.0, v)
 
+    def fade_out_s(self) -> float:
+        """Fade length on the PREVIOUS segment's tail (seconds).
+
+        Falls back to the symmetric `fade_s` when not set, so existing
+        projects and the CLI's two-param form keep working unchanged.
+        """
+        return self._side_fade("fade_out_s")
+
+    def fade_in_s(self) -> float:
+        """Fade length on the NEXT segment's head (seconds)."""
+        return self._side_fade("fade_in_s")
+
+    def _side_fade(self, key: str) -> float:
+        if key not in self.params:
+            return self.fade_s()
+        try:
+            return max(0.0, float(self.params[key]))
+        except (TypeError, ValueError):
+            return self.fade_s()
+
     def color(self) -> str:
         """Return the bridge colour as a hex string (e.g. '#1a1a1a').
 
@@ -95,7 +115,8 @@ class FadeToBlack(Joiner):
                 errors.append("FadeToBlack fade_s must be >= 0.")
         except (TypeError, ValueError):
             pass
-        if self._duration_s() == 0 and self.fade_s() == 0:
+        if (self._duration_s() == 0 and self.fade_out_s() == 0
+                and self.fade_in_s() == 0):
             errors.append(
                 "FadeToBlack needs duration_s > 0 or fade_s > 0 "
                 "— otherwise the joiner is a no-op.",
@@ -123,6 +144,24 @@ class FadeToBlack(Joiner):
                         "and the fade-in on the next. Applied within "
                         "the existing segments — does not add to the "
                         "output duration.",
+            },
+            "fade_out_s": {
+                "type": "float",
+                "default": cls.DEFAULT_FADE_S,
+                "min": 0.0,
+                "max": 10.0,
+                "label": "Fade out (seconds)",
+                "help": "Overrides `fade_s` for the previous segment's "
+                        "tail only. Omit for a symmetric fade.",
+            },
+            "fade_in_s": {
+                "type": "float",
+                "default": cls.DEFAULT_FADE_S,
+                "min": 0.0,
+                "max": 10.0,
+                "label": "Fade in (seconds)",
+                "help": "Overrides `fade_s` for the next segment's head "
+                        "only. Omit for a symmetric fade.",
             },
             "color": {
                 "type": "color",

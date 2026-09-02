@@ -123,20 +123,29 @@ def _resolve_frame_rate(
     return fps
 
 
-def _fade_duration_s(joiner: ProjectJoiner) -> float:
-    """Return the per-side fade duration (seconds) for a fade_to_black joiner.
+def _fade_duration_s(joiner: ProjectJoiner, side: str = "both") -> float:
+    """Fade duration (seconds) contributed by `joiner` to one neighbour.
 
-    Reads `fade_s` from the joiner's params (new in the decoupled
-    fade/hold model). Legacy projects that predate the split — they
-    only have `duration_s` — get the old 0.5s default so their output
-    renders with the subtle fade they used to have.
+    `side` is which end of the joiner we're asking about:
+      "in"  — the fade-in on the NEXT segment's head
+      "out" — the fade-out on the PREVIOUS segment's tail
+
+    A fade can be asymmetric (`fade_out_s` / `fade_in_s`); both default
+    to the symmetric `fade_s`. Legacy projects that predate the
+    fade/hold split have only `duration_s` and get the old 0.5s default
+    so their output renders with the subtle fade they used to have.
     """
     if joiner.joiner_type != "fade_to_black":
         return 0.0
     inst = instantiate_joiner(joiner.joiner_type, joiner.params)
-    if hasattr(inst, "fade_s") and "fade_s" in joiner.params:
-        return float(inst.fade_s())  # type: ignore[no-any-return]
-    return _LEGACY_FADE_S
+    keys = ("fade_s", "fade_in_s", "fade_out_s")
+    if not any(k in joiner.params for k in keys):
+        return _LEGACY_FADE_S
+    if side == "in" and hasattr(inst, "fade_in_s"):
+        return float(inst.fade_in_s())  # type: ignore[no-any-return]
+    if side == "out" and hasattr(inst, "fade_out_s"):
+        return float(inst.fade_out_s())  # type: ignore[no-any-return]
+    return float(inst.fade_s())  # type: ignore[no-any-return]
 
 
 def _neighbor_joiners(
@@ -273,8 +282,9 @@ def build_ffmpeg_command(
         if not isinstance(item, Segment):
             continue
         before, after = _neighbor_joiners(items, idx)
-        head = _fade_duration_s(before) if before else 0.0
-        tail = _fade_duration_s(after) if after else 0.0
+        # `before` fades this segment IN; `after` fades it OUT.
+        head = _fade_duration_s(before, "in") if before else 0.0
+        tail = _fade_duration_s(after, "out") if after else 0.0
         seg_fades[item.id] = (head, tail)
 
     # ── Stage A: declare inputs (segment video + optional replacement audio).

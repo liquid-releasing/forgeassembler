@@ -3,6 +3,7 @@ import {
   toForgeProject, fromForgeProject, fromDetected, fromForgeBundleSegment,
   msToTimecode, timecodeToMs, segmentHasChannel,
   channelGroup, projectChannelCoverage, channelGapsFor, NEUTRAL_KELVIN,
+  joinerToReal, joinerFromReal, UNIMPLEMENTED_JOINERS,
 } from './projectAdapter.js';
 
 // A representative .forgeproject.json (the contract). real → view → real must
@@ -142,11 +143,13 @@ describe('legacy v1.0 items → sections migration on load', () => {
     expect(vm.sections[1].segments.map(s => s.file)).toEqual(['C:/c.mp4']);
   });
   it('first section defaults to a "none" leading joiner', () => {
-    expect(vm.sections[0].joiner.type).toBe('none');
+    expect(vm.sections[0].joiner.kind).toBe('none');
   });
   it('carries the splitting joiner as the new section leader', () => {
-    expect(vm.sections[1].joiner.type).toBe('fade_to_black');
-    expect(vm.sections[1].joiner.duration_s).toBe(2.0);
+    // Translated into the UI's vocabulary: engine `fade_to_black` /
+    // `duration_s` become the editor's `fade_through_black` / `holdS`.
+    expect(vm.sections[1].joiner.kind).toBe('fade_through_black');
+    expect(vm.sections[1].joiner.holdS).toBe(2.0);
   });
   it('preserves segment kind (still vs video)', () => {
     expect(vm.sections[0].segments[1].kind).toBe('still');
@@ -185,7 +188,7 @@ describe('explicit funscripts (.forge import) round-trip nested', () => {
   it('view → real preserves nested funscripts.files (no silent drop)', () => {
     const vm = {
       name: 'p', output: {}, channels: { main: true },
-      sections: [{ id: 's', title: '', joiner: { type: 'none' },
+      sections: [{ id: 's', title: '', joiner: { kind: 'none' },
         segments: [fromForgeBundleSegment(realSeg)] }],
       audioBeds: [],
     };
@@ -200,7 +203,7 @@ describe('explicit funscripts (.forge import) round-trip nested', () => {
       id: 'x', video: 'C:/a.mp4', funscripts: { source: 'auto_detect' },
     });
     const real = toForgeProject({
-      sections: [{ id: 's', joiner: { type: 'none' }, segments: [v] }],
+      sections: [{ id: 's', joiner: { kind: 'none' }, segments: [v] }],
       channels: {}, output: {}, audioBeds: [],
     });
     expect(real.sections[0].segments[0].funscripts).toEqual({ source: 'auto_detect' });
@@ -276,7 +279,7 @@ describe('fromForgeBundleSegment', () => {
     const v = fromForgeBundleSegment(segment, payload);
     const real = toForgeProject({
       name: 'p', output: {}, channels: {}, audioBeds: [],
-      sections: [{ id: 's', joiner: { type: 'none' }, segments: [v] }],
+      sections: [{ id: 's', joiner: { kind: 'none' }, segments: [v] }],
     });
     expect(real.sections[0].segments[0].audio_estim)
       .toEqual({ files: { 'mp3': '/cache/audio/stim.mp3' } });
@@ -286,7 +289,7 @@ describe('fromForgeBundleSegment', () => {
     const plain = fromForgeBundleSegment({ ...segment, audio_estim: undefined });
     const real = toForgeProject({
       name: 'p', output: {}, channels: {}, audioBeds: [],
-      sections: [{ id: 's', joiner: { type: 'none' }, segments: [plain] }],
+      sections: [{ id: 's', joiner: { kind: 'none' }, segments: [plain] }],
     });
     expect(real.sections[0].segments[0]).not.toHaveProperty('audio_estim');
   });
@@ -498,7 +501,7 @@ describe('colour temperature is an offset in the view, Kelvin in the file', () =
   it('writes the offset back as absolute Kelvin, inside ffmpeg range', () => {
     const out = toForgeProject({
       channels: {}, output: {},
-      sections: [{ id: 's', joiner: { type: 'none' }, segments: [
+      sections: [{ id: 's', joiner: { kind: 'none' }, segments: [
         { id: 'a', file: 'C:/a.mp4', temp: 500, audio: 'keep' },
       ] }],
     });
@@ -511,7 +514,7 @@ describe('colour temperature is an offset in the view, Kelvin in the file', () =
   it('omits the field entirely at neutral, so no filter is applied', () => {
     const out = toForgeProject({
       channels: {}, output: {},
-      sections: [{ id: 's', joiner: { type: 'none' }, segments: [
+      sections: [{ id: 's', joiner: { kind: 'none' }, segments: [
         { id: 'a', file: 'C:/a.mp4', temp: 0, audio: 'keep' },
       ] }],
     });
@@ -579,11 +582,84 @@ describe('detected funscript paths reach the preview but not the file', () => {
     const seg = fromDetected(payload)[0];
     const out = toForgeProject({
       channels: {}, output: {},
-      sections: [{ id: 's', joiner: { type: 'none' }, segments: [seg] }],
+      sections: [{ id: 's', joiner: { kind: 'none' }, segments: [seg] }],
     });
     const written = out.sections[0].segments[0];
     expect(written.funscripts).toEqual({ source: 'auto_detect' });
     expect(JSON.stringify(written)).not.toContain('detectedFunscripts');
+  });
+});
+
+
+describe('joiners survive the trip to the engine', () => {
+  // THE BUG: the editor writes `{kind: 'fade_through_black', fadeOutS,
+  // holdS, fadeInS, color}`; sectionToReal read `sec.joiner.type`, which
+  // doesn't exist on that object. joiner_type came out "none" and every
+  // setting was preserved perfectly inside `params`, where nothing reads
+  // it. A fade through red with a 1.4s hold forged as a hard cut, exactly
+  // as observed in averagejoe_test2.forgeproject.json:
+  //   {"joiner_type":"none","params":{"color":"#ff4b4b","holdS":1.4,...}}
+
+  it('translates a fade the editor produced into engine vocabulary', () => {
+    const real = joinerToReal({
+      kind: 'fade_through_black',
+      fadeOutS: 1.5, holdS: 1.4, fadeInS: 1.5, color: '#ff4b4b',
+    });
+    expect(real.joiner_type).toBe('fade_to_black');
+    expect(real.params.duration_s).toBe(1.4);
+    expect(real.params.color).toBe('#ff4b4b');
+    expect(real.params.fade_s).toBe(1.5);
+  });
+
+  it('never emits an editor key the engine would ignore', () => {
+    const real = joinerToReal({
+      kind: 'fade_through_black', fadeOutS: 2, holdS: 1, fadeInS: 2, color: '#fff',
+    });
+    for (const dead of ['kind', 'fadeOutS', 'fadeInS', 'holdS']) {
+      expect(Object.keys(real.params)).not.toContain(dead);
+    }
+  });
+
+  it('spells out both sides only when the fade is asymmetric', () => {
+    const sym = joinerToReal({ kind: 'fade_through_black', fadeOutS: 2, holdS: 0, fadeInS: 2 });
+    expect(sym.params.fade_out_s).toBeUndefined();
+    expect(sym.params.fade_s).toBe(2);
+
+    const asym = joinerToReal({ kind: 'fade_through_black', fadeOutS: 3, holdS: 0, fadeInS: 0.5 });
+    expect(asym.params.fade_out_s).toBe(3);
+    expect(asym.params.fade_in_s).toBe(0.5);
+  });
+
+  it('maps dip_to_color onto the same engine joiner', () => {
+    // The engine's `fade_to_black` is a fade to ANY colour — the name is
+    // legacy. A dip to white is the same operation.
+    const real = joinerToReal({
+      kind: 'dip_to_color', fadeOutS: 1, holdS: 0.2, fadeInS: 1, color: '#fafafa',
+    });
+    expect(real.joiner_type).toBe('fade_to_black');
+    expect(real.params.color).toBe('#fafafa');
+  });
+
+  it('round-trips a fade through the editor and back', () => {
+    const original = {
+      kind: 'fade_through_black', fadeOutS: 1.5, holdS: 1.4, fadeInS: 0.5, color: '#ff4b4b',
+    };
+    const back = joinerFromReal({ joiner_type: 'fade_to_black', ...joinerToReal(original) });
+    expect(back).toEqual(original);
+  });
+
+  it('keeps a joiner it cannot translate instead of flattening it', () => {
+    const view = joinerFromReal({ joiner_type: 'crossfade', params: { duration_s: 1.5 } });
+    expect(view.kind).toBe('crossfade');
+    const real = joinerToReal(view);
+    expect(real.joiner_type).toBe('crossfade');
+    expect(real.params.duration_s).toBe(1.5);
+  });
+
+  it('names the kinds the engine cannot render', () => {
+    // The picker must not offer these; forging one would be a silent cut.
+    expect(UNIMPLEMENTED_JOINERS).toContain('crossfade');
+    expect(UNIMPLEMENTED_JOINERS).toContain('swipe');
   });
 });
 
