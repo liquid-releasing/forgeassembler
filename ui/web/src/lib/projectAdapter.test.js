@@ -3,6 +3,7 @@ import {
   toForgeProject, fromForgeProject, fromDetected, fromForgeBundleSegment,
   msToTimecode, timecodeToMs, segmentHasChannel,
   channelGroup, projectChannelCoverage, channelGapsFor, NEUTRAL_KELVIN,
+  channelName, channelStation, stationLabel,
   joinerToReal, joinerFromReal, UNIMPLEMENTED_JOINERS,
 } from './projectAdapter.js';
 
@@ -382,7 +383,10 @@ describe('projectChannelCoverage', () => {
     const cov = projectChannelCoverage(project(['main', 'twist'], ['main']));
     const axis = cov.groups.find(g => g.id === 'multi_axis');
     expect(axis.channels).toEqual([
-      { id: 'twist', have: 1, eligible: 2, full: false },
+      {
+        id: 'twist', channel: 'twist', station: null, stationLabel: null,
+        have: 1, eligible: 2, full: false,
+      },
     ]);
   });
 
@@ -663,3 +667,70 @@ describe('joiners survive the trip to the engine', () => {
   });
 });
 
+
+// ── station-qualified channel keys ─────────────────────────────────────
+// A channel NAME stopped identifying a file when FOC-Stim landed: estim3p,
+// focstim and focstim4p each write `alpha`, clamped for their own hardware.
+// A real bundle carries 39 funscripts across 9 stations.
+describe('station-qualified channels', () => {
+  it('splits a key into station and channel', () => {
+    expect(channelStation('focstim:alpha')).toBe('focstim');
+    expect(channelName('focstim:alpha')).toBe('alpha');
+    // A bare key has no station — a loose funscript beside a video.
+    expect(channelStation('alpha')).toBe(null);
+    expect(channelName('alpha')).toBe('alpha');
+  });
+
+  it('groups on the channel inside the key, whichever station wrote it', () => {
+    for (const sid of ['estim3p', 'focstim']) {
+      expect(channelGroup(`${sid}:alpha`)).toBe('three_phase_estim');
+    }
+    expect(channelGroup('tcode:surge')).toBe('multi_axis');
+    // A station's own L0 is still a main-shaped track.
+    expect(channelGroup('tcode:main')).toBe('main');
+  });
+
+  it('puts the four-phase electrodes in their own vetoable group', () => {
+    // These used to land in "other", which has no veto — so the estim_4p
+    // flag existed with nothing to switch.
+    for (const ch of ['e1', 'e2', 'e3', 'e4']) {
+      expect(channelGroup(`focstim4p:${ch}`)).toBe('four_phase_estim');
+    }
+  });
+
+  it('names the device a station belongs to', () => {
+    expect(stationLabel('estim3p')).toBe('E-Stim');
+    expect(stationLabel('focstim4p')).toBe('FOC-Stim 4-phase');
+    expect(stationLabel('tcode')).toBe('MultiFunPlayer');
+    expect(stationLabel(null)).toBe(null);
+    expect(stationLabel('brand_new')).toBe('Brand New');
+  });
+
+  it('carries the station onto every coverage row', () => {
+    const cov = projectChannelCoverage({
+      channels: {},
+      sections: [{ segments: [
+        { id: 'a', kind: 'video', channels: ['main', 'estim3p:alpha', 'focstim:alpha'] },
+      ] }],
+    });
+    const estim = cov.groups.find(g => g.id === 'three_phase_estim');
+    // Two rows, not one: they are different files for different hardware.
+    expect(estim.channels.map(c => [c.channel, c.stationLabel])).toEqual([
+      ['alpha', 'E-Stim'], ['alpha', 'FOC-Stim'],
+    ]);
+  });
+
+  it('does not call a loose clip deficient for a station it never named', () => {
+    // Clip `a` came from a .forge scene (qualified); clip `b` is a plain video
+    // with `b.alpha.funscript` beside it (bare). The engine feeds b's alpha
+    // into the joined estim3p track, so this is NOT a gap.
+    const project = {
+      sections: [{ segments: [
+        { id: 'a', kind: 'video', channels: ['main', 'estim3p:alpha'] },
+        { id: 'b', kind: 'video', channels: ['main', 'alpha'] },
+      ] }],
+    };
+    expect(channelGapsFor(project.sections[0].segments[1], project)).toEqual([]);
+    expect(channelGapsFor(project.sections[0].segments[0], project)).toEqual([]);
+  });
+});

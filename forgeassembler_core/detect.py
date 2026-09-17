@@ -28,7 +28,11 @@ VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
 MULTI_AXIS = {"pitch", "roll", "surge", "sway", "twist"}
 # Estim channel suffixes.
 ESTIM_3PHASE = {"alpha", "beta"}
-PROSTATE = {"alpha-prostate", "beta-prostate"}
+PROSTATE = {"alpha-prostate", "beta-prostate", "volume-prostate"}
+# FOC-Stim four-phase per-electrode powers. Only `focstim4p` writes these, and
+# until now they fell into "other" — which meant `OutputChannels
+# .four_phase_estim` had nothing to veto and the toggle did nothing.
+ESTIM_4PHASE = {"e1", "e2", "e3", "e4"}
 
 # Real-world haptic audio is ALWAYS a single MP3 per video stem (or
 # WAV in rare cases). The per-channel split (`.stereostim.wav` etc.)
@@ -318,26 +322,38 @@ def detect_folder_tree(folder_path: str | Path) -> list[DetectedClip]:
 
 # ── Channel grouping helpers ──────────────────────────────────────────
 def categorize_channels(funscripts: dict[str, Path]) -> dict[str, list[str]]:
-    """Bucket detected funscript channels into the selectable groups."""
+    """Bucket detected funscript channels into the selectable groups.
+
+    Keys may be station-qualified (`focstim:alpha`); grouping reads the
+    channel INSIDE the key, so the same channel buckets the same way whichever
+    station wrote it. The returned lists hold the keys as given, because those
+    are what the caller resolves back to files.
+    """
+    from .channels import channel_of
+
     groups: dict[str, list[str]] = {
         "main": [],
         "multi_axis": [],
         "three_phase_estim": [],
+        "four_phase_estim": [],
         "prostate": [],
         "pulse_frequency": [],
         "other": [],
     }
-    for channel in funscripts:
+    for key in funscripts:
+        channel = channel_of(key)
         if channel == "main":
-            groups["main"].append(channel)
+            groups["main"].append(key)
         elif channel in MULTI_AXIS:
-            groups["multi_axis"].append(channel)
+            groups["multi_axis"].append(key)
         elif channel in ESTIM_3PHASE:
-            groups["three_phase_estim"].append(channel)
+            groups["three_phase_estim"].append(key)
+        elif channel in ESTIM_4PHASE:
+            groups["four_phase_estim"].append(key)
         elif channel in PROSTATE:
-            groups["prostate"].append(channel)
+            groups["prostate"].append(key)
         elif channel == "pulse_frequency":
-            groups["pulse_frequency"].append(channel)
+            groups["pulse_frequency"].append(key)
         else:
-            groups["other"].append(channel)
+            groups["other"].append(key)
     return groups

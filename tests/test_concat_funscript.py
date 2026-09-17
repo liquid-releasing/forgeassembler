@@ -465,3 +465,115 @@ def test_each_section_becomes_a_funscript_chapter(tmp_path: Path):
     assert [c["name"] for c in data["chapters"]] == ["One", "Two"]
     assert data["chapters"][1]["startTime"] == 1000
 
+
+
+# ── mixing a .forge scene with a plain clip ──────────────────────────
+def test_a_station_track_picks_up_a_loose_clips_bare_channel(tmp_path: Path):
+    """A compilation mixes sources, and the join has to bridge them.
+
+    Clip 1 is a `.forge` scene: its channels arrive STATION-QUALIFIED
+    (`estim3p:alpha`). Clip 2 is a plain video with `b.alpha.funscript`
+    beside it — nothing on disk says which device that was clamped for, so
+    it arrives as a bare `alpha`. Without a fallback across the station
+    dimension the joined `estim3p:alpha` track would silence-fill clip 2's
+    whole stretch while its alpha file sat right there unused.
+    """
+    scene = tmp_path / "scene"
+    scene.mkdir()
+    (scene / "a.mp4").write_bytes(b"")
+    _write_funscript(scene / "a.funscript", (0, 5))
+    _write_funscript(scene / "a.alpha.funscript", (0, 20))
+
+    loose = _make_clip(tmp_path / "loose", "b", [(0, 9)], alpha=[(0, 80)])
+
+    out_folder = tmp_path / "out"
+    p = Project(
+        items=[
+            Segment(
+                id="s1", video=str(scene / "a.mp4"),
+                funscripts_source="explicit",
+                explicit_funscripts={
+                    "main": str(scene / "a.funscript"),
+                    "estim3p:alpha": str(scene / "a.alpha.funscript"),
+                },
+            ),
+            Segment(id="s2", video=str(loose)),
+        ],
+        output=Output(folder=str(out_folder), basename="out"),
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    written = {
+        w.relative_to(out_folder).as_posix(): w
+        for w in forge_funscripts(p, layout) if w.suffix == ".funscript"
+    }
+
+    # One alpha track, in the E-Stim folder, carrying BOTH clips' actions.
+    assert "E-Stim/out.alpha.funscript" in written
+    alpha = json.loads(written["E-Stim/out.alpha.funscript"].read_text(encoding="utf-8"))
+    assert alpha["actions"] == [{"at": 0, "pos": 20}, {"at": 1000, "pos": 80}]
+
+
+def test_two_stations_sharing_a_channel_name_write_two_files(tmp_path: Path):
+    """`estim3p:alpha` and `focstim:alpha` are different files with different
+    content, so the forge has to keep them apart all the way to disk."""
+    scene = tmp_path / "scene"
+    scene.mkdir()
+    (scene / "a.mp4").write_bytes(b"")
+    _write_funscript(scene / "a.funscript", (0, 5))
+    _write_funscript(scene / "three.funscript", (0, 30))
+    _write_funscript(scene / "foc.funscript", (0, 60))
+
+    out_folder = tmp_path / "out"
+    p = Project(
+        items=[Segment(
+            id="s1", video=str(scene / "a.mp4"),
+            funscripts_source="explicit",
+            explicit_funscripts={
+                "main": str(scene / "a.funscript"),
+                "estim3p:alpha": str(scene / "three.funscript"),
+                "focstim:alpha": str(scene / "foc.funscript"),
+            },
+        )],
+        output=Output(folder=str(out_folder), basename="out"),
+    )
+    layout = lay_out(p, probe=lambda _p: 1000)
+    written = {
+        w.relative_to(out_folder).as_posix(): w
+        for w in forge_funscripts(p, layout) if w.suffix == ".funscript"
+    }
+    assert set(written) == {
+        "out.funscript",
+        "E-Stim/out.alpha.funscript",
+        "FOC-Stim/out.alpha.funscript",
+    }
+    three = json.loads(written["E-Stim/out.alpha.funscript"].read_text(encoding="utf-8"))
+    foc = json.loads(written["FOC-Stim/out.alpha.funscript"].read_text(encoding="utf-8"))
+    assert three["actions"] == [{"at": 0, "pos": 30}]
+    assert foc["actions"] == [{"at": 0, "pos": 60}]
+
+
+def test_four_phase_electrodes_can_be_vetoed(tmp_path: Path):
+    """`OutputChannels.four_phase_estim` existed with nothing mapped to it, so
+    the toggle was inert and e1..e4 always rode through under "other"."""
+    video = _make_clip(tmp_path / "clip", "c", [(0, 10)], e1=[(0, 40)], e2=[(0, 50)])
+    out_folder = tmp_path / "out"
+
+    p = Project(
+        items=[Segment(id="s1", video=str(video))],
+        output=Output(folder=str(out_folder), basename="out"),
+        output_channels=OutputChannels(four_phase_estim=False),
+    )
+    layout = lay_out(p, probe=lambda _p: 100)
+    names = {w.name for w in forge_funscripts(p, layout) if w.suffix == ".funscript"}
+    assert names == {"out.funscript"}
+
+    p.output_channels = OutputChannels(four_phase_estim=True)
+    written = {
+        w.relative_to(out_folder).as_posix()
+        for w in forge_funscripts(p, layout) if w.suffix == ".funscript"
+    }
+    assert written == {
+        "out.funscript",
+        "FOC-Stim 4-phase/out.e1.funscript",
+        "FOC-Stim 4-phase/out.e2.funscript",
+    }

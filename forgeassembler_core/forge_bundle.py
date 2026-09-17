@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from .channels import make_key
 from .detect import _split_ff_suffix
 from .project import Segment, new_id
 
@@ -229,15 +230,26 @@ def _channel_for_audio(rel_path: str, artifact: dict) -> str:
 def _channel_for_funscript(rel_path: str, artifact: dict) -> str:
     """Map an artifact's relative path to a channel key.
 
-    `motion.funscript` (axis L0) is the main stroke track. Station files are
-    named `<stem>.<channel>.funscript`, so the trailing FF suffix IS the
-    channel (alpha, beta, e1..e4, surge, sway, pulse_frequency,
-    alpha-prostate, …)."""
+    `motion.funscript` is the main stroke track. Station files are named
+    `<stem>.<channel>.funscript`, so the trailing FF suffix IS the channel
+    (alpha, beta, e1..e4, surge, sway, pulse_frequency, alpha-prostate, …).
+
+    The key is STATION-QUALIFIED, because the channel name alone stopped
+    being unique when FOC-Stim arrived: `estim3p`, `focstim` and `focstim4p`
+    all write `alpha`/`volume`/`frequency`/`pulse_*` with different content.
+    Keyed by name only, a real 39-funscript bundle collapsed to 24 channels
+    and silently lost 15 files — all of `focstim` among them. A station's own
+    L0 (`stations/tcode/<stem>.funscript`, no suffix) is `tcode:main`, which
+    likewise no longer collides with the universal `motion.funscript`.
+    """
     name = Path(rel_path).name
-    if name == MOTION_NAME or artifact.get("axis") == "L0":
+    if name == MOTION_NAME:
         return "main"
     _base, channel = _split_ff_suffix(name)
-    return channel or "main"
+    station = artifact.get("station")
+    if not station and artifact.get("axis") == "L0":
+        return "main"
+    return make_key(station, channel or "main")
 
 
 def _map_artifacts(
@@ -257,8 +269,9 @@ def _map_artifacts(
         fp = cache_dir / rel
         if kind == "funscript":
             channel = _channel_for_funscript(rel, art)
-            # First artifact for a channel wins (motion before stations in the
-            # manifest); deterministic.
+            # Keys are station-qualified, so two stations writing `alpha` no
+            # longer fight over one slot. setdefault still guards a manifest
+            # that lists the same path twice; first wins, deterministic.
             funscripts.setdefault(channel, fp)
         elif kind in ("audio", "audio_estim", "stim_audio"):
             audio_estim.setdefault(_channel_for_audio(rel, art), fp)

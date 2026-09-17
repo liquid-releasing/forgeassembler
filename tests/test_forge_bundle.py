@@ -487,3 +487,84 @@ def test_zip_fingerprint_of_an_unreadable_file_never_matches(tmp_path):
     junk.write_bytes(b"not a zip at all")
     assert _zip_fingerprint(junk) == "unreadable"
 
+
+
+# ── station-qualified channels ───────────────────────────────────────
+# A current FunscriptForge bundle carries NINE stations and 39 funscripts, and
+# `estim3p` / `focstim` / `focstim4p` all write `alpha`, `volume`, `frequency`,
+# `pulse_frequency`, `pulse_rise_time` and the prostate variants -- the same
+# names, clamped for different hardware. Keyed by channel name alone the
+# importer kept 24 of those 39 and silently dropped 15, the whole FOC-Stim
+# station among them. These pin the station dimension.
+def _three_estim_station_bundle(path: Path) -> Path:
+    """A bundle shaped like a real FOC-Stim-era export: three e-stim stations
+    writing identically-named channels, plus tcode's suffix-less own L0."""
+    shared = ("alpha", "volume", "pulse_frequency")
+    files: dict[str, str] = {
+        "motion.funscript": json.dumps({"actions": [{"at": 0, "pos": 1}]}),
+    }
+    artifacts: list[dict] = [
+        {"path": "motion.funscript", "kind": "funscript", "role": "stroke", "axis": "L0"},
+    ]
+    stations: dict[str, dict] = {}
+    for i, sid in enumerate(("estim3p", "focstim", "focstim4p")):
+        names = []
+        for ch in shared:
+            rel = f"stations/{sid}/Scene.{ch}.funscript"
+            # Distinct content per station, so a collapse is detectable.
+            files[rel] = json.dumps({"actions": [{"at": 0, "pos": 10 + i}]})
+            artifacts.append({"path": rel, "kind": "funscript", "role": "device",
+                              "station": sid, "generated": True})
+            names.append(Path(rel).name)
+        stations[sid] = {"files": names, "generated": True}
+    # tcode writes its own L0 with NO channel suffix, like FunscriptForge does.
+    files["stations/tcode/Scene.funscript"] = json.dumps({"actions": [{"at": 0, "pos": 77}]})
+    artifacts.append({"path": "stations/tcode/Scene.funscript", "kind": "funscript",
+                      "role": "device", "station": "tcode", "generated": True})
+    stations["tcode"] = {"files": ["Scene.funscript"], "generated": True}
+
+    return _write_bundle(path, {
+        "version": 1, "schema": "ffmeta/v1", "stem": "Scene",
+        "created_with": "FunscriptForge", "duration_ms": 1000,
+        "artifacts": artifacts, "stations": stations,
+    }, files)
+
+
+def test_three_stations_writing_the_same_channel_all_survive(tmp_path):
+    b = _three_estim_station_bundle(tmp_path / "Scene.forge")
+    bundle = detect_forge_bundle(b, cache_root=tmp_path / "cache")
+
+    # 3 stations x 3 shared channels + tcode's L0 + motion = 11 files, and
+    # every one of them is reachable. Keyed by bare channel this was 5.
+    assert len(bundle.funscripts) == 11
+    for sid in ("estim3p", "focstim", "focstim4p"):
+        for ch in ("alpha", "volume", "pulse_frequency"):
+            assert f"{sid}:{ch}" in bundle.funscripts
+
+    # Each station's copy is its OWN file, not a shared winner.
+    positions = {
+        sid: json.loads(bundle.funscripts[f"{sid}:alpha"].read_text())["actions"][0]["pos"]
+        for sid in ("estim3p", "focstim", "focstim4p")
+    }
+    assert positions == {"estim3p": 10, "focstim": 11, "focstim4p": 12}
+
+
+def test_a_stations_own_l0_does_not_collide_with_motion(tmp_path):
+    b = _three_estim_station_bundle(tmp_path / "Scene.forge")
+    bundle = detect_forge_bundle(b, cache_root=tmp_path / "cache")
+
+    # `stations/tcode/Scene.funscript` has no channel suffix. It used to read
+    # as "main" and lose to motion.funscript; it is now `tcode:main`.
+    assert json.loads(bundle.funscripts["main"].read_text())["actions"][0]["pos"] == 1
+    assert json.loads(bundle.funscripts["tcode:main"].read_text())["actions"][0]["pos"] == 77
+
+
+def test_segment_carries_every_station_channel(tmp_path):
+    b = _three_estim_station_bundle(tmp_path / "Scene.forge")
+    bundle = detect_forge_bundle(b, cache_root=tmp_path / "cache")
+    video = tmp_path / "Scene.mp4"
+    video.write_bytes(b"")
+    seg = forge_bundle_to_segment(bundle, video=video)
+
+    assert len(seg.explicit_funscripts) == 11
+    assert seg.explicit_funscripts["focstim:alpha"].endswith("Scene.alpha.funscript")

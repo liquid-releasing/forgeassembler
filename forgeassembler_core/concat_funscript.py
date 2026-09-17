@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional
 
+from .channels import funscript_relpath
+
 if TYPE_CHECKING:  # avoid circular at runtime
     from .layout import Layout
     from .project import Project, Segment
@@ -100,16 +102,46 @@ def concat_funscripts(parts: Iterable[FunscriptPart]) -> dict:
 
 
 # ── Project → files orchestration ─────────────────────────────────────
+def _lookup_channel(available: dict[str, "Path | str"], key: str):
+    """Find `key` in `available`, falling back across station attribution.
+
+    A compilation mixes sources. A `.forge` scene contributes STATION-QUALIFIED
+    keys (`estim3p:alpha`); a plain video with a funscript beside it
+    contributes a bare `alpha`, because nothing on disk says which device it
+    was clamped for. Without a fallback the joined `estim3p:alpha` track would
+    silence-fill the loose clip's whole stretch while its alpha file sat right
+    there unused.
+
+    So a qualified key falls back to the bare channel, and a bare key accepts
+    any station's copy (deterministically, by station name). One alpha file
+    feeding two station tracks is the honest reading: it is the same alpha
+    data, and the per-device clamping happened upstream in FunscriptForge.
+    """
+    if key in available:
+        return available[key]
+    from .channels import channel_of, make_key, parse_key
+
+    station, channel = parse_key(key)
+    if station:
+        return available.get(channel)
+    for other in sorted(available):
+        if other != key and channel_of(other) == channel:
+            return available[other]
+    return available.get(make_key(None, channel))
+
+
 def _resolve_funscript_path_for_segment(
     segment: "Segment", channel: str,
 ) -> Optional[Path]:
     """Return the on-disk funscript path for `segment`'s `channel`, or
     None if this segment contributes no actions for that channel.
+
+    `channel` is a channel KEY, so it may be station-qualified.
     """
     if segment.funscripts_source == "none":
         return None
     if segment.funscripts_source == "explicit":
-        raw = segment.explicit_funscripts.get(channel)
+        raw = _lookup_channel(segment.explicit_funscripts, channel)
         return Path(raw) if raw else None
     # auto_detect (default): look at siblings of the video file.
     if segment.is_still():
@@ -120,7 +152,9 @@ def _resolve_funscript_path_for_segment(
         Path(segment.funscripts_folder)
         if segment.funscripts_folder else video_path.parent
     )
-    return funscripts_for_stem(folder, video_path.stem).get(channel)
+    found = funscripts_for_stem(folder, video_path.stem)
+    path = _lookup_channel(found, channel)
+    return Path(path) if path else None
 
 
 def _trim_funscript_window(
@@ -236,12 +270,16 @@ _GROUP_VETO: dict[str, str] = {
     "main": "main",
     "multi_axis": "multi_axis",
     "three_phase_estim": "three_phase_estim",
+    # `four_phase_estim` existed on OutputChannels with nothing mapped to it,
+    # so the toggle was inert while e1..e4 rode through under "other".
+    "four_phase_estim": "four_phase_estim",
     "prostate": "prostate",
     "pulse_frequency": "pulse_frequency",
 }
 
-# Emission order, so a forge is reproducible. Anything not named here sorts
-# alphabetically after these.
+# Emission order, so a forge is reproducible. Read against the channel INSIDE
+# a key, so `estim3p:alpha` and `focstim:alpha` sort together and then by
+# station. Anything not named here sorts alphabetically after these.
 _CHANNEL_ORDER: tuple[str, ...] = (
     "main",
     "pitch", "roll", "surge", "sway", "twist",
@@ -251,8 +289,8 @@ _CHANNEL_ORDER: tuple[str, ...] = (
 )
 
 
-def _selected_channels(project: "Project") -> list[tuple[str, str]]:
-    """Which (channel, filename-suffix) pairs this forge should write.
+def _selected_channels(project: "Project") -> list[str]:
+    """Which channel KEYS this forge should write, in emission order.
 
     DETECTION drives the list -- every channel found on the clips is
     produced, which is the promise the Output tab makes. `OutputChannels`
@@ -263,9 +301,11 @@ def _selected_channels(project: "Project") -> list[tuple[str, str]]:
     Channels with no actions anywhere are still skipped downstream by
     `forge_funscripts`, so nothing empty gets written either way.
 
-    Suffix follows FunscriptForge's own naming: `<stem>.funscript` for
-    main, `<stem>.<channel>.funscript` for everything else.
+    Where each key is WRITTEN is `channels.funscript_relpath`'s business — a
+    station's channels go in that device's folder, because three stations now
+    write `alpha` and one flat name cannot hold them all.
     """
+    from .channels import channel_of
     from .detect import categorize_channels
 
     oc = project.output_channels
@@ -281,16 +321,14 @@ def _selected_channels(project: "Project") -> list[tuple[str, str]]:
             continue
         allowed |= set(members)
 
-    def order_key(ch: str) -> tuple[int, str]:
+    def order_key(key: str) -> tuple[int, str, str]:
+        channel = channel_of(key)
         try:
-            return (_CHANNEL_ORDER.index(ch), "")
+            return (_CHANNEL_ORDER.index(channel), "", key)
         except ValueError:
-            return (len(_CHANNEL_ORDER), ch)
+            return (len(_CHANNEL_ORDER), channel, key)
 
-    return [
-        (ch, "" if ch == "main" else f".{ch}")
-        for ch in sorted(allowed, key=order_key)
-    ]
+    return sorted(allowed, key=order_key)
 
 
 def forge_funscripts(
@@ -324,7 +362,7 @@ def forge_funscripts(
 
     written: list[Path] = []
     total_duration_ms = layout.total_duration_ms
-    for channel, suffix in _selected_channels(project):
+    for channel in _selected_channels(project):
         parts = _build_parts_for_channel(project, layout, channel)
         if not any(p.funscript.get("actions") for p in parts):
             continue  # nothing to write for this channel
@@ -341,13 +379,17 @@ def forge_funscripts(
                 combined["chapters"] = chapters_for_funscript
             else:
                 combined.pop("chapters", None)
-        out_path = folder / f"{stem}{suffix}.funscript"
+        # One folder per device, mirroring a FunscriptForge loose export —
+        # `E-Stim/`, `FOC-Stim/`, `MultiFunPlayer/` — with the universal
+        # stroke script at the top. Flat names cannot hold this any more:
+        # three stations write `alpha`.
+        out_path = folder / funscript_relpath(channel, stem)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         write_funscript(out_path, combined)
         written.append(out_path)
 
-        # Companion heatmap: {stem}{suffix}.heatmap.png — renders the
-        # combined per-channel timeline as a one-strip preview.
-        heatmap_path = folder / f"{stem}{suffix}.heatmap.png"
+        # Companion heatmap beside its funscript, same stem.
+        heatmap_path = out_path.with_name(f"{out_path.stem}.heatmap.png")
         try:
             write_heatmap(
                 combined.get("actions") or [],

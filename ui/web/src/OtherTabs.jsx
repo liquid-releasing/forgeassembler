@@ -6,7 +6,7 @@ import { ParamControl, TimingVisual } from './JoinerEditor';
 import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
 import { pickFile, videoEncoder } from './api/forge';
-import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
+import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
 import { projectChannelCoverage, segmentHasChannel } from './lib/projectAdapter';
 
 // Sketched other pipeline tabs. Intentionally light — the Build tab is
@@ -267,7 +267,7 @@ function ChannelGroupRow({ group, clips, onToggle }) {
               ? "Skipped — not written to the output."
               : partial.length === 0
                 ? "On every clip — continuous across the whole compilation."
-                : `Blank where missing: ${partial.map(c => c.id).join(", ")}.`}
+                : `Blank where missing: ${partial.map(c => c.channel || c.id).join(", ")}.`}
           </div>
         </div>
         {onToggle ? (
@@ -281,13 +281,21 @@ function ChannelGroupRow({ group, clips, onToggle }) {
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+        {/* The station has to show. Three of these rows can read `alpha` —
+            estim3p, focstim and focstim4p each write their own, clamped for
+            their own hardware — so the channel name alone names no file. */}
         {group.channels.map(c => (
-          <span key={c.id} className="mono" title={`${c.have} of ${c.eligible} clips`}
+          <span key={c.id} className="mono"
+                 title={`${c.have} of ${c.eligible} clips`
+                        + (c.stationLabel ? ` · ${c.stationLabel}` : "")}
                  style={{ fontSize: 10.5, padding: "2px 7px", borderRadius: 5,
                           border: `1px solid ${c.full ? "var(--border)" : "var(--warn)"}`,
                           color: c.full ? "var(--text-muted)" : "var(--warn)",
                           background: "var(--bg)" }}>
-            {c.id}
+            {c.channel || c.id}
+            {c.stationLabel && (
+              <span style={{ marginLeft: 5, opacity: 0.7 }}>{c.stationLabel}</span>
+            )}
             {!c.full && <span style={{ marginLeft: 5 }}>{c.have}/{c.eligible}</span>}
           </span>
         ))}

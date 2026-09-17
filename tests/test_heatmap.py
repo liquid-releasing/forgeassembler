@@ -213,14 +213,18 @@ def test_forge_funscripts_writes_heatmap_for_each_channel(tmp_path: Path):
     layout = lay_out(p, probe=lambda _p: 1000)
     written = forge_funscripts(p, layout)
 
-    # One main + one pitch channel (roll/surge/sway/twist are empty → skipped)
-    names = sorted(p.name for p in written)
-    assert names == ["x.funscript", "x.pitch.funscript"]
+    # One main + one pitch channel (roll/surge/sway/twist are empty → skipped).
+    # Main rides at the top; pitch is a TCode axis, so it goes in that device's
+    # folder — the same layout a FunscriptForge loose export writes.
+    assert sorted(f.relative_to(out_folder).as_posix() for f in written) == [
+        "MultiFunPlayer/x.pitch.funscript",
+        "x.funscript",
+    ]
     # Each one has a companion .heatmap.png next to it
     assert (out_folder / "x.heatmap.png").is_file()
-    assert (out_folder / "x.pitch.heatmap.png").is_file()
+    assert (out_folder / "MultiFunPlayer" / "x.pitch.heatmap.png").is_file()
     # Empty channels (roll etc.) do NOT produce stray heatmap pngs
-    assert not (out_folder / "x.roll.heatmap.png").exists()
+    assert not (out_folder / "MultiFunPlayer" / "x.roll.heatmap.png").exists()
 
 
 def test_forge_funscripts_heatmap_failure_does_not_break_funscript_write(tmp_path: Path):

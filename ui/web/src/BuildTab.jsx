@@ -7,7 +7,7 @@ import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
 import { Button, Field, Icon, Pill, Slider, TextInput } from './primitives';
 import { toMediaUrl } from './lib/mediaUrl';
-import { channelGapsFor, NEUTRAL_KELVIN } from './lib/projectAdapter';
+import { channelGapsFor, channelName, NEUTRAL_KELVIN } from './lib/projectAdapter';
 
 // ForgeAssembler — Build tab.
 // Renders the active project as clips you can sequence + a cross-clip
@@ -69,8 +69,11 @@ const _DEVICE_META = {
 function bucketChannels(channels) {
   const g = { stroke: [], multiaxis: [], estim: [] };
   for (const c of channels || []) {
-    if (c === "main") g.stroke.push(c);
-    else if (_MULTI_AXIS.has(c)) g.multiaxis.push(c);
+    // Keys are station-qualified (`focstim:alpha`), so bucket on the channel
+    // inside the key — otherwise every station's channels read as e-stim.
+    const name = channelName(c);
+    if (name === "main") g.stroke.push(c);
+    else if (_MULTI_AXIS.has(name)) g.multiaxis.push(c);
     else g.estim.push(c);
   }
   return g;

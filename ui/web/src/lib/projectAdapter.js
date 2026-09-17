@@ -53,21 +53,56 @@ export function segmentHasChannel(seg, uiChannelId) {
 // "other" has none, so it always rides along.
 const MULTI_AXIS = ['pitch', 'roll', 'surge', 'sway', 'twist'];
 const ESTIM_3PHASE = ['alpha', 'beta'];
-const PROSTATE_CH = ['alpha-prostate', 'beta-prostate'];
+const ESTIM_4PHASE = ['e1', 'e2', 'e3', 'e4'];
+const PROSTATE_CH = ['alpha-prostate', 'beta-prostate', 'volume-prostate'];
 
 export const CHANNEL_GROUPS = [
   { id: 'main',              label: '2D main',           veto: 'main' },
   { id: 'multi_axis',        label: 'Multi-axis',        veto: 'multi_axis' },
   { id: 'three_phase_estim', label: '3-phase e-stim',    veto: 'estim_3p' },
+  // The `estim_4p` flag existed with no group to switch, so e1..e4 rode
+  // through under "Device & parameter" and the toggle did nothing.
+  { id: 'four_phase_estim',  label: '4-phase e-stim',    veto: 'estim_4p' },
   { id: 'prostate',          label: 'Prostate',          veto: 'prostate' },
   { id: 'pulse_frequency',   label: 'Pulse frequency',   veto: 'pulse_freq' },
   { id: 'other',             label: 'Device & parameter', veto: null },
 ];
 
-export function channelGroup(channel) {
+// Channel keys are STATION-QUALIFIED — `focstim:alpha` — because three
+// stations write `alpha` with different clamping. Read one only through these.
+export const CHANNEL_STATION_SEP = ':';
+
+export function channelStation(key) {
+  const i = String(key ?? '').indexOf(CHANNEL_STATION_SEP);
+  return i > 0 ? String(key).slice(0, i) : null;
+}
+
+export function channelName(key) {
+  const i = String(key ?? '').indexOf(CHANNEL_STATION_SEP);
+  return i > 0 ? String(key).slice(i + 1) : String(key ?? '');
+}
+
+// Station id → the label the device is known by. Mirrors
+// forgeassembler_core/channels.STATION_FOLDER, which mirrors FunscriptForge.
+const STATION_LABEL = {
+  estim3p: 'E-Stim', focstim: 'FOC-Stim', focstim4p: 'FOC-Stim 4-phase',
+  handy: 'Handy', tcode: 'MultiFunPlayer', osr2: 'OSR2', sr6: 'SR6',
+  lovense: 'Lovense', vacuglide: 'Vacuglide', ossm: 'OSSM',
+  shaker: 'Bass Shaker',
+};
+
+export function stationLabel(station) {
+  if (!station) return null;
+  return STATION_LABEL[station]
+    || station.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+export function channelGroup(key) {
+  const channel = channelName(key);
   if (channel === 'main') return 'main';
   if (MULTI_AXIS.includes(channel)) return 'multi_axis';
   if (ESTIM_3PHASE.includes(channel)) return 'three_phase_estim';
+  if (ESTIM_4PHASE.includes(channel)) return 'four_phase_estim';
   if (PROSTATE_CH.includes(channel)) return 'prostate';
   if (channel === 'pulse_frequency') return 'pulse_frequency';
   return 'other';
@@ -109,6 +144,11 @@ export function projectChannelCoverage(project) {
       .sort()
       .map(ch => ({
         id: ch,
+        // Same channel name, different device: `alpha` exists three times in
+        // a current bundle, so a row has to say WHOSE it is.
+        channel: channelName(ch),
+        station: channelStation(ch),
+        stationLabel: stationLabel(channelStation(ch)),
         have: counts.get(ch),
         eligible: clips.length,
         full: counts.get(ch) === clips.length,
@@ -131,16 +171,24 @@ export function projectChannelCoverage(project) {
  *
  * Stills are exempt in both directions: a title card is never expected to
  * carry a funscript, and it never makes its neighbours look deficient.
+ *
+ * Compared by channel NAME, station stripped, to match how the engine
+ * resolves a part: a plain clip's bare `alpha` feeds the joined
+ * `estim3p:alpha` track, so it is not a gap. Comparing raw keys would flag
+ * every loose clip in a mixed project for channels it actually covers.
  */
 export function channelGapsFor(seg, project) {
   if (!seg || seg.kind === 'still') return [];
-  const mine = new Set(seg.channels || []);
-  const others = new Set();
+  const mine = new Set((seg.channels || []).map(channelName));
+  const others = new Map();  // channel name -> a key to display
   for (const s of (project?.sections || []).flatMap(x => x.segments || [])) {
     if (s.id === seg.id || s.kind === 'still') continue;
-    for (const c of s.channels || []) others.add(c);
+    for (const c of s.channels || []) {
+      const name = channelName(c);
+      if (!others.has(name)) others.set(name, c);
+    }
   }
-  return [...others].filter(c => !mine.has(c)).sort();
+  return [...others.keys()].filter(c => !mine.has(c)).sort();
 }
 
 // Neutral daylight — ffmpeg's own default for `colortemperature`, and the
