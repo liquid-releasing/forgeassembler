@@ -88,31 +88,34 @@ Each segment card exposes:
   single video at a timestamp from the source file (see below).
 - **Thumbnail + duration + detected funscript channels** — read-only.
 
-Between two consecutive segments inside a section, a small **🔪 Split
-here** button appears. Click it to split the section into two at
-that boundary — clips below the cut become a new section. Section
-overlays redistribute by their time window: anything entirely in the
-top half stays; anything entirely in the bottom half moves with
-adjusted timing; overlays straddling the boundary split into two.
+Between two consecutive clips inside a section, a small **+** button
+appears. It adds a transition there — and because a joiner lives on a
+section boundary, adding one splits the section into two at that point:
+clips below the cut become a new section, with a chapter marker of their
+own. Section overlays redistribute by their time window: anything
+entirely in the top half stays; anything entirely in the bottom half
+moves with adjusted timing; overlays straddling the boundary split into
+two.
 
-## ✂ Splitting a clip at a timestamp
+## ✂ Trimming a clip
 
-For long source videos, you can cut INSIDE a single clip at any
-timestamp — no need to pre-split the file with ffmpeg first. The
-**✂ Split clip at time…** expander on each video segment lets you
-enter a timestamp and the clip becomes two pieces.
+You can cut INSIDE a single clip — no need to pre-split the file with
+ffmpeg first. Click the clip to open the **Inspector**, and on its
+**Source** tab park the playhead and press **Set in** / **Set out**.
 
-The timestamp is **always interpreted as a position in the source
-video file**, not relative to where the piece starts in your
-project. The expander shows the source file's name and length, plus
-the current piece's bounds in source coordinates, so the math stays
-obvious as you slice further:
+Both are **positions in the source video file**, not offsets from where
+the piece starts in your project, so the math stays obvious however far
+you slice. The scene strip above the player shades the regions you are
+throwing away, and the readout shows the piece's bounds in source
+coordinates:
 
 > Source file: `bigvideo.mp4` (01:00:00.000 long)
 >
 > This piece plays **00:30:00.000 → 01:00:00.000** of the source file.
->
-> Split at (timestamp in source file): `00:45:00.000`
+
+Trims are stored as `trim_start` / `trim_end` on the segment, so the
+same source file can appear more than once in a project with different
+bounds — which is how you get two pieces out of one long video.
 
 When you click **Split here (becomes new section)**:
 

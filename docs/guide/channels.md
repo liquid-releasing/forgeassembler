@@ -110,7 +110,7 @@ audio inputs the same way they do to video — `-ss <trim_start>` and
 
 ## Produce video / funscripts / audio without the others
 
-In the **Produce** panel of the sidebar:
+In the **Produce** panel of the **Output** tab:
 
 - **Video (MP4)** — on by default
 - **Funscripts** — on by default
@@ -134,5 +134,5 @@ regions where a clip didn't carry the channel.
 
 ---
 
-Next: **[Debug mode](debug-mode.md)** — what to turn on when
-something goes wrong, and how to capture a clean bug report.
+Next: **[Resolution & scaling](resolution.md)** — what the output
+resolution setting does to your footage, and what it cannot do.

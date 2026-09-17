@@ -16,21 +16,39 @@ Packaged releases of ForgeAssembler bundle third-party software that retains its
 - **Used for:** video/audio concat, encoding, filtering (fades, overlays, drawtext, loudnorm), and heatmap compositing.
 - **Packaged releases** include a copy of the applicable ffmpeg license alongside the `ffmpeg` executable in the distribution.
 
+## Desktop shell and UI
+
+### Tauri
+
+- **License:** MIT or Apache License 2.0
+- **Project:** [tauri.app](https://tauri.app)
+- **License text:** [github.com/tauri-apps/tauri/blob/dev/LICENSE_MIT](https://github.com/tauri-apps/tauri/blob/dev/LICENSE_MIT)
+- **Used for:** the native desktop shell — window, webview host, and the Rust command layer that invokes the bundled `forge-cli`.
+
+### React and React DOM
+
+- **License:** MIT
+- **Project:** [react.dev](https://react.dev)
+- **License text:** [github.com/facebook/react/blob/main/LICENSE](https://github.com/facebook/react/blob/main/LICENSE)
+- **Used for:** the application UI.
+
+### Lucide
+
+- **License:** ISC
+- **Project:** [lucide.dev](https://lucide.dev)
+- **License text:** [github.com/lucide-icons/lucide/blob/main/LICENSE](https://github.com/lucide-icons/lucide/blob/main/LICENSE)
+- **Used for:** the icon set throughout the UI.
+
+Packaged releases also bundle the Rust crates Tauri depends on and the
+JavaScript packages compiled into the UI bundle. Each retains its own
+license; `ui/web/src-tauri/Cargo.lock` and `ui/web/package-lock.json`
+pin the exact set.
+
+On Windows the app renders through **Microsoft Edge WebView2**, which is
+part of the operating system and distributed under Microsoft's own terms
+— it is not bundled with the release.
+
 ## Python dependencies
-
-### Streamlit
-
-- **License:** Apache License 2.0
-- **Project:** [streamlit.io](https://streamlit.io)
-- **License text:** [github.com/streamlit/streamlit/blob/develop/LICENSE](https://github.com/streamlit/streamlit/blob/develop/LICENSE)
-- **Used for:** the application UI framework.
-
-### pywebview
-
-- **License:** BSD 3-Clause
-- **Project:** [pywebview.flowrl.com](https://pywebview.flowrl.com)
-- **License text:** [github.com/r0x0r/pywebview/blob/master/LICENSE](https://github.com/r0x0r/pywebview/blob/master/LICENSE)
-- **Used for:** the native desktop window wrapper around the Streamlit UI and the HTTP bridge for native folder/file pickers.
 
 ### imageio-ffmpeg
 
@@ -80,4 +98,4 @@ Packaged releases of ForgeAssembler bundle third-party software that retains its
 
 ## Transitive dependencies
 
-ForgeAssembler's packaged releases also bundle many transitive dependencies of the packages listed above (altair, pyarrow, tornado, click, rich, watchdog, and others pulled in by Streamlit). These retain their own licenses; see the `dist-info` directories alongside the executable for the full set.
+ForgeAssembler's packaged releases also bundle transitive dependencies of the packages listed above (numpy, matplotlib, Pillow, and what they pull in). These retain their own licenses; see the `dist-info` directories alongside the bundled `forge-cli` for the full set.

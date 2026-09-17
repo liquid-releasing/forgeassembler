@@ -7,10 +7,12 @@ combined output. Plan about ten minutes end-to-end.
 
 - A Windows, macOS, or Linux machine (x86-64)
 - 8 GB RAM minimum
-- A few FunscriptForge-style clip folders: each contains an `.mp4`
-  plus one or more `.funscript` files (optionally with
-  `estim/`, `multi_axis/`, `prostate/` sub-folders for channel
-  funscripts)
+- Something to assemble. Either:
+    - **`.forge` scenes** exported from FunscriptForge — the preferred
+      input, because one file carries the video reference, every
+      funscript channel, the estim audio, and the analysis sidecars, OR
+    - **clip folders**: an `.mp4` plus one or more sibling
+      `.funscript` files
 
 ForgeAssembler does not need ffmpeg installed — the release bundles
 its own.
@@ -23,64 +25,105 @@ its own.
 
 1. Download the latest release for your OS from
    [forgeassembler-releases](https://github.com/liquid-releasing/forgeassembler-releases/releases).
-2. Unzip into a folder of your choice.
-3. Launch `ForgeAssembler.exe` (Windows), `ForgeAssembler.app` (macOS),
-   or `./ForgeAssembler` (Linux).
+2. Run the installer (Windows `.msi`, macOS `.dmg`) and launch
+   **ForgeAssembler**.
 
-On first launch a small native window opens showing the ForgeAssembler
-UI. The app runs entirely on your machine — nothing is uploaded.
+The app runs entirely on your machine — nothing is uploaded.
 
 ### Option B — Run from source
+
+You need Python 3.11+, Node 20+, and a Rust toolchain.
 
 ```bash
 git clone https://github.com/liquid-releasing/forgeassembler.git
 cd forgeassembler
-pip install -r requirements.txt -r requirements-desktop.txt
-python forgeassembler.py
+pip install -r requirements.txt
+
+cd ui/web
+npm install
+npm run tauri:dev
 ```
 
 ---
 
 ## 2. Your first forge
 
-Once the window is open, you'll see two main areas:
+The app opens on the **Home** screen: **New compilation**, **Open
+project…**, and your recent projects. Click **New compilation**.
 
-- **Sidebar (left)** — output settings: resolution, channels,
-  audio normalization, metadata
-- **Build tab (centre)** — the project you're assembling: sections,
-  clips, overlays, joiners
+You land in a three-step pipeline across the top — **Build**,
+**Output**, **Forge**. Each step has an Accept button in the footer;
+accepting chains you to the next step.
 
-### Add your first clip
+### Add your scenes
 
-1. In the **Add Clips** panel at the bottom, either:
-   - Click **📄 File Browse** → pick an `.mp4`, OR
-   - Paste a full path (or a folder path) into the text input
-2. Choose the **ONE NEW section** radio option.
-3. Click **Add**.
+In the **Build** tab header:
 
-A new section card appears with your clip, its duration, and any
-detected funscripts (`Funscripts: main, multi_axis, ...`).
+- **Add .forge scene…** — pick one `.forge` file.
+- **Add folder…** — pick a folder of them, added in one go.
 
-### Add a second clip
+**Each `.forge` scene becomes its own section**, and a section boundary
+is a chapter marker in the finished video. So a compilation of five
+scenes gives you five chapters without any extra work.
 
-Repeat step 1, but this time choose **Into LAST section** to
-cut-join the new clip into the existing section. Or pick **NEW ONE
-section** to start a fresh section with its own chapter marker.
+If the bundle does not carry its video — the default export is lean, and
+references the video beside it — you are asked to point at the file once.
 
-### Forge
+A section card shows its clips, each with duration, the channels it
+carries as device pills (Stroke / Multi-axis / E-Stim), and a **gaps**
+pill if this clip lacks a channel its neighbours have. That pill is
+worth reading: a channel missing from one clip goes quiet for that
+stretch of the finished compilation.
 
-1. Pick an output folder (default: next to your project) by clicking
-   **Forge**.
-2. Wait. The status line shows progress; forging a one-minute output
-   takes roughly thirty seconds on a laptop.
+### Add a plain video to a section
 
-When it finishes you'll have:
+**Add clip** in a section header takes a video (plus any funscripts
+sitting beside it). A video is a clip *within* a section, not a section
+of its own — so use this when two pieces of footage belong to the same
+chapter.
 
-- `<project>.mp4` — the combined video
-- `<project>.main.funscript`, `<project>.multi_axis.funscript`, etc.
-  — concatenated channel funscripts
-- `<project>.heatmap.png` — a heat map of the main funscript track
-- `<project>.json` — reloadable project file (save it somewhere)
+### Set a transition
+
+The **+** between two clips adds a transition there, splitting the
+section at that point and opening the joiner picker. Pick **None** for a
+straight cut or **Fade through black** for a fade — any colour, with
+independent fade-out, hold, and fade-in. Crossfade and swipe are listed
+but marked *soon*; no engine implements them yet.
+
+### Trim a clip
+
+Click a clip to open the **Inspector**. Its **Source** tab has the
+player, with the whole scene drawn on a strip above it — the motion
+track, the audio waveform, and a ruler. Click anywhere on the strip to
+jump there, park the playhead, then **Set in** / **Set out**. The
+regions you are cutting are shaded on the strip as you go.
+
+### Check the join
+
+The preview band along the bottom of the Build tab draws the **joined
+funscript** — the actual concatenated result, computed by the same code
+the forge uses, so it cannot drift from what you get.
+
+### Output and forge
+
+**Accept and chain** moves you to **Output**: resolution, encode
+quality, frame rate, audio normalization, and which funscript channels
+to write. The defaults are fine for a first run.
+
+Accept again to reach **Forge**, and press it. Progress streams into the
+footer. A one-minute output takes roughly thirty seconds on a laptop;
+GPU encoding is used automatically when your machine has it (see
+[GPU acceleration](gpu-acceleration.md)).
+
+Use **Save as…** to choose where the output lands and what it is called
+— that name is the basename for everything written:
+
+- `<name>.mp4` — the combined video, with chapter markers at every
+  section boundary
+- `<name>.funscript` and `<name>.<channel>.funscript` — one per channel
+  that had actions, carrying the same chapter list as the video
+- `<name>.heatmap.png` — a heat map beside each funscript
+- `<name>.forgeproject.json` — the reloadable project
 
 ---
 
@@ -94,5 +137,6 @@ When it finishes you'll have:
   the very end
 - **[Channels](channels.md)** — pick which funscript channels get
   written
-- **[Debug mode](debug-mode.md)** — capture a clean bug report when
-  something goes wrong
+- **[Resolution & scaling](resolution.md)** — what choosing 4K does,
+  and what it does not do
+- **[CLI](cli.md)** — everything the app does, scriptable

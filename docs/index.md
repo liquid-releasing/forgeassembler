@@ -44,8 +44,9 @@ Ready to go deeper? The **User Guide** covers
 [sections & segments](guide/sections-and-segments.md),
 [overlays](guide/overlays.md),
 [joiners](guide/joiners.md),
-[output channels](guide/channels.md), and
-[debug mode](guide/debug-mode.md).
+[output channels](guide/channels.md),
+[resolution & scaling](guide/resolution.md), and the
+[CLI](guide/cli.md).
 
 ---
 

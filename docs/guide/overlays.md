@@ -80,7 +80,7 @@ Two levers:
 - **Hand-tune Mix %** per overlay until the blend sounds right.
   Typical: quiet background music ends up at 40–60%, ambient beds at
   15–25%, and a prominent layer stays at 70–100%.
-- **Leave Normalize audio ON** in the sidebar (the default). It
+- **Leave Normalize audio ON** in the **Output** tab (the default). It
   rebalances levels *across* sections, so an overlay-heavy section
   doesn't come out quieter than a section with strong native audio.
   It does not rebalance inside a single section's mix — that's what

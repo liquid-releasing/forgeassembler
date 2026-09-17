@@ -23,15 +23,26 @@ Every forge writes a `.forgeproject.json` alongside the output. It describes the
 
 ## Building from source
 
+The app is a [Tauri](https://tauri.app) shell over a React UI, with a Python core that does the work. You need Python 3.11+, Node 20+, and a Rust toolchain.
+
 ```bash
 git clone https://github.com/liquid-releasing/forgeassembler
 cd forgeassembler
 pip install -r requirements.txt
-pip install -r requirements-desktop.txt
-python forgeassembler.py
+
+cd ui/web
+npm install
+npm run tauri:dev
 ```
 
 `ffmpeg` is included automatically via the `imageio-ffmpeg` pip package — no system install required.
+
+The Python core is also a CLI, which is what the app calls for every operation:
+
+```bash
+python cli.py forge <project.forgeproject.json>
+python cli.py list-joiners
+```
 
 ## License
 

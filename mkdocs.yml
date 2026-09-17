@@ -69,7 +69,6 @@ nav:
     - Output Channels: guide/channels.md
     - Resolution & Scaling: guide/resolution.md
     - GPU Acceleration: guide/gpu-acceleration.md
-    - Debug Mode: guide/debug-mode.md
     - CLI: guide/cli.md
   - Title Cards:
     - Overview: guide/title-cards/index.md

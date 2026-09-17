@@ -1,3 +1,4 @@
-pywebview>=5.0
+# Build-time only: PyInstaller packages `forgeassembler_core` + `cli.py` as
+# the `forge-cli` sidecar that the Tauri app shells out to. The UI itself is
+# built with npm (see ui/web/package.json), not from here.
 pyinstaller>=6.0
-psutil>=5.9

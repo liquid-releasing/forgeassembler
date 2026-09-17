@@ -334,59 +334,82 @@ begins.
 
 ## Codebase layout
 
+The app is a Tauri shell hosting a React UI; every operation the UI
+performs is a Rust command that shells out to `cli.py` (dev) or the
+bundled `forge-cli` (release). The Python core does all the work and
+knows nothing about the UI.
+
 ```text
 forgeassembler/
-├── forgeassembler.py              # PyWebView launcher (dual-mode)
-├── ui.py                           # Streamlit UI, two tabs
-├── cli.py                          # argparse CLI entry point
+├── cli.py                          # argparse CLI — the only entry point
 ├── forgeassembler_core/
 │   ├── __init__.py
 │   ├── about.py                    # version + credits
 │   ├── project.py                  # Project model, load/save JSON, validate
 │   ├── detect.py                   # folder → video + funscripts
+│   ├── forge_bundle.py             # read a FunscriptForge `.forge` bundle
+│   ├── probe.py                    # ffprobe duration/streams
 │   ├── layout.py                   # compute running timeline
 │   ├── filters.py                  # per-segment filter-chain builders
 │   │                               #   (scale/pad, colortemperature, overlays)
+│   ├── fonts.py                    # title-card font resolution
 │   ├── concat_video.py             # ffmpeg filter_complex orchestration
-│   │                               #   (incl. bug, loudnorm, xfade)
+│   │                               #   (incl. bug, loudnorm, encoder choice)
 │   ├── concat_funscript.py         # funscript timestamp shift + concat
+│   ├── concat_audio_estim.py       # per-channel estim audio concat
 │   ├── joiners/
 │   │   ├── __init__.py
 │   │   ├── base.py                 # Joiner ABC
 │   │   ├── none_joiner.py          # straight cut
-│   │   └── fade_to_black.py        # fade/hold/fade
-│   ├── preview.py                  # single-frame preview rendering
-│   │                               #   (for color-temp tuning)
+│   │   └── fade_to_black.py        # fade/hold/fade, any colour
 │   ├── chapters.py                 # mp4 chapter markers
-│   ├── heatmap.py                  # funscript heatmap + beatmap previews
-│   └── forge.py                    # top-level forge() orchestrator
-├── tests/                          # pytest
+│   └── heatmap.py                  # funscript heatmap + beatmap previews
+├── ui/web/                         # the desktop app
+│   ├── package.json                # npm scripts: dev, build, tauri:dev
+│   ├── index.html
+│   ├── src/
+│   │   ├── main.jsx  App.jsx  AppShell.jsx
+│   │   ├── HomeScreen.jsx          # pre-pipeline launcher (new/open/recents)
+│   │   ├── BuildTab.jsx            # sections, clips, joiners
+│   │   ├── Inspector.jsx           # per-clip source/trim/audio/colour/overlays
+│   │   ├── PreviewBand.jsx         # the joined funscript
+│   │   ├── JoinerEditor.jsx  TitleEditor.jsx  OtherTabs.jsx  ProjectIO.jsx
+│   │   ├── MediaViewer.jsx  primitives.jsx  dragdrop.jsx
+│   │   ├── api/forge.js            # Rust command bridge
+│   │   └── lib/projectAdapter.js   # view-model ⇄ .forgeproject.json
+│   └── src-tauri/
+│       ├── src/lib.rs  src/commands.rs   # invokes cli.py / forge-cli
+│       ├── tauri.conf.json  Cargo.toml
+│       └── capabilities/default.json
+├── tests/                          # pytest — the core, not the UI
 │   ├── fixtures/                   # tiny test videos + funscripts
-│   ├── test_project.py
-│   ├── test_detect.py
-│   ├── test_layout.py
-│   ├── test_concat_funscript.py
+│   ├── test_project.py  test_detect.py  test_layout.py
+│   ├── test_concat_funscript.py  test_concat_audio_estim.py
+│   ├── test_forge_bundle.py  test_joiners.py  test_trim.py
 │   ├── test_filters.py             # filter-chain string builders
 │   ├── test_concat_video.py        # integration, slow
+│   ├── test_chapters.py  test_fonts.py  test_heatmap.py
 │   └── test_cli.py
-├── .streamlit/config.toml
-├── media/                          # icons, wordmark, LR logo
-├── ForgeAssembler.spec             # PyInstaller
-├── requirements.txt
-├── requirements-desktop.txt
+├── docs/                           # mkdocs site
+├── media/  branding/               # icons, wordmark, LR logo
+├── requirements.txt                # core runtime
+├── requirements-desktop.txt        # PyInstaller, for the forge-cli sidecar
 ├── requirements-dev.txt            # pytest, ruff
-├── .github/workflows/release.yml
+├── .github/workflows/docs.yml
 ├── README.md
 ├── LICENSE (MIT)
 ├── THIRD_PARTY_LICENSES.md
 └── .gitignore
 ```
 
+The UI is tested with vitest, which covers the adapter and the pure
+helpers in `src/lib/`. It does not render `App`.
+
 ## CLI
 
-`forgeassembler` ships with a CLI for automation and scripted batch
-assembly. Same process entry point; Streamlit launcher only fires when
-called with no CLI args.
+`cli.py` is the entry point for automation and scripted batch assembly,
+and it is also what the desktop app calls for every operation — so
+anything the UI can do is reachable from a shell.
 
 ```text
 forgeassembler forge <project.json>            # run a saved project
@@ -419,8 +442,10 @@ story we're selling.
   run only on tag pushes in CI.
 - **CLI tests** (`test_cli.py`): subprocess the CLI entry point, assert
   exit codes and file outputs.
-- **No UI tests in v1.** The Streamlit UI is thin over the core and
-  exercised by hand + CLI coverage.
+- **UI unit tests** (vitest, `ui/web/src/lib/*.test.js`): the project
+  adapter and the pure helpers, including round-trip fixtures that pin
+  view-model ⇄ `.forgeproject.json` as lossless. Nothing renders `App`,
+  so the React tree itself is covered by hand + CLI coverage.
 
 ## Phase map
 

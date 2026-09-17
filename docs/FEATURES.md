@@ -12,7 +12,7 @@ see [ARCHITECTURE.md](ARCHITECTURE.md).
 2. **Choose joiners.** Between any two segments, pick how they should
    connect: *None* (straight cut) or *FadeToBlack* with a configurable
    duration.
-3. **Configure the project.** In the sidebar, pick the output resolution,
+3. **Configure the project.** In the **Output** tab, pick the output resolution,
    select which funscript channels to include, toggle audio loudness
    normalization, and optionally attach a corner **bug** (a PNG logo
    that rides every segment).
@@ -89,7 +89,7 @@ next begins.
 
 ## Output settings
 
-Project-level controls in the sidebar:
+Project-level controls in the **Output** tab:
 
 - **Produce** — two checkboxes controlling what ForgeAssembler writes
   on forge. Both default **on**; at least one must be on.

@@ -371,7 +371,7 @@ pub async fn save_project(path: String, project: Value) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
-// Native dialogs (replaces the pywebview HTTP folder-picker bridge)
+// Native dialogs
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
