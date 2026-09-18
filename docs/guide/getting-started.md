@@ -120,8 +120,13 @@ Use **Save as…** to choose where the output lands and what it is called
 
 - `<name>.mp4` — the combined video, with chapter markers at every
   section boundary
-- `<name>.funscript` and `<name>.<channel>.funscript` — one per channel
-  that had actions, carrying the same chapter list as the video
+- `<name>.funscript` — the universal stroke script, plus **one folder per
+  device** (`E-Stim/`, `FOC-Stim/`, `MultiFunPlayer/`, …) holding that
+  station's channels. Three stations write channels with the same names, so
+  they cannot share a flat folder — see [channels](channels.md)
+- `<name>.forge` — **the compilation as a scene**: every channel, the joined
+  analysis, and its chapters in one file. Reopen it in FunscriptForge to keep
+  editing, or play it in ForgePlayer
 - `<name>.heatmap.png` — a heat map beside each funscript
 - `<name>.forgeproject.json` — the reloadable project
 

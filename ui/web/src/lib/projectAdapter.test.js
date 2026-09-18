@@ -60,6 +60,7 @@ const REAL = {
     folder: 'C:/out', basename: 'combined', resolution: '1440p',
     quality: 'high', frame_rate: '30', normalize_audio: true,
     produce_video: true, produce_funscripts: true, produce_audio_estim: false,
+    produce_forge_bundle: true, produce_forge_bundle_media: false,
   },
   audio_beds: [],
 };
@@ -732,5 +733,62 @@ describe('station-qualified channels', () => {
     };
     expect(channelGapsFor(project.sections[0].segments[1], project)).toEqual([]);
     expect(channelGapsFor(project.sections[0].segments[0], project)).toEqual([]);
+  });
+});
+
+// ── analysis sidecars survive a save ──────────────────────────────────
+describe('a bundle\'s analysis sidecars persist', () => {
+  // They used to be set on import and held only in memory, so reopening a
+  // saved project lost them: the preview went back to decoding the video for
+  // a waveform, and the forge had nothing to join into the compilation's own
+  // .forge bundle.
+  const withSidecars = {
+    id: 'seg-1', type: 'segment', video: 'C:/clips/scene.mp4',
+    audio: { mode: 'keep' }, overlays: [],
+    funscripts: { source: 'explicit', files: { main: '/cache/motion.funscript' } },
+    sidecars: { audio: '/cache/audio.json', beats: '/cache/beats.json' },
+  };
+
+  it('round-trips real → view → real', () => {
+    const vm = {
+      name: 'p', output: {}, channels: { main: true },
+      sections: [{ id: 's', title: '', joiner: { kind: 'none' },
+        segments: [fromForgeBundleSegment(withSidecars)] }],
+      audioBeds: [],
+    };
+    const back = toForgeProject(vm).sections[0].segments[0];
+    expect(back.sidecars).toEqual(withSidecars.sidecars);
+  });
+
+  it('invents nothing for a clip that has none', () => {
+    const bare = { ...withSidecars, sidecars: undefined };
+    const vm = {
+      name: 'p', output: {}, channels: {},
+      sections: [{ id: 's', title: '', joiner: { kind: 'none' },
+        segments: [fromForgeBundleSegment(bare)] }],
+      audioBeds: [],
+    };
+    expect('sidecars' in toForgeProject(vm).sections[0].segments[0]).toBe(false);
+  });
+});
+
+// ── the .forge scene is an output the project remembers ───────────────
+describe('the .forge output flags', () => {
+  it('default to producing a lean scene', () => {
+    const vm = fromForgeProject({ version: '2.0', sections: [], output: {} });
+    expect(vm.output.forgeBundle).toBe(true);
+    expect(vm.output.forgeBundleMedia).toBe(false);
+  });
+
+  it('carry a deliberate choice back to the file', () => {
+    const vm = fromForgeProject({
+      version: '2.0', sections: [],
+      output: { produce_forge_bundle: false, produce_forge_bundle_media: true },
+    });
+    expect(vm.output.forgeBundle).toBe(false);
+    expect(vm.output.forgeBundleMedia).toBe(true);
+    const real = toForgeProject({ ...vm, sections: [], audioBeds: [] });
+    expect(real.output.produce_forge_bundle).toBe(false);
+    expect(real.output.produce_forge_bundle_media).toBe(true);
   });
 });

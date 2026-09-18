@@ -243,6 +243,13 @@ function segToReal(seg) {
   if (seg.explicitAudioEstim && Object.keys(seg.explicitAudioEstim).length) {
     out.audio_estim = { files: seg.explicitAudioEstim };
   }
+  // The bundle's analysis paths. These used to live only in memory, set on
+  // import, so reopening a saved project lost them: the preview went back to
+  // decoding the video for a waveform, and the forge had nothing to join into
+  // the compilation's own .forge.
+  if (seg.sidecars && Object.keys(seg.sidecars).length) {
+    out.sidecars = seg.sidecars;
+  }
   if (isStill) out.still_duration_s = (seg.durMs ?? 5000) / 1000;
   // The view model carries an OFFSET from neutral ("+500 warmer"), which
   // is what the slider shows; the schema field is ABSOLUTE Kelvin, which
@@ -282,6 +289,8 @@ function segFromReal(seg) {
     // the view model so the round-trip preserves it and the UI can tell a
     // clip that ships audio from one that doesn't.
     explicitAudioEstim: seg.audio_estim?.files || {},
+    // Analysis sidecars, `analysis name -> path` (see segToReal).
+    sidecars: seg.sidecars || {},
   };
   if (fs.folder) v.funscriptsFolder = fs.folder;
   if (seg.audio?.file) v.audioFile = seg.audio.file;
@@ -446,6 +455,8 @@ export function toForgeProject(vm, { folder = null } = {}) {
       produce_video: vm.output?.video ?? true,
       produce_funscripts: vm.output?.funscripts ?? true,
       produce_audio_estim: vch.audio_estim ?? true,
+      produce_forge_bundle: vm.output?.forgeBundle ?? true,
+      produce_forge_bundle_media: vm.output?.forgeBundleMedia ?? false,
       // Schema fields with no UI yet. They're optional in Output.to_dict
       // (emitted only when set), so a GUI-made project never has them —
       // but a CLI-made or hand-edited one does, and loading then saving
@@ -486,6 +497,8 @@ export function fromForgeProject(json) {
       normalizeAudio: json.output?.normalize_audio ?? true,
       video: json.output?.produce_video ?? true,
       funscripts: json.output?.produce_funscripts ?? true,
+      forgeBundle: json.output?.produce_forge_bundle ?? true,
+      forgeBundleMedia: json.output?.produce_forge_bundle_media ?? false,
       // Passthrough — see toForgeProject.
       ...(json.output?.bug ? { bug: json.output.bug } : {}),
       ...(json.output?.metadata ? { metadata: json.output.metadata } : {}),

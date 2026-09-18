@@ -22,9 +22,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+from typing import Optional
 
 from forgeassembler_core import (
     APP_NAME,
@@ -46,6 +49,7 @@ from forgeassembler_core.project import Joiner as ProjectJoiner
 from forgeassembler_core.project import Output
 from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
 from forgeassembler_core.layout import lay_out
+from forgeassembler_core.concat_funscript import forge_funscripts_map
 from forgeassembler_core.probe import probe_duration_ms
 
 
@@ -642,6 +646,10 @@ def cmd_forge(args: argparse.Namespace) -> int:
         project.output.produce_funscripts = False
     if args.no_audio_estim:
         project.output.produce_audio_estim = False
+    if getattr(args, "no_forge_bundle", False):
+        project.output.produce_forge_bundle = False
+    if getattr(args, "include_media", False):
+        project.output.produce_forge_bundle_media = True
     issues = validate(project)
     errors = [i for i in issues if i.level == "error"]
     if errors:
@@ -656,7 +664,8 @@ def cmd_forge(args: argparse.Namespace) -> int:
     as_json = getattr(args, "format", "text") == "json"
     emit = _progress_writer()
     say = (lambda m: print(m, file=sys.stderr)) if as_json else print
-    summary: dict = {"video": None, "funscripts": [], "audio_estim": []}
+    summary: dict = {"video": None, "funscripts": [], "audio_estim": [],
+                     "forge_bundle": None}
 
     out = project.output
 
@@ -686,6 +695,7 @@ def cmd_forge(args: argparse.Namespace) -> int:
         bool(out.produce_video),
         bool(out.produce_funscripts),
         bool(out.produce_audio_estim),
+        bool(out.produce_forge_bundle),
     ))
     emit(f"meta: duration_ms={layout.total_duration_ms} stages={stage_total}")
 
@@ -755,13 +765,18 @@ def cmd_forge(args: argparse.Namespace) -> int:
             print(f"ERROR: {e}", file=sys.stderr)
             return 3
 
+    forged_funscripts: dict[str, Path] = {}
+    forged_audio: list[Path] = []
     if out.produce_funscripts:
         emit("progress: forging funscripts")
         try:
-            written = forge_funscripts(project, layout)
+            # Keyed by channel, because the .forge writer has to place each
+            # file under the station that owns it.
+            forged_funscripts = forge_funscripts_map(project, layout)
         except Exception as e:  # noqa: BLE001
             print(f"ERROR: funscript forge failed: {e}", file=sys.stderr)
             return 3
+        written = list(forged_funscripts.values())
         if written:
             summary["funscripts"] = [str(p) for p in written]
             say(f"Wrote {len(written)} funscript file(s):")
@@ -784,6 +799,7 @@ def cmd_forge(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 3
+        forged_audio = list(written_audio or [])
         if written_audio:
             summary["audio_estim"] = [str(p) for p in written_audio]
             say(f"Wrote {len(written_audio)} estim audio file(s):")
@@ -794,10 +810,92 @@ def cmd_forge(args: argparse.Namespace) -> int:
                 ".stereostim.wav / .legacy.wav / .prostate.stereostim.wav "
                 "sibling).")
 
+    # ── package the joined result as a .forge scene ──────────────────
+    # The point of the assembler is a SCENE, not a folder of parts: with this
+    # the compilation reopens in FunscriptForge and plays in ForgePlayer as
+    # one thing, carrying every station's channels, the joined analysis, and
+    # a relink key for the video.
+    if out.produce_forge_bundle:
+        emit("progress: packaging the .forge scene")
+        from forgeassembler_core.bundle_out import write_forge_bundle
+        folder = Path(out.folder or ".")
+        bundle_path = folder / f"{out.basename or 'combined'}.forge"
+        video_path = summary.get("video")
+        thumbs: dict[str, Path] = {}
+        thumb_dir: Optional[Path] = None
+        if video_path:
+            thumb_dir = Path(tempfile.mkdtemp(prefix="fa-thumbs-"))
+            thumbs = _extract_bundle_thumbnails(
+                Path(video_path), project, layout, thumb_dir, ffmpeg_exe,
+            )
+        try:
+            written_bundle = write_forge_bundle(
+                project, layout, bundle_path,
+                funscripts=forged_funscripts,
+                audio=forged_audio,
+                video=video_path,
+                thumbnails=thumbs,
+                include_media=out.produce_forge_bundle_media,
+            )
+            summary["forge_bundle"] = str(written_bundle)
+            say(f"Wrote {written_bundle}")
+        except Exception as e:  # noqa: BLE001
+            # A bundle failure must not lose the forge: the loose output is
+            # already on disk and is what the user waited hours for.
+            print(f"WARNING: .forge packaging failed: {e}", file=sys.stderr)
+        finally:
+            if thumb_dir:
+                shutil.rmtree(thumb_dir, ignore_errors=True)
+
     emit("progress: done")
     if as_json:
         print(json.dumps(summary))
     return 0
+
+
+def _extract_bundle_thumbnails(
+    video: Path, project, layout, dest: Path, ffmpeg_exe: str,
+) -> dict[str, Path]:
+    """Hero + one frame per chapter, for the bundle's `thumbnails/`.
+
+    Frames are taken a little way INTO each chapter, never at its first
+    frame. A section boundary is exactly where a fade-through-black joiner
+    puts its darkest moment, so the honest-looking choice — the chapter's
+    own start — reliably yields a black rectangle.
+    """
+    from forgeassembler_core.chapters import build_chapters
+
+    dest.mkdir(parents=True, exist_ok=True)
+    out: dict[str, Path] = {}
+
+    def grab(at_ms: int, name: str) -> Optional[Path]:
+        path = dest / name
+        result = subprocess.run(
+            [
+                ffmpeg_exe, "-hide_banner", "-loglevel", "error",
+                "-ss", f"{max(0.0, at_ms / 1000.0):.3f}", "-i", str(video),
+                "-frames:v", "1", "-vf", "scale=320:-2:flags=lanczos",
+                "-update", "1", "-y", str(path),
+            ],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        return path if result.returncode == 0 and path.is_file() else None
+
+    chapters = build_chapters(project, layout)
+    for i, ch in enumerate(chapters, start=1):
+        span = max(0, ch.end_ms - ch.start_ms)
+        # 2s in, or a tenth of a very short chapter — past any fade-in.
+        at = ch.start_ms + min(2000, span // 10 if span else 0)
+        got = grab(at, f"chapter_{i:02d}.png")
+        if got:
+            out[f"chapter_{i}"] = got
+    if chapters:
+        first = chapters[0]
+        span = max(0, first.end_ms - first.start_ms)
+        hero = grab(first.start_ms + span // 4, "hero.png")
+        if hero:
+            out["hero"] = hero
+    return out
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -818,6 +916,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "skip the haptic-estim audio pipeline (don't emit per-channel "
             ".stereostim.wav / .legacy.wav / .prostate.stereostim.wav)"
+        ),
+    )
+    p_forge.add_argument(
+        "--no-forge-bundle", action="store_true",
+        help=(
+            "skip packaging the joined result as a <basename>.forge scene "
+            "(the bundle FunscriptForge can reopen and ForgePlayer can play)"
+        ),
+    )
+    p_forge.add_argument(
+        "--include-media", action="store_true",
+        help=(
+            "ride the combined MP4 along INSIDE the .forge bundle. Off by "
+            "default -- a compilation is gigabytes, and the manifest already "
+            "carries a relink key for the file on disk"
         ),
     )
     p_forge.add_argument("--format", choices=("text", "json"), default="text",

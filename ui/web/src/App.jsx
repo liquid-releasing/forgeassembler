@@ -918,7 +918,8 @@ function App() {
     let stageCount = Math.max(1,
       (project.output?.video !== false ? 1 : 0) +
       (project.output?.funscripts !== false ? 1 : 0) +
-      (project.channels?.audio_estim ? 1 : 0));
+      (project.channels?.audio_estim ? 1 : 0) +
+      (project.output?.forgeBundle !== false ? 1 : 0));
     let stage = 0;          // 1-based index of the stage in flight
     let durationMs = 0;     // output length, from the CLI's `meta:` line
     let shown = 0;          // last value pushed — the bar never walks back

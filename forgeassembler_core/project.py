@@ -345,6 +345,16 @@ class Output:
     # lock-step with video. Supersedes the Phase-2
     # `OutputChannels.audio_estim` flag (which was never wired through).
     produce_audio_estim: bool = True
+    # Package the joined result as a `.forge` bundle beside the loose files.
+    # This is what makes a compilation a SCENE rather than a pile of output:
+    # FunscriptForge can reopen it and ForgePlayer can play it as one thing.
+    # Lean like FunscriptForge's own export -- the manifest carries a relink
+    # key, not gigabytes of video (see `produce_forge_bundle_media`).
+    produce_forge_bundle: bool = True
+    # Ride the combined MP4 along inside the bundle. Off by default: a joined
+    # compilation is measured in gigabytes, and the consumer that wants it
+    # almost always has it already.
+    produce_forge_bundle_media: bool = False
     bug: Optional[BugOverlay] = None
     metadata: Metadata = field(default_factory=Metadata)
     # Closing transition for the whole output. When `closing_joiner` is
@@ -380,6 +390,8 @@ class Output:
             "produce_video": self.produce_video,
             "produce_funscripts": self.produce_funscripts,
             "produce_audio_estim": self.produce_audio_estim,
+            "produce_forge_bundle": self.produce_forge_bundle,
+            "produce_forge_bundle_media": self.produce_forge_bundle_media,
         }
         if self.bug is not None:
             d["bug"] = self.bug.to_dict()
@@ -406,6 +418,9 @@ class Output:
             produce_video=bool(d.get("produce_video", True)),
             produce_funscripts=bool(d.get("produce_funscripts", True)),
             produce_audio_estim=bool(d.get("produce_audio_estim", True)),
+            produce_forge_bundle=bool(d.get("produce_forge_bundle", True)),
+            produce_forge_bundle_media=bool(
+                d.get("produce_forge_bundle_media", False)),
             bug=BugOverlay.from_dict(bug_dict) if bug_dict else None,
             metadata=Metadata.from_dict(d.get("metadata")),
             closing_joiner=(
@@ -431,6 +446,15 @@ class Segment:
     # audio inside the zip, where the sibling-file scan can never find it;
     # without this the bundle's audio was extracted and then dropped.
     explicit_audio_estim: dict[str, str] = field(default_factory=dict)
+    # Analysis sidecars this clip arrived with, `analysis name -> path`
+    # ("audio" = waveform peaks, "beats", "chapters", "phrases",
+    # "characters"). A `.forge` bundle ships these and they are worth
+    # keeping twice over: the preview draws a waveform from them instead of
+    # decoding the video, and the forge JOINS them so the compilation's own
+    # `.forge` carries analysis rather than making the next consumer derive
+    # it from a two-hour render. Held only in the project; never an input to
+    # the video or funscript concat.
+    sidecars: dict[str, str] = field(default_factory=dict)
     still_duration_s: Optional[float] = None  # required when video is a PNG
     color_temperature_k: Optional[int] = None  # 4000..10000 when set
     background: SegmentBackground = "black"  # only meaningful for stills
@@ -481,6 +505,8 @@ class Segment:
             d["funscripts"]["folder"] = self.funscripts_folder
         if self.explicit_audio_estim:
             d["audio_estim"] = {"files": dict(self.explicit_audio_estim)}
+        if self.sidecars:
+            d["sidecars"] = dict(self.sidecars)
         if self.still_duration_s is not None:
             d["still_duration_s"] = self.still_duration_s
         if self.color_temperature_k is not None:
@@ -507,6 +533,7 @@ class Segment:
             funscripts_folder=fs.get("folder"),
             explicit_funscripts=fs.get("files", {}),
             explicit_audio_estim=(d.get("audio_estim") or {}).get("files", {}),
+            sidecars=d.get("sidecars") or {},
             still_duration_s=d.get("still_duration_s"),
             color_temperature_k=d.get("color_temperature_k"),
             background=d.get("background", "black"),

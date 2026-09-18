@@ -405,5 +405,11 @@ def forge_bundle_to_segment(
         # and writes no haptic audio at all — while the files sat unused in
         # the extraction cache.
         explicit_audio_estim={ch: str(p) for ch, p in bundle.audio_estim.items()},
+        # The bundle's analysis, kept on the segment so it survives a save and
+        # is still there at forge time. The preview reads it instead of
+        # decoding the video, and the forge joins beats/peaks into the
+        # compilation's own bundle rather than making the next tool derive
+        # them from a multi-hour render.
+        sidecars={name: str(p) for name, p in bundle.sidecars.items()},
         bookmark=bundle.stem,
     )

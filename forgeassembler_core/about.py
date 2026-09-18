@@ -30,8 +30,9 @@ ABOUT_MARKDOWN = f"""
 
 Build a long haptic video from many short ones. Edit each clip in
 FunscriptForge, then assemble them here with your choice of transitions
-and per-segment overlays. Outputs a combined video + combined funscripts
-with chapter markers at every segment boundary.
+and per-segment overlays. Outputs a combined video + every channel's
+combined funscripts + a `.forge` scene, with chapter markers at every
+section boundary.
 
 ---
 

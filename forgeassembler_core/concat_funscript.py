@@ -337,11 +337,29 @@ def forge_funscripts(
     output_folder: Optional[str | Path] = None,
     basename: Optional[str] = None,
 ) -> list[Path]:
-    """Write one funscript file per selected channel; return written paths.
+    """Write one funscript per selected channel; return the written paths.
+
+    `forge_funscripts_map` is the same work keyed by channel, for callers
+    that need to know WHICH channel each file is — the `.forge` writer has to
+    place them by station.
+    """
+    return list(
+        forge_funscripts_map(project, layout, output_folder, basename).values()
+    )
+
+
+def forge_funscripts_map(
+    project: "Project",
+    layout: "Layout",
+    output_folder: Optional[str | Path] = None,
+    basename: Optional[str] = None,
+) -> dict[str, Path]:
+    """Write one funscript per selected channel; return `{channel key: path}`.
 
     Channels with zero actions across every segment are skipped (no empty
-    file written). If `output_folder` / `basename` are omitted, the
-    project's Output settings are used.
+    file written), which is why the caller cannot predict the map from
+    `_selected_channels` alone. If `output_folder` / `basename` are omitted,
+    the project's Output settings are used.
     """
     folder = Path(output_folder or project.output.folder or "")
     if not folder:
@@ -360,7 +378,7 @@ def forge_funscripts(
         for c in build_chapters(project, layout)
     ]
 
-    written: list[Path] = []
+    written: dict[str, Path] = {}
     total_duration_ms = layout.total_duration_ms
     for channel in _selected_channels(project):
         parts = _build_parts_for_channel(project, layout, channel)
@@ -386,7 +404,7 @@ def forge_funscripts(
         out_path = folder / funscript_relpath(channel, stem)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         write_funscript(out_path, combined)
-        written.append(out_path)
+        written[channel] = out_path
 
         # Companion heatmap beside its funscript, same stem.
         heatmap_path = out_path.with_name(f"{out_path.stem}.heatmap.png")

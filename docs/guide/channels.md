@@ -2,18 +2,55 @@
 
 **Every funscript channel your clips carry is forged.** You don't opt in.
 ForgeAssembler takes the union of what the clips actually have and writes one
-combined file per channel, named the way FunscriptForge names them —
-`<basename>.funscript` for main, `<basename>.<channel>.funscript` for the rest.
+combined file per channel.
 
-A finished FunscriptForge scene commonly ships around twenty channels. Some
-fall into named groups:
+## One folder per device
+
+A current FunscriptForge scene ships around forty funscripts across nine
+**stations** — one per device it can drive. Three of those stations (E-Stim,
+FOC-Stim and FOC-Stim 4-phase) write channels with the *same names* —
+`alpha`, `beta`, `volume`, `frequency`, `pulse_frequency`, `pulse_rise_time`
+and the prostate set — clamped differently for each piece of hardware. So a
+channel name alone no longer names a file, and the output cannot be flat.
+
+A forge therefore writes the universal stroke script at the top level and
+gives every station its own folder, using the same folder names a
+FunscriptForge export uses:
+
+```text
+combined.mp4
+combined.funscript                      # universal stroke, most players
+combined.heatmap.png
+E-Stim/combined.alpha.funscript
+E-Stim/combined.beta.funscript
+FOC-Stim/combined.alpha.funscript       # same channel, different clamping
+FOC-Stim 4-phase/combined.e1.funscript
+MultiFunPlayer/combined.funscript       # TCode's own L0
+MultiFunPlayer/combined.surge.funscript
+Handy/combined.handy.funscript
+Bass Shaker/combined.shaker.funscript
+```
+
+Point restim at the folder for the device you actually own; point
+MultiFunPlayer at `MultiFunPlayer/`. A heatmap sits beside each funscript.
+
+A funscript that arrives with no station — a loose `<stem>.alpha.funscript`
+sitting next to a video, where nothing on disk says which device it was
+clamped for — is filed under the station that owns that channel, and it feeds
+every station's copy of it. Two clips, one from a `.forge` scene and one a
+plain video, still join into one continuous track.
+
+## Channel groups
+
+Some channels fall into named groups:
 
 | Group | Channels | Used by |
 |---|---|---|
 | Main | `main` | Standard linear devices (Handy, Kiiroo, etc.) |
 | Multi-axis | `pitch`, `roll`, `surge`, `sway`, `twist` | SR6 / OSR2 and similar 6DOF rigs |
 | 3-phase estim | `alpha`, `beta` | restim 3-phase rigs |
-| Prostate | `alpha-prostate`, `beta-prostate` | restim prostate variants |
+| 4-phase estim | `e1`, `e2`, `e3`, `e4` | FOC-Stim 4-phase (per-electrode power) |
+| Prostate | `alpha-prostate`, `beta-prostate`, `volume-prostate` | restim prostate variants |
 | Pulse frequency | `pulse_frequency` | restim pulse control |
 
 The rest are **device and parameter tracks** — `handy`, `lovense`, `ossm`,
@@ -121,12 +158,42 @@ the funscript bundle (faster — no ffmpeg encoding). You can turn off
 Funscripts and Audio to render only the long video. At least one of
 the three must be on.
 
+## The `.forge` scene
+
+A forge also writes `<basename>.forge` — the same bundle format
+FunscriptForge exports, carrying:
+
+- `motion.funscript` and every station's channels, at their station paths
+- the joined haptic audio, under `audio/`
+- **this compilation's** chapters: one per section, the same boundaries the
+  MP4's markers and every funscript carry
+- the **joined analysis** — beats and the audio waveform, shifted onto the
+  compilation's timeline from the scenes that supplied them. This is what
+  lets a two-hour compilation open with a waveform immediately instead of
+  being decoded first
+- a hero frame and one thumbnail per chapter
+- a `manifest.ffmeta` that says it was made by ForgeAssembler and lists which
+  scenes went into it
+
+This is the file that keeps a compilation inside the forge family: **reopen it
+in FunscriptForge** to keep editing, or **play it in ForgePlayer** as one
+scene. Without it a compilation is only an MP4 and a pile of funscripts.
+
+The bundle does **not** carry the combined video by default — a compilation is
+measured in gigabytes. The manifest records the video's name, size and a hash
+of its first megabyte, which is how a consumer finds it again on disk. Turn on
+*…with the video inside it* in **Produce** when you want one self-contained
+file to hand to someone who does not have the footage.
+
+Turn the whole thing off with the **.forge scene** switch, or `--no-forge-bundle`
+on the CLI.
+
 ## Heatmaps
 
-Every funscript written gets a companion `.heatmap.png` beside it —
-`<basename>.heatmap.png` for main, `<basename>.alpha.heatmap.png` for alpha, and
-so on. They come with the **funscripts**, not the video, so a
-funscripts-only forge still produces them.
+Every funscript written gets a companion `.heatmap.png` beside it, in the
+same folder — `combined.heatmap.png` at the top, `E-Stim/combined.alpha.heatmap.png`
+next to that station's alpha, and so on. They come with the **funscripts**,
+not the video, so a funscripts-only forge still produces them.
 
 Each is a density map of that channel across the whole combined output — a
 quick read of pacing: dense stretches, quiet stretches, spikes, and the blank

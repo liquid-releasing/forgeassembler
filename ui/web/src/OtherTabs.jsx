@@ -45,11 +45,31 @@ function OutputTab({ project, onSetOutput, onSetChannels }) {
                     onChange={(v) => onSetOutput?.({ funscripts: v })} />
             <Toggle label="Haptic-estim audio (WAV)" checked={!!chans.audio_estim}
                     onChange={(v) => onSetChannels?.({ audio_estim: v })} />
+            <Toggle label=".forge scene" checked={out.forgeBundle !== false}
+                    onChange={(v) => onSetOutput?.({ forgeBundle: v })} />
+            {out.forgeBundle !== false && (
+              <div style={{ paddingLeft: 22 }}>
+                <Toggle label="…with the video inside it"
+                        checked={!!out.forgeBundleMedia}
+                        onChange={(v) => onSetOutput?.({ forgeBundleMedia: v })} />
+              </div>
+            )}
           </div>
           <div style={{ marginTop: 10, padding: "8px 10px", background: "var(--surface-2)",
                          border: "1px solid var(--border)", borderRadius: 6,
                          fontSize: 11, color: "var(--text-muted)" }}>
             Chapter markers are always written when video is produced.
+            {out.forgeBundle !== false && (
+              <>
+                <br />
+                The <span className="mono">.forge</span> scene packs every channel, the
+                joined analysis and this compilation's chapters into one file —
+                re-openable in FunscriptForge, playable in ForgePlayer.
+                {out.forgeBundleMedia
+                  ? " Including the video makes it as big as the MP4."
+                  : " It references the MP4 rather than carrying it."}
+              </>
+            )}
           </div>
         </Card>
         <Card>

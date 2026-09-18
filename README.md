@@ -1,6 +1,6 @@
 # ForgeAssembler
 
-Build a long haptic video from many short ones. Edit the individual clips in [FunscriptForge](https://github.com/liquid-releasing/funscriptforge), then assemble them into a combined video + combined funscripts with configurable transitions between segments.
+Build a long haptic video from many short ones. Edit the individual clips in [FunscriptForge](https://github.com/liquid-releasing/funscriptforge), then assemble them into a combined video, every channel's combined funscripts, and a single `.forge` scene you can reopen in FunscriptForge or play in ForgePlayer — with configurable transitions between segments.
 
 A small, local desktop app — no account, no cloud, no telemetry. Runs on Windows, macOS, and Linux.
 
@@ -13,7 +13,7 @@ A small, local desktop app — no account, no cloud, no telemetry. Runs on Windo
 1. **Add segments**: point at a folder (or single file). ForgeAssembler detects the video and all associated funscripts (main, multi-axis, estim channels, etc.).
 2. **Pick joiners**: choose what goes between two segments — no joiner (straight cut), fade-to-black, or a title card.
 3. **Select output channels**: which funscript variants should the combined output include (2D main, multi-axis, 3-phase estim, prostate, audio, pulse-frequency).
-4. **Forge**: ForgeAssembler concatenates the videos with ffmpeg, concatenates every selected funscript channel in lockstep with timestamp-corrected actions, writes chapter markers at every segment boundary, and saves the project as reusable JSON.
+4. **Forge**: ForgeAssembler concatenates the videos with ffmpeg, concatenates every selected funscript channel in lockstep with timestamp-corrected actions (one folder per device, since three e-stim stations write channels with the same names), writes chapter markers at every section boundary, packages the whole thing as a `.forge` scene, and saves the project as reusable JSON.
 
 ## Project files
 
