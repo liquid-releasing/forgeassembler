@@ -392,10 +392,17 @@ forgeassembler/
 │   └── test_cli.py
 ├── docs/                           # mkdocs site
 ├── media/  branding/               # icons, wordmark, LR logo
+├── forge-cli.spec                  # PyInstaller: cli.py + core + ffmpeg
+│                                   #   -> dist/forge-cli/, the app's backend
+├── scripts/
+│   ├── bump_version.py             # one version across four files
+│   └── ci_smoke_project.py         # what CI forges to prove the freeze works
 ├── requirements.txt                # core runtime
 ├── requirements-desktop.txt        # PyInstaller, for the forge-cli sidecar
 ├── requirements-dev.txt            # pytest, ruff
-├── .github/workflows/docs.yml
+├── .github/workflows/
+│   ├── release.yml                 # tag -> freeze, test, bundle, publish
+│   └── docs.yml
 ├── README.md
 ├── LICENSE (MIT)
 ├── THIRD_PARTY_LICENSES.md

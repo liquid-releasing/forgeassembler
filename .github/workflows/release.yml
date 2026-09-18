@@ -1,0 +1,297 @@
+name: Release (Tauri)
+
+# Builds the ForgeAssembler desktop app + its PyInstaller-frozen Python
+# backend (forge-cli) and publishes installers to
+# liquid-releasing/forgeassembler-releases.
+#
+# Shape: the Rust shell calls a bundled `forge-cli` resource (frozen cli.py +
+# forgeassembler_core + imageio-ffmpeg's ffmpeg). tauri.release.conf.json adds
+# the `bundle.resources` overlay so only the packaged build ships it.
+#
+# ffmpeg is NOT fetched here, unlike the FunscriptForge pipeline: it rides
+# inside forge-cli via imageio-ffmpeg, and ForgeAssembler never shells ffprobe
+# (forgeassembler_core/probe.py parses ffmpeg's own stderr for exactly that
+# reason). One less per-platform binary to source, and no GPL-build licence to
+# redistribute — imageio-ffmpeg's is LGPL.
+#
+# WINDOWS-FIRST, deliberately: it is the dogfood platform and the only one
+# this app has ever been run on. macOS and Linux are a follow-up — the job
+# shape is the same, and FunscriptForge's workflow already has both if you
+# want them copied over.
+
+on:
+  push:
+    tags:
+      - "v*"
+  # Build-only dry run, so a pipeline change can be exercised end to end
+  # without spending a version tag on it. The publish job is tag-gated below.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  build-windows:
+    name: Build — Windows
+    runs-on: windows-latest
+    # Fail fast on a hang rather than burning an hour: FunscriptForge's cut
+    # once died at ~53 minutes when the bundler starved the runner of memory.
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout forgeassembler
+        uses: actions/checkout@v4
+        with:
+          path: forgeassembler
+
+      - name: Checkout forgemoment (sibling)
+        # The frontend imports `forgemoment` by bare specifier; package.json
+        # links it as `file:../../../forgemoment` and vite.config aliases it to
+        # that source tree. vite compiles forgemoment/src/* directly (no
+        # separate build), so it only has to exist as a sibling checkout before
+        # `npm ci`.
+        uses: actions/checkout@v4
+        with:
+          repository: liquid-releasing/forgemoment
+          path: forgemoment
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python deps + freeze forge-cli
+        working-directory: forgeassembler
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-desktop.txt
+          pyinstaller forge-cli.spec --noconfirm --clean
+
+      - name: Verify forge-cli runs
+        working-directory: forgeassembler
+        run: |
+          if (!(Test-Path "dist\forge-cli\forge-cli.exe")) { Write-Error "forge-cli not built"; exit 1 }
+          $cli = "dist\forge-cli\forge-cli.exe"
+
+          # Each of these exercises a different import path that a thin freeze
+          # breaks in a DIFFERENT way, which is the lesson from FunscriptForge
+          # shipping a build with no `yaml` module: one smoke command proves
+          # only that the bootloader works.
+          & $cli --version
+          if ($LASTEXITCODE -ne 0) { Write-Error "forge-cli --version failed"; exit 1 }
+
+          # joiners/: resolved by name from a registry, so a missing plugin
+          # module shows up here and nowhere earlier.
+          & $cli list-joiners --format json > $null
+          if ($LASTEXITCODE -ne 0) { Write-Error "list-joiners failed"; exit 1 }
+
+          New-Item -ItemType Directory -Force -Path smoke | Out-Null
+          python -c "import imageio_ffmpeg, shutil; shutil.copy(imageio_ffmpeg.get_ffmpeg_exe(), 'smoke/ffmpeg.exe')"
+          & smoke\ffmpeg.exe -hide_banner -loglevel error -f lavfi -i "color=c=black:s=64x64:d=1" -y smoke\t.mp4
+
+          # `probe` prints a duration in ms and nothing else. It shells the
+          # bundled ffmpeg and parses its stderr, so this is the one check that
+          # proves imageio-ffmpeg's BINARY made it into the freeze — no
+          # pure-Python import test can tell us that.
+          $ms = & $cli probe smoke\t.mp4
+          if ($LASTEXITCODE -ne 0) { Write-Error "probe failed - ffmpeg is missing from the freeze"; exit 1 }
+          if ([int]$ms -le 0) { Write-Error "probe returned '$ms' for a 1s clip"; exit 1 }
+          Write-Host "probe: ${ms}ms"
+
+          # A real forge through the frozen binary: funscript concat, the
+          # heatmap (matplotlib + Pillow, both imported lazily) and the .forge
+          # writer. Nothing cheaper catches a missing mpl-data.
+          python scripts/ci_smoke_project.py smoke
+          & $cli forge smoke\smoke.forgeproject.json --no-video --format json
+          if ($LASTEXITCODE -ne 0) { Write-Error "forge failed in the frozen build"; exit 1 }
+          if (!(Test-Path "smoke\out\smoke.forge")) { Write-Error ".forge scene was not written"; exit 1 }
+          if (!(Test-Path "smoke\out\smoke.heatmap.png")) { Write-Error "heatmap missing - matplotlib data is not in the freeze"; exit 1 }
+          Write-Host "frozen forge wrote a .forge scene and a heatmap"
+
+          # Every remaining command the Rust bridge calls. The app is only as
+          # frozen-safe as its least-exercised code path, and `import-forge`
+          # here re-opens the bundle the line above just wrote.
+          & $cli detect smoke\one --format json > $null
+          if ($LASTEXITCODE -ne 0) { Write-Error "detect failed"; exit 1 }
+          & $cli validate smoke\smoke.forgeproject.json --format json > $null
+          if ($LASTEXITCODE -ne 0) { Write-Error "validate failed"; exit 1 }
+          & $cli preview smoke\smoke.forgeproject.json --format json > $null
+          if ($LASTEXITCODE -ne 0) { Write-Error "preview failed"; exit 1 }
+          & $cli thumbnail smoke\t.mp4 --at 100 --out smoke\thumb.png > $null
+          if ($LASTEXITCODE -ne 0) { Write-Error "thumbnail failed"; exit 1 }
+          & $cli import-forge smoke\out\smoke.forge --video smoke\t.mp4 --format json > $null
+          if ($LASTEXITCODE -ne 0) { Write-Error "import-forge failed"; exit 1 }
+          & $cli encoder > $null
+          if ($LASTEXITCODE -ne 0) { Write-Error "encoder probe failed"; exit 1 }
+          Write-Host "every bridge command runs in the frozen build"
+
+      - name: Stage forge-cli into Tauri resources
+        working-directory: forgeassembler
+        run: |
+          New-Item -ItemType Directory -Force -Path ui\web\src-tauri\resources | Out-Null
+          # Move, not copy: only one copy of the freeze on disk. The verify
+          # step above already ran against dist\forge-cli.
+          Move-Item -Force dist\forge-cli ui\web\src-tauri\resources\forge-cli
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: forgeassembler/ui/web/src-tauri
+
+      - name: Install npm deps
+        working-directory: forgeassembler/ui/web
+        run: npm ci
+
+      - name: Install forgemoment deps
+        # vite compiles forgemoment/src/* directly, so its runtime deps must
+        # resolve from forgemoment/node_modules — as in the local dev loop.
+        working-directory: forgemoment
+        run: npm ci
+
+      - name: Run the tests that gate a build
+        working-directory: forgeassembler
+        run: |
+          pip install -r requirements-dev.txt
+          python -m pytest -q
+          if ($LASTEXITCODE -ne 0) { Write-Error "pytest failed"; exit 1 }
+          cd ui\web
+          npm test
+          if ($LASTEXITCODE -ne 0) { Write-Error "vitest failed"; exit 1 }
+
+      - name: Check the version strings agree
+        working-directory: forgeassembler
+        run: python scripts/bump_version.py --check
+
+      - name: Stamp dev version (dispatch builds only)
+        # A build-only dispatch used to be byte-identical in the UI to the last
+        # release, so a tester could not tell which one they had installed.
+        # package.json is the file the UI reads; tauri.conf.json is left alone
+        # because the MSI bundler rejects a non-numeric pre-release identifier.
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: forgeassembler
+        shell: bash
+        run: python scripts/bump_version.py --dev-stamp "${GITHUB_SHA:0:7}"
+
+      - name: Tauri build (with bundled-resources overlay)
+        working-directory: forgeassembler/ui/web
+        # Cap codegen parallelism so concurrent rustc processes don't peak the
+        # runner's RAM during the compile phase.
+        env:
+          CARGO_BUILD_JOBS: 2
+        run: npx tauri build --config src-tauri/tauri.release.conf.json
+
+      - name: Rename to stable filenames
+        working-directory: forgeassembler
+        shell: bash
+        run: |
+          mkdir -p dist-stable
+          # A dispatch build is a TEST build: say so in the filename, so a
+          # downloaded installer is self-describing before it is even run. Tag
+          # builds keep the stable names the publish job and the website's
+          # releases/latest/download/ links depend on.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MARK="-TEST-${GITHUB_SHA:0:7}"
+          else
+            MARK=""
+          fi
+          BUNDLE="ui/web/src-tauri/target/release/bundle"
+          cp "$BUNDLE"/msi/*.msi  "dist-stable/ForgeAssembler${MARK}-Setup-windows.msi"
+          cp "$BUNDLE"/nsis/*.exe "dist-stable/ForgeAssembler${MARK}-Setup-windows.exe"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: forgeassembler-windows
+          if-no-files-found: error
+          path: forgeassembler/dist-stable/*
+
+  release:
+    name: Publish Release
+    needs: [build-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Report what actually built
+        run: find artifacts -type f -exec ls -lh {} +
+
+      - name: Compute release name
+        id: relname
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          STRIPPED="${TAG#v}"
+          echo "name=ForgeAssembler ${STRIPPED//-/ }" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: liquid-releasing/forgeassembler-releases
+          token: ${{ secrets.RELEASES_PAT }}
+          name: ${{ steps.relname.outputs.name }}
+          tag_name: ${{ github.ref_name }}
+          # PRERELEASE, deliberately. GitHub excludes prereleases from
+          # releases/latest, and forgeassembler-web's download buttons point at
+          # releases/latest/download/ — so a normal release would put new
+          # binaries in front of every visitor the moment CI finishes.
+          #
+          # ⚠️ The site's buttons still name the RETIRED Streamlit artifacts
+          # (ForgeAssembler-windows.zip etc.). Fix those in forgeassembler-web
+          # as part of promoting the first Tauri build, or the buttons 404.
+          #
+          # Promoting is one deliberate step once a build has been dogfooded:
+          #   gh release edit <tag> --repo liquid-releasing/forgeassembler-releases --prerelease=false --latest
+          prerelease: true
+          generate_release_notes: true
+          append_body: true
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/forgeassembler-windows/ForgeAssembler-Setup-windows.msi
+            artifacts/forgeassembler-windows/ForgeAssembler-Setup-windows.exe
+          body: |
+            > ⚠️ **Alpha — under active development.** Expect rough edges.
+
+            ForgeAssembler — join finished FunscriptForge scenes into one long
+            haptic video: a combined MP4 with chapter markers, every device's
+            channels stitched in lockstep, and a `.forge` scene you can reopen
+            in FunscriptForge or play in ForgePlayer. Local desktop app.
+
+            ## Downloads
+
+            The build bundles its own Python backend and ffmpeg — nothing else
+            to install. It is **unsigned**, so Windows asks once.
+
+            | Platform | File | First run |
+            | --- | --- | --- |
+            | Windows | `ForgeAssembler-Setup-windows.msi` (recommended) or `-windows.exe` (NSIS) | SmartScreen → More info → Run anyway |
+
+            macOS and Linux builds are not part of this release yet.
+
+      - name: Notify forgeassembler-web (best-effort)
+        # forgeassembler-web/sync-version.yml listens for this and rewrites
+        # latest-version.json, which is where the site's badge comes from.
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_PAT }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh api --method POST -H "Accept: application/vnd.github+json" \
+            /repos/liquid-releasing/forgeassembler-web/dispatches \
+            -f event_type='release-published' \
+            -f 'client_payload[tag]'="$TAG_NAME" \
+            || echo "::warning::forgeassembler-web dispatch failed (repo may not listen yet)"

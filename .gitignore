@@ -9,7 +9,12 @@ env/
 # PyInstaller build output
 build/
 dist/
+dist-stable/
 *.spec.bak
+
+# The frozen forge-cli sidecar, staged into the Tauri bundle by CI.
+# ~200 MB of build output; tauri.release.conf.json maps it in.
+ui/web/src-tauri/resources/
 
 
 # IDE / OS

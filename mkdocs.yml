@@ -77,6 +77,7 @@ nav:
     - Sci-Fi Cockpit Example: guide/title-cards/scifi_cockpit_example.md
   - Features: FEATURES.md
   - Architecture: ARCHITECTURE.md
+  - Releasing: RELEASING.md
 
 extra:
   social:
