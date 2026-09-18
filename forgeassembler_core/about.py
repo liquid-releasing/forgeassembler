@@ -54,7 +54,7 @@ Written by human and Claude AI (Anthropic).
 #### Community
 
 Questions, bug reports, and feedback welcome in
-[our Discord](https://discord.gg/sZWCqgxY).
+[our Discord](https://discord.gg/Eytatcx8Jm).
 
 ---
 
@@ -81,7 +81,7 @@ def about_text() -> str:
         "  - React (MIT)\n"
         "  - Lucide (ISC)\n\n"
         "Written by human and Claude AI (Anthropic).\n\n"
-        "Community: discord.gg/sZWCqgxY\n\n"
+        "Community: discord.gg/Eytatcx8Jm\n\n"
         f"{APP_NAME} is a trademark of Liquid Releasing.\n"
         "(c) 2026 Liquid Releasing. MIT License."
     )

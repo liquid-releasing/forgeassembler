@@ -62,7 +62,7 @@ for new tags.
 ## Community
 
 Questions, feedback, bug reports: join the
-[Liquid Releasing Discord](https://discord.gg/sZWCqgxY).
+[Liquid Releasing Discord](https://discord.gg/Eytatcx8Jm).
 
 ---
 
