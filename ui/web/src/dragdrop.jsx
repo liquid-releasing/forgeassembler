@@ -1,19 +1,17 @@
 /* @esm-converted */
 import React from 'react';
 const { useState, useEffect } = React;
-import { App } from './App';
-import { BuildTab } from './BuildTab';
 
 // Drag-and-drop infrastructure for Build tab clip/section reordering.
 //
 // Native HTML5 DnD, kept simple. Three concerns:
 //
 //   1. A render-time React Context that holds:
-//        - `drag`     — what's being dragged ({kind, id, fromSectionId?})
+//        - `drag`     — what's being dragged ({kind, id})
 //        - `over`     — where it would land ({kind, id, position})
 //        - `setOver(x)`, `setDrag(x)` setters
 //      The provider lives in BuildTab; reducer lives in App and is
-//      called via `onReorderClip` / `onReorderSection` props.
+//      called via the `onReorderSection` prop.
 //
 //   2. `useDraggable(opts)` — wires the events on a row/header so it
 //      becomes a drag source. Returns props to spread onto the element.
@@ -32,9 +30,9 @@ const { createContext: dndContext, useContext: dndUseContext, useRef: dndRef } =
 
 const DragDropContext = dndContext({ drag: null, over: null,
   setDrag: () => {}, setOver: () => {},
-  onReorderClip: () => {}, onReorderSection: () => {} });
+  onReorderSection: () => {} });
 
-function DragDropProvider({ children, onReorderClip, onReorderSection }) {
+function DragDropProvider({ children, onReorderSection }) {
   const [drag, setDrag] = React.useState(null);
   const [over, setOver] = React.useState(null);
   // Reset on Escape
@@ -44,7 +42,7 @@ function DragDropProvider({ children, onReorderClip, onReorderSection }) {
     return () => window.removeEventListener("keydown", k);
   }, []);
   return (
-    <DragDropContext.Provider value={{ drag, over, setDrag, setOver, onReorderClip, onReorderSection }}>
+    <DragDropContext.Provider value={{ drag, over, setDrag, setOver, onReorderSection }}>
       {children}
     </DragDropContext.Provider>
   );
@@ -53,7 +51,7 @@ function DragDropProvider({ children, onReorderClip, onReorderSection }) {
 function useDragDrop() { return dndUseContext(DragDropContext); }
 
 // ── useDraggable: clip or section drag source ─────────────────────
-function useDraggable({ kind, id, fromSectionId }) {
+function useDraggable({ kind, id }) {
   const ctx = useDragDrop();
   return {
     draggable: true,
@@ -69,7 +67,7 @@ function useDraggable({ kind, id, fromSectionId }) {
       } catch { /* noop */ }
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", `${kind}:${id}`);
-      ctx.setDrag({ kind, id, fromSectionId });
+      ctx.setDrag({ kind, id });
     },
     onDragEnd: () => { ctx.setDrag(null); ctx.setOver(null); },
     "data-dragging": ctx.drag?.kind === kind && ctx.drag?.id === id ? "true" : null,
@@ -107,9 +105,10 @@ function useDroppable({ accept, id, sectionId }) {
       if (!ctx.drag || ctx.drag.kind !== accept || !ctx.over) return;
       e.preventDefault();
       const { drag, over } = ctx;
-      if (accept === "clip") {
-        ctx.onReorderClip(drag.id, drag.fromSectionId, over.sectionId, over.id, over.position);
-      } else if (accept === "section") {
+      // Scenes are the only draggable thing. There used to be a "clip" kind
+      // too, for moving a clip between sections — a section holds exactly
+      // one scene now, so a scene move IS a section move.
+      if (accept === "section") {
         ctx.onReorderSection(drag.id, over.id, over.position);
       }
       ctx.setDrag(null);
@@ -134,27 +133,6 @@ function DropLine({ on }) {
   );
 }
 
-// ── reducers exposed to App ──────────────────────────────────────
-function reorderClipInProject(project, clipId, fromSectionId, toSectionId, anchorClipId, position) {
-  const next = { ...project, sections: project.sections.map(s => ({ ...s, segments: [...s.segments] })) };
-  let movingClip = null;
-  // Remove from source
-  for (const s of next.sections) {
-    const i = s.segments.findIndex(c => c.id === clipId);
-    if (i !== -1) { movingClip = s.segments.splice(i, 1)[0]; break; }
-  }
-  if (!movingClip) return project;
-  // Insert into destination
-  const dest = next.sections.find(s => s.id === toSectionId);
-  if (!dest) return project;
-  const ai = dest.segments.findIndex(c => c.id === anchorClipId);
-  const insertAt = ai === -1
-    ? dest.segments.length
-    : (position === "before" ? ai : ai + 1);
-  dest.segments.splice(insertAt, 0, movingClip);
-  return next;
-}
-
 function reorderSectionInProject(project, sectionId, anchorSectionId, position) {
   const sections = [...project.sections];
   const fromIdx = sections.findIndex(s => s.id === sectionId);
@@ -170,8 +148,9 @@ function reorderSectionInProject(project, sectionId, anchorSectionId, position) 
 
 Object.assign(window, {
   DragDropProvider, useDragDrop, useDraggable, useDroppable, DropLine,
-  reorderClipInProject, reorderSectionInProject,
+  reorderSectionInProject,
 });
 
 
-export { DragDropContext, DragDropProvider, DropLine, reorderClipInProject, reorderSectionInProject, useDragDrop, useDraggable, useDroppable };
+export { DragDropContext, DragDropProvider, DropLine, reorderSectionInProject,
+         useDragDrop, useDraggable, useDroppable };

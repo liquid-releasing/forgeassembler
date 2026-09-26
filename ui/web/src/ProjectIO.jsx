@@ -1,7 +1,6 @@
 /* @esm-converted */
 import React from 'react';
 import { FASectionLabel } from './AppShell';
-import { Section } from './TitleEditor';
 import { Button, Field, Icon, TextInput } from './primitives';
 import { pickFile, pickFolder } from './api/forge';
 

@@ -1,6 +1,7 @@
 /* @esm-converted */
 import React from 'react';
 import { Button, Icon, Pill } from './primitives';
+import { APP_VERSION, APP_VERSION_LABEL } from './version';
 
 // ForgeAssembler AppShell — TopBar / pipeline TabStrip / StatusBar / AcceptBar.
 // Same structural pattern as FunscriptForge's AppShell, retuned for the
@@ -28,7 +29,7 @@ function FAGlyph({ size = 44 }) {
 }
 
 // ── TopBar ────────────────────────────────────────────────────────
-function FATopBar({ project, totalMs, segCount, sectionCount,
+function FATopBar({ project, totalMs, sceneCount,
                     savedPath, dirty, lastSavedAtMs,
                     onOpen, onSave, onNew, onHome }) {
   // "saved 2 min ago" / "saving…" / "unsaved changes" / "new project"
@@ -71,11 +72,11 @@ function FATopBar({ project, totalMs, segCount, sectionCount,
           )}
         </span>
         <span className="mono" style={{ fontSize: 11, color: "var(--text-dim)" }}>
-          {sectionCount} section{sectionCount === 1 ? "" : "s"} · {segCount} segments · {fmtTotal(totalMs)} total · {project.output.resolution}
+          {sceneCount} scene{sceneCount === 1 ? "" : "s"} · {fmtTotal(totalMs)} total · {project.output.resolution}
           {lastSavedAtMs && <span style={{ marginLeft: 8 }}>· saved {fmtRelative(lastSavedAtMs)}</span>}
         </span>
       </div>
-      <Pill tone="accent" dot>Alpha 0.2</Pill>
+      <Pill tone="accent" dot>{APP_VERSION_LABEL}</Pill>
 
       <div style={{ flex: 1 }} />
 
@@ -118,9 +119,7 @@ const FA_TABS = [
   { id: "output",   label: "Output",   icon: "sliders",       pipeline: "output"   },
   { id: "forge",    label: "Forge",    icon: "hammer",        pipeline: "forge"    },
 ];
-const FA_UTILITY_TABS = [
-  { id: "joiners",  label: "Joiners",  icon: "library",       pipeline: null       },
-];
+
 
 function FATabButton({ t, i, list, active, pipeline, onChange }) {
   const isActive = t.id === active;
@@ -161,8 +160,6 @@ function FATabStrip({ active, onChange, pipeline }) {
     }}>
       {FA_TABS.map((t, i) => <FATabButton key={t.id} t={t} i={i} list={FA_TABS} active={active} pipeline={pipeline} onChange={onChange} />)}
       <div style={{ flex: 1 }} />
-      <div style={{ width: 1, background: "var(--border)", margin: "8px 8px" }} />
-      {FA_UTILITY_TABS.map((t, i) => <FATabButton key={t.id} t={t} i={i} list={FA_UTILITY_TABS} active={active} pipeline={pipeline} onChange={onChange} />)}
     </nav>
   );
 }
@@ -180,7 +177,7 @@ function FAStatusBar({ activeTab, chainFile, ffmpeg = "imageio-ffmpeg 5.1" }) {
       {chainFile && <span className="mono">→ {chainFile}</span>}
       <div style={{ flex: 1 }} />
       <span className="mono">{ffmpeg}</span>
-      <span>ForgeAssembler v0.2.0-alpha</span>
+      <span>ForgeAssembler v{APP_VERSION}</span>
     </footer>
   );
 }
@@ -273,9 +270,9 @@ function fmtClipDur(ms) {
 Object.assign(window, {
   FATopBar, FATabStrip, FAStatusBar, FAAcceptBar,
   FATabBody, FATabHeader, FASectionLabel, FAGlyph,
-  FA_TABS, FA_UTILITY_TABS,
+  FA_TABS,
   fmtTotal, fmtClipDur,
 });
 
 
-export { FAAcceptBar, FAGlyph, FASectionLabel, FAStatusBar, FATabBody, FATabButton, FATabHeader, FATabStrip, FATopBar, FA_TABS, FA_UTILITY_TABS, fmtClipDur, fmtRelative, fmtTotal };
+export { FAAcceptBar, FAGlyph, FASectionLabel, FAStatusBar, FATabBody, FATabButton, FATabHeader, FATabStrip, FATopBar, FA_TABS, fmtClipDur, fmtRelative, fmtTotal };

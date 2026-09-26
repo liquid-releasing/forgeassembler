@@ -4,7 +4,7 @@ import {
   msToTimecode, timecodeToMs, segmentHasChannel,
   channelGroup, projectChannelCoverage, channelGapsFor, NEUTRAL_KELVIN,
   channelName, channelStation, stationLabel,
-  joinerToReal, joinerFromReal, UNIMPLEMENTED_JOINERS,
+  joinerToReal, joinerFromReal, ENGINE_JOINER_TYPES,
 } from './projectAdapter.js';
 
 // A representative .forgeproject.json (the contract). real → view → real must
@@ -661,10 +661,28 @@ describe('joiners survive the trip to the engine', () => {
     expect(real.params.duration_s).toBe(1.5);
   });
 
-  it('names the kinds the engine cannot render', () => {
-    // The picker must not offer these; forging one would be a silent cut.
-    expect(UNIMPLEMENTED_JOINERS).toContain('crossfade');
-    expect(UNIMPLEMENTED_JOINERS).toContain('swipe');
+  it('translates every joiner the picker offers into one the engine renders', () => {
+    // The picker offers a cut and a fade through black, and nothing else.
+    // Forging a kind the engine does not implement would silently produce a
+    // hard cut with the settings preserved where nothing reads them, so the
+    // catalogue and this list have to agree.
+    const offered = [
+      { kind: 'none' },
+      { kind: 'fade_through_black', fadeOutS: 1.0, holdS: 2.0, fadeInS: 1.0, color: '#000000' },
+    ];
+    for (const j of offered) {
+      expect(ENGINE_JOINER_TYPES).toContain(joinerToReal(j).joiner_type);
+    }
+  });
+
+  it('carries the MVP fade defaults through to the engine', () => {
+    // A second out, two seconds of black, a second back in.
+    const real = joinerToReal({
+      kind: 'fade_through_black', fadeOutS: 1.0, holdS: 2.0, fadeInS: 1.0, color: '#000000',
+    });
+    expect(real.joiner_type).toBe('fade_to_black');
+    expect(real.params.duration_s).toBe(2.0);
+    expect(real.params.fade_s).toBe(1.0);
   });
 });
 

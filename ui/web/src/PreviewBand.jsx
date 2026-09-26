@@ -2,7 +2,6 @@
 import React from 'react';
 const { useMemo, useRef } = React;
 import { fmtTotal } from './AppShell';
-import { Section } from './TitleEditor';
 import { Icon } from './primitives';
 import { previewProject } from './api/forge';
 import { projectChannelCoverage, segmentHasChannel, toForgeProject } from './lib/projectAdapter';
@@ -255,9 +254,6 @@ function PreviewBand({ project, totalMs, segCount }) {
           );
         })()}
         <div style={{ flex: 1 }} />
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>
-          beds active: {project.audioBeds.length}
-        </span>
       </div>
     </div>
   );

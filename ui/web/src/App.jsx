@@ -1,40 +1,23 @@
 /* @esm-converted */
 import React from 'react';
 import { FAAcceptBar, FAStatusBar, FATabBody, FATabStrip, FATopBar, fmtTotal } from './AppShell';
-import { BuildTab, ClipEditor, Divider } from './BuildTab';
+import { BuildTab, ClipEditor } from './BuildTab';
 import { Inspector } from './Inspector';
-import { JoinerEditor, SavePresetPrompt } from './JoinerEditor';
-import { ForgeTab, JoinersTab, OutputTab } from './OtherTabs';
+import { JoinerEditor } from './JoinerEditor';
+import { ForgeTab, OutputTab } from './OtherTabs';
 import { HomeScreen } from './HomeScreen';
 import { PreviewBand } from './PreviewBand';
 import { OpenProjectDialog, SaveAsDialog, UnsavedChangesDialog } from './ProjectIO';
-import { Section, TitleEditor } from './TitleEditor';
-import { FA_DATA } from './data';
-import { loadProject, saveProject, pickFolder, pickFile, detectFolder, detectForgeFolder, probeDuration,
+import { loadProject, saveProject, pickFolder, pickFile, detectForgeFolder, probeDuration,
          forgeProject, onForgeProgress, revealPath, validateProject,
          importForgeBundle } from './api/forge';
-import { fromForgeProject, toForgeProject, fromDetected, fromForgeBundleSegment } from './lib/projectAdapter';
+import { fromForgeProject, toForgeProject, fromForgeBundleSegment } from './lib/projectAdapter';
 import { parseProgressLine } from './lib/forgeProgress';
-import { insertSegment } from './lib/placement';
-import { DragDropProvider, reorderClipInProject, reorderSectionInProject } from './dragdrop';
-import { TweakRadio, TweakSection, TweakToggle, TweaksPanel, useTweaks } from './tweaks-panel';
+import { DragDropProvider, reorderSectionInProject } from './dragdrop';
 
-const { useState, useEffect, useMemo, useRef } = React;
+const { useState, useEffect, useRef } = React;
 
-// Tweak defaults — edit-mode markers so the host can persist changes.
-const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "buildLayout": "sections",
-  "density": "comfortable",
-  "joinerStyle": "divider",
-  "inspectorMode": "right",
-  "sectionGrouping": true,
-  "sampleSize": "medium"
-}/*EDITMODE-END*/;
-
-// A brand-new, empty project — the state the app boots into. The
-// fixtures in data.js are design-time material for the Tweaks panel;
-// booting into one showed every user a compilation they never made,
-// whose segments point at files that don't exist.
+// A brand-new, empty project — the state the app boots into.
 function emptyProject() {
   return {
     name: 'untitled',
@@ -48,56 +31,26 @@ function emptyProject() {
                 prostate: true, pulse_freq: true, audio_estim: true },
     sections: [{ id: `sec-${Date.now()}`, title: '', color: '#ff8c42',
                  joiner: { kind: 'none' }, segments: [], overlays: [] }],
-    audioBeds: [],
-    userJoiners: [], userGlyphs: [], userTitleTemplates: [],
   };
 }
 
 function App() {
-  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [tab, setTab] = useState("home");
-  // Multi-select model. `selectedIds` is the current selection set;
-  // `selectionAnchor` is the last clip clicked without modifiers — used
-  // as the pivot for shift-range expansion.
-  const [selectedIds, setSelectedIds]         = useState([]);
-  const [selectionAnchor, setSelectionAnchor] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
-  const [selectedBedId, setSelectedBedId] = useState(null);
+  // Selection. One scene at a time: the multi-select model (shift-range,
+  // ctrl-toggle) served bulk edits across clips inside a section, and
+  // there is no longer any such thing as a section with several clips.
+  const [selectedIds, setSelectedIds] = useState([]);
   const [editingClip, setEditingClip] = useState(null); // segment open in the ClipEditor dialog
   const [forging, setForging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [forgeStage, setForgeStage] = useState(null); // live progress line from the backend
 
-  const baseProject = useMemo(() => FA_DATA.PROJECTS[t.sampleSize] || FA_DATA.PROJECTS.medium, [t.sampleSize]);
-
   // Editable project state. Starts empty; Home's New / Open / recents
   // fill it with the user's own work.
   const [project, setProject] = useState(emptyProject);
-  // Swapping Tweaks → Sample project loads a fixture for design work.
-  // Skip the mount pass so a fresh launch keeps the empty project.
-  const sampleLoaded = useRef(false);
-  useEffect(() => {
-    if (!sampleLoaded.current) { sampleLoaded.current = true; return; }
-    setProject(structuredClone(baseProject));
-    // New sample loaded — reset I/O state to "fresh unsaved" so the
-    // user sees the Save-As flow on first save.
-    setSavedPath(null);
-    setLastSavedAtMs(null);
-    setDirty(true);
-  }, [baseProject]);
 
   // Joiner being edited: { sectionId, anchorRect } | null.
   const [editingJoiner, setEditingJoiner] = useState(null);
-  // Save-as-preset prompt staged from inside the editor.
-  const [savePresetFor, setSavePresetFor] = useState(null);
-  // Title editor state. Two pieces of context to disambiguate intent:
-  //   anchorClipId   — the clip the user is positioning relative to.
-  //                    When set, the editor offers Before / After / End.
-  //                    For overlays, this is also the clip the overlay
-  //                    is attached to.
-  //   forSectionId   — explicitly target this section (for "append to
-  //                    section X" from a section-header button).
-  const [titleEditor, setTitleEditor] = useState(null);
 
   // ── Project file I/O state ─────────────────────────────────────
   //   savedPath        absolute path of the .forgeproject.json on disk;
@@ -156,176 +109,39 @@ function App() {
     }));
     markDirty();
   }
-  function addUserJoiner(payload) {
-    setProject(p => ({ ...p, userJoiners: [...(p.userJoiners || []), payload] }));
-    markDirty();
-  }
-  function addUserTemplate(payload) {
-    setProject(p => ({ ...p, userTitleTemplates: [...(p.userTitleTemplates || []), payload] }));
-    markDirty();
-  }
-  function addUserGlyph(payload) {
-    setProject(p => ({ ...p, userGlyphs: [...(p.userGlyphs || []), payload] }));
-    markDirty();
-  }
-  function updateUserJoiner(payload) {
-    setProject(p => ({
-      ...p,
-      userJoiners: (p.userJoiners || []).map(u => u.id === payload.id ? payload : u),
-    }));
-    markDirty();
-  }
-  function removeUserJoiner(id) {
-    setProject(p => ({ ...p, userJoiners: (p.userJoiners || []).filter(u => u.id !== id) }));
-    markDirty();
-  }
-  function reorderClip(clipId, fromSectionId, toSectionId, anchorClipId, position) {
-    setProject(p => reorderClipInProject(p, clipId, fromSectionId, toSectionId, anchorClipId, position));
-    markDirty();
-  }
   function reorderSection(sectionId, anchorSectionId, position) {
     setProject(p => reorderSectionInProject(p, sectionId, anchorSectionId, position));
     markDirty();
   }
-  // Title save dispatcher. Branches on payload.useAs + ctx.
-  function applyTitlePayload(payload, ctx) {
-    if (payload.useAs === "overlay" && ctx?.anchorClipId) {
-      addTitleAsOverlay(payload, ctx.anchorClipId);
-    } else {
-      addTitleAsSegment(payload, ctx);
-    }
-  }
 
-  function addTitleAsOverlay(payload, clipId) {
-    markDirty();
-    const overlay = {
-      id: `ov-${Date.now()}`,
-      kind: "title",
-      file: `overlay-${slug(payload.title)}.png`,
-      thumb: payload.overlayThumb || payload.thumb,
-      position: payload.overlayPosition || "center",
-      startS: payload.overlayStartS,
-      fadeInS: payload.overlayFadeInS,
-      fadeOutS: payload.overlayFadeOutS,
-      opacity: payload.overlayOpacity,
-      title: titleMeta(payload),
-    };
-    setProject(p => ({
-      ...p,
-      sections: p.sections.map(s => ({
-        ...s,
-        segments: s.segments.map(seg => seg.id !== clipId ? seg : {
-          ...seg,
-          overlaysList: [...(seg.overlaysList || []), overlay],
-          overlays: (seg.overlaysList || []).length + 1,
-        }),
-      })),
-    }));
-  }
-
-  function addTitleAsSegment(payload, ctx) {
-    markDirty();
-    const seg = {
-      id: `seg-title-${Date.now()}`,
-      title: payload.title || "Title card",
-      file: `title-${slug(payload.title)}.png`,
-      kind: "still",
-      durMs: Math.round((payload.durationS || 5) * 1000),
-      thumb: payload.thumb,
-      channels: [],
-      overlays: 0,
-      audio: "silence",
-      temp: 0,
-      titleCard: titleMeta(payload),
-    };
-    setProject(p => insertSegment(p, seg, ctx, payload.insertionPoint));
-  }
-
-  function titleMeta(p) {
-    return { layout: p.layout, theme: p.theme, title: p.title,
-              eyebrow: p.eyebrow, subtitle: p.subtitle, showGlyph: p.showGlyph };
-  }
-  function slug(s) { return (s || "untitled").toLowerCase().replace(/\s+/g, "-"); }
-
-  // ── Add a new (empty) section ──────────────────────────────────
-  // A section's leading transition IS its joiner — so a second section is what
-  // creates an editable joiner between it and the one before. New sections
-  // start with a "none" joiner (a hard cut); click the joiner to change it.
-  function handleAddSection() {
-    markDirty();
-    const id = `sec-${Date.now()}`;
-    setProject(p => ({
-      ...p,
-      sections: [...p.sections, {
-        id, title: '', color: '#ff8c42',
-        joiner: { kind: 'none' }, segments: [], overlays: [],
-      }],
-    }));
-  }
-
-  // ── Add a transition between two clips ─────────────────────────
-  // The "+" between clips. Splits the host section right after `clipId` into a
-  // new section that carries the trailing clips, then opens the joiner editor
-  // on that new boundary so the user picks the transition. (Joiners only exist
-  // between sections, so a transition between clips IS a section split.)
-  function handleAddTransition(sectionId, clipId, anchorRect) {
-    const newId = `sec-${Date.now()}`;
-    setProject(p => {
-      const sections = [];
-      for (const s of p.sections) {
-        if (s.id !== sectionId) { sections.push(s); continue; }
-        const i = s.segments.findIndex(seg => seg.id === clipId);
-        if (i < 0 || i >= s.segments.length - 1) { sections.push(s); continue; }
-        const after = s.segments.slice(i + 1);
-        sections.push({ ...s, segments: s.segments.slice(0, i + 1) });
-        sections.push({
-          id: newId, title: after[0]?.title || '', color: '#ff8c42',
-          joiner: { kind: 'none' }, segments: after, overlays: [],
-        });
-      }
-      return { ...p, sections };
-    });
-    markDirty();
-    if (anchorRect) setEditingJoiner({ sectionId: newId, anchorRect });
-  }
-
-  // ── Remove a section ───────────────────────────────────────────
-  // Keeps at least one section. Clears selection (a selected clip may have
-  // lived in the removed section).
+  // ── Remove a scene ─────────────────────────────────────────────
+  // A scene IS a section, so removing one removes its section. Removing
+  // the last scene leaves the empty boot state rather than refusing:
+  // "keep at least one section" meant the final scene could not be
+  // deleted, which read as a broken button.
   function handleRemoveSection(sectionId) {
     setProject(p => {
-      if (p.sections.length <= 1) return p;
-      return { ...p, sections: p.sections.filter(s => s.id !== sectionId) };
+      const rest = p.sections.filter(s => s.id !== sectionId);
+      if (rest.length) return { ...p, sections: rest };
+      return {
+        ...p,
+        sections: [{ id: `sec-${Date.now()}`, title: '', color: '#ff8c42',
+                     joiner: { kind: 'none' }, segments: [], overlays: [] }],
+      };
     });
     markDirty();
     clearClipSelection();
-    setSelectedBedId(null);
   }
 
   // ── New (empty) project ────────────────────────────────────────
   // Clears the canvas to a single empty section — the starting point for
   // building a compilation from scratch (Add folder / Add .forge scene).
-  // Load the design fixture on purpose. Same reset as opening a project,
-  // and it stays "unsaved" so Save-As is the only way to keep anything
-  // built on top of it — its clip paths are placeholders, not files.
-  function loadSampleProject() {
-    setProject(structuredClone(baseProject));
-    setSavedPath(null);
-    setDirty(true);
-    setLastSavedAtMs(null);
-    clearClipSelection();
-    setSelectedBedId(null);
-    setIoError(null);
-    setTab('build');
-  }
-
   function handleNewProject() {
     setProject(emptyProject());
     setSavedPath(null);
     setDirty(true);
     setLastSavedAtMs(null);
     clearClipSelection();
-    setSelectedBedId(null);
     setIoError(null);
     setTab('build');
   }
@@ -448,103 +264,14 @@ function App() {
     }
   }
 
-  // ── Add clips from a folder (detect → append) ──────────────────
-  // Picks a folder, scans it for clips + sidecar funscripts/audio-estim,
-  // and appends the detected segments to the target section (or the last
-  // section, or a fresh one). Video durations are probed lazily after the
-  // segments land so the list paints immediately.
-  // Append segments to a target section (or the last/new one), then probe
-  // video durations. The chapter NAME defaults to the first added clip's name
-  // when the section is still unnamed — so a clip's filename becomes its
-  // chapter by default (the user can rename it).
-  // `atIndex` inserts at that position in the target section instead of
-  // appending — the "+" above the first clip passes 0.
-  function appendSegments(segs, sectionId, atIndex = null) {
-    if (!segs.length) return;
-    const stamp = Date.now();
-    markDirty();
-    setProject(p => {
-      const sections = p.sections.length ? p.sections : [{
-        id: `sec-${stamp}`, title: '', color: '#ff8c42',
-        joiner: { kind: 'none' }, segments: [], overlays: [],
-      }];
-      const targetId = sectionId || sections[sections.length - 1].id;
-      return {
-        ...p,
-        sections: sections.map(s => {
-          if (s.id !== targetId) return s;
-          const next = [...s.segments];
-          next.splice(atIndex == null ? next.length : atIndex, 0, ...segs);
-          return { ...s, title: s.title || segs[0]?.title || '', segments: next };
-        }),
-      };
-    });
-    for (const seg of segs) {
-      if (seg.kind === 'still' || !seg.file) continue;
-      probeDuration(seg.file).then(ms => {
-        if (!ms) return;
-        setProject(p => ({
-          ...p,
-          sections: p.sections.map(s => ({
-            ...s,
-            segments: s.segments.map(x => x.id === seg.id ? { ...x, durMs: ms } : x),
-          })),
-        }));
-      }).catch(() => { /* leave durMs at 0 if probe fails */ });
-    }
-    fillDetectedChannels(segs);
-  }
-
-  // A clip added one file at a time arrives with `channels: []` — nothing
-  // has looked at its siblings yet, so the Output tab would report it as
-  // carrying nothing at all. `detect_folder` is a directory listing (no
-  // probing), so this is cheap; it runs after the insert and patches the
-  // segments in place. `.forge` imports skip it — the bundle already told
-  // us its channels, and the bundle is the source of truth.
-  const toPosix = (p) => String(p || '').split('\\').join('/');
-
-  async function fillDetectedChannels(segs) {
-    const pending = segs.filter(s => s.file && s.kind !== 'still'
-      && (s.funscriptsSource || 'auto_detect') === 'auto_detect'
-      && !(s.channels || []).length);
-    if (!pending.length) return;
-    const folders = [...new Set(pending.map(
-      s => toPosix(s.file).replace(/\/[^/]*$/, '')))];
-    const byStem = new Map();
-    for (const folder of folders) {
-      let payload;
-      try { payload = await detectFolder(folder); } catch { continue; }
-      for (const clip of payload?.clips || []) byStem.set(clip.stem, clip);
-    }
-    if (!byStem.size) return;
-    setProject(p => ({
-      ...p,
-      sections: p.sections.map(s => ({
-        ...s,
-        segments: s.segments.map(x => {
-          if (!pending.some(q => q.id === x.id)) return x;
-          const stem = toPosix(x.file).split('/').pop().replace(/\.[^.]+$/, '');
-          const clip = byStem.get(stem);
-          if (!clip) return x;
-          return {
-            ...x,
-            channels: Object.keys(clip.funscripts || {}),
-            channelGroups: clip.channel_groups || {},
-            audioEstim: Object.keys(clip.audio_estim || {}),
-            detectedFunscripts: clip.funscripts || {},
-          };
-        }),
-      })),
-    }));
-  }
 
   // ── Add a FOLDER of .forge scenes — the header "Add folder…" ──
   // The standard: a `.forge` file is a finished SCENE, and a scene is a
   // SECTION (which is what becomes a chapter). So a folder of scenes
-  // becomes a run of sections in name order, ready for the user to
-  // decorate with titles and joiners. Loose videos are not what this
-  // button is for — that's "Add clip" inside a section.
-  async function handleAddClips(sectionId, atIndex = null) {
+  // becomes a run of scenes in name order, ready for the user to set the
+  // joiners between them. A `.forge` scene is the only thing this app
+  // takes: loose videos and scattered funscripts are a later release.
+  async function handleAddForgeFolder() {
     setIoError(null);
     const folder = await pickFolder();
     if (!folder) return;
@@ -561,8 +288,8 @@ function App() {
       // Say what this button looks for. Silence here reads as a bug, and
       // a folder of loose videos is the likeliest reason to find none.
       setIoError(`No .forge scenes in ${folder}. `
-        + `"Add folder" adds finished .forge scenes — to add a plain video, `
-        + `use "Add clip" inside a section.`);
+        + `ForgeAssembler joins finished .forge scenes — export one from `
+        + `FunscriptForge, then add the folder it landed in.`);
       return;
     }
 
@@ -574,7 +301,7 @@ function App() {
         setBatchImport({ done: i, total: bundles.length, name: b.stem });
         // `false` = don't prompt for a missing video. Ten dialogs in a row
         // is not a workflow; collect the unresolved ones and say so once.
-        const ok = await importForgeBundleToSection(b.path, sectionId, { prompt: false });
+        const ok = await importForgeScene(b.path, { prompt: false });
         if (!ok) skipped.push(b.stem);
       }
     } finally {
@@ -587,44 +314,14 @@ function App() {
     }
   }
 
-  // ── Add ONE clip to an existing section (the section header's "Add clip") ──
-  // A video (plus whatever funscripts sit beside it) joins THIS section,
-  // so it shares the section's chapter rather than starting a new one —
-  // that's how you put a title card or a second angle inside a scene.
-  // Finished `.forge` scenes go through "Add .forge scene…" and get their
-  // own section; one picked here is still honoured into this section,
-  // because an explicit target beats the default.
-  async function handleAddClip(sectionId, atIndex = null) {
-    setIoError(null);
-    const path = await pickFile({
-      title: 'Add a clip to this section — pick a video or still',
-      filterName: 'Video or still image',
-      extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi', 'png', 'jpg', 'jpeg', 'webp'],
-    });
-    if (!path) return;
-    if (/\.forge$/i.test(path)) {
-      await importForgeBundleToSection(path, sectionId);
-      return;
-    }
-    const stamp = Date.now();
-    const base = path.replace(/\\/g, '/').split('/').pop();
-    const stem = base.replace(/\.[^.]+$/, '');
-    const isStill = /\.(png|jpe?g|webp)$/i.test(path);
-    appendSegments([{
-      id: `seg-${stem}-${stamp}`, file: path, title: stem,
-      kind: isStill ? 'still' : 'video',
-      durMs: isStill ? 5000 : 0, channels: [], overlays: 0, overlaysList: [],
-      audio: 'keep', temp: 0, funscriptsSource: 'auto_detect', explicitFunscripts: {},
-    }], sectionId, atIndex);
-  }
 
-  // Import a `.forge` bundle into a section: explicit channel map, with a
+  // Import a `.forge` bundle as a new scene: explicit channel map, with a
   // relink prompt when the lean bundle carries no media. Shared by the
-  // "Add .forge scene…" header button and the per-section "Add clip".
+  // "Add .forge scene…" and "Add folder…" header buttons.
   // `prompt: false` (batch import) never opens a relink dialog — it
   // returns false so the caller can collect the unresolved scenes and
   // report them once, instead of firing one modal per bundle.
-  async function importForgeBundleToSection(bundle, sectionId, { prompt = true } = {}) {
+  async function importForgeScene(bundle, { prompt = true } = {}) {
     let payload;
     try {
       payload = await importForgeBundle(bundle);
@@ -657,16 +354,12 @@ function App() {
       return false;
     }
     seg.id = `${seg.id || 'seg'}-${Date.now()}`;
-    // A `.forge` scene is a finished scene, and a SECTION is what becomes
-    // a chapter in the output. So each imported scene gets its own section
-    // unless the caller aimed at a specific one (the per-section "Add
-    // clip"). Dropping every scene into one section gave a two-scene
-    // compilation a single chapter marker at 0:00 — nothing to navigate to.
-    if (sectionId) {
-      appendSegments([seg], sectionId);
-      return true;
-    }
-    appendSegmentsAsNewSection([seg]);
+    // One scene, one section, always. A SECTION is what becomes a chapter,
+    // so dropping two scenes into one section gave a two-scene compilation a
+    // single chapter marker at 0:00 — nothing to navigate to. Nothing can put
+    // a second clip in a section any more, and that is what makes the Build
+    // canvas a flat list of scenes rather than a tree.
+    appendSceneAsSection(seg);
     return true;
   }
 
@@ -674,17 +367,17 @@ function App() {
   // the chapter title is the scene's name without the user renaming
   // anything. Reuses a trailing EMPTY section (the boot state has one)
   // instead of leaving a blank chapter in front of the first scene.
-  function appendSegmentsAsNewSection(segs) {
-    if (!segs.length) return;
+  function appendSceneAsSection(seg) {
+    if (!seg) return;
     markDirty();
-    const title = segs[0].title || '';
+    const title = seg.title || '';
     setProject(p => {
       const last = p.sections[p.sections.length - 1];
       if (last && last.segments.length === 0) {
         return {
           ...p,
           sections: p.sections.map((s, i) => i === p.sections.length - 1
-            ? { ...s, title: s.title || title, segments: [...segs] }
+            ? { ...s, title: s.title || title, segments: [seg] }
             : s),
         };
       }
@@ -692,12 +385,11 @@ function App() {
         ...p,
         sections: [...p.sections, {
           id: `sec-${Date.now()}`, title, color: '#ff8c42',
-          joiner: { kind: 'none' }, segments: [...segs], overlays: [],
+          joiner: { kind: 'none' }, segments: [seg], overlays: [],
         }],
       };
     });
-    for (const seg of segs) {
-      if (seg.kind === 'still' || !seg.file || seg.durMs) continue;
+    if (seg.file && !seg.durMs) {
       probeDuration(seg.file).then(ms => {
         if (!ms) return;
         setProject(p => ({
@@ -712,57 +404,37 @@ function App() {
   }
 
   // ── Add a finished FunscriptForge `.forge` scene (header button) ──
-  async function handleAddForgeScene(sectionId) {
+  async function handleAddForgeScene() {
     setIoError(null);
     const bundle = await pickFile({
       title: 'Select a .forge scene to import',
       filterName: 'FunscriptForge bundle', extensions: ['forge'],
     });
     if (!bundle) return;
-    await importForgeBundleToSection(bundle, sectionId);
+    await importForgeScene(bundle);
   }
 
-  // Reset selection if it doesn't exist in the new sample
+  // Drop a selection that the loaded/edited project no longer contains.
   useEffect(() => {
-    const flat = project.sections.flatMap(s => s.segments);
-    const flatIds = flat.map(s => s.id);
-    const stillValid = selectedIds.filter(id => flatIds.includes(id));
-    if (stillValid.length !== selectedIds.length) {
-      const fallback = flat[1]?.id || flat[0]?.id ? [flat[1]?.id || flat[0]?.id] : [];
-      setSelectedIds(stillValid.length ? stillValid : fallback);
-      setSelectionAnchor(stillValid[0] || fallback[0] || null);
-    }
-    if (selectedBedId && !project.audioBeds.find(b => b.id === selectedBedId)) setSelectedBedId(null);
+    const ids = project.sections.flatMap(s => s.segments).map(s => s.id);
+    setSelectedIds(prev => {
+      const kept = prev.filter(id => ids.includes(id));
+      return kept.length === prev.length ? prev : kept;
+    });
   }, [project]);
 
   const flatSegments = project.sections.flatMap(s => s.segments);
+  const sceneCount = project.sections.filter(s => s.segments.length).length;
   const totalMs = flatSegments.reduce((a, s) => a + s.durMs, 0);
   const selectedSegs = flatSegments.filter(s => selectedIds.includes(s.id));
-  const selectedSeg  = selectedSegs.length === 1 ? selectedSegs[0] : null;
-  const selectedBed  = project.audioBeds.find(b => b.id === selectedBedId) || null;
 
-  // Click handler shared by every clip row.
-  // Modifier keys: shift = range from anchor; cmd/ctrl = toggle in/out.
-  function selectClip(id, e) {
-    setSelectedBedId(null);
-    const flatIds = flatSegments.map(s => s.id);
-    if (e?.shiftKey && selectionAnchor && flatIds.includes(selectionAnchor)) {
-      const aIdx = flatIds.indexOf(selectionAnchor);
-      const bIdx = flatIds.indexOf(id);
-      const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
-      setSelectedIds(flatIds.slice(lo, hi + 1));
-    } else if (e?.metaKey || e?.ctrlKey) {
-      setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-      setSelectionAnchor(id);
-    } else {
-      setSelectedIds([id]);
-      setSelectionAnchor(id);
-    }
-  }
-  function clearClipSelection() { setSelectedIds([]); setSelectionAnchor(null); }
+  function selectClip(id) { setSelectedIds([id]); }
+  function clearClipSelection() { setSelectedIds([]); }
 
-  // Bulk operations. All apply to the current `selectedIds`.
-  function bulkUpdate(partial) {
+  // Update whichever scene is selected. Duplicate and bulk-remove went
+  // with the multi-select model: both existed to act on several clips
+  // inside one section, and a section holds exactly one scene now.
+  function updateSelected(partial) {
     markDirty();
     const ids = selectedIds;
     setProject(p => ({
@@ -772,36 +444,6 @@ function App() {
         segments: s.segments.map(seg => ids.includes(seg.id) ? { ...seg, ...partial } : seg),
       })),
     }));
-  }
-  function bulkDuplicate() {
-    markDirty();
-    const ids = selectedIds;
-    setProject(p => ({
-      ...p,
-      sections: p.sections.map(s => {
-        const next = [];
-        for (const seg of s.segments) {
-          next.push(seg);
-          if (ids.includes(seg.id)) {
-            next.push({ ...seg, id: `${seg.id}-dup-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-                         title: seg.title + " (copy)" });
-          }
-        }
-        return { ...s, segments: next };
-      }),
-    }));
-  }
-  function bulkRemove() {
-    markDirty();
-    const ids = selectedIds;
-    setProject(p => ({
-      ...p,
-      sections: p.sections.map(s => ({
-        ...s,
-        segments: s.segments.filter(seg => !ids.includes(seg.id)),
-      })),
-    }));
-    clearClipSelection();
   }
 
   // Single-segment edit/remove (used by the ClipEditor dialog).
@@ -977,66 +619,39 @@ function App() {
         recents={recents}
         hasWork={flatSegments.length > 0}
         projectName={project.name}
-        segCount={flatSegments.length}
-        sectionCount={project.sections.length}
+        sceneCount={sceneCount}
         totalLabel={fmtTotal(totalMs)}
         onNew={handleNewProject}
         onOpen={handleOpenClick}
         onOpenRecent={openRecent}
-        onContinue={() => setTab('build')}
-        onLoadSample={loadSampleProject} />
+        onContinue={() => setTab('build')} />
     );
   } else if (tab === "build") {
     acceptKey = "build";
-    acceptSummary = `${project.sections.length} sections · ${flatSegments.length} segments · ${project.audioBeds.length} audio bed${project.audioBeds.length === 1 ? "" : "s"} · ${fmtTotal(totalMs)} total.`;
+    acceptSummary = `${sceneCount} scene${sceneCount === 1 ? "" : "s"} · ${sceneCount} chapter${sceneCount === 1 ? "" : "s"} · ${fmtTotal(totalMs)} total.`;
     body = (
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
           <FATabBody>
-            <DragDropProvider
-              onReorderClip={reorderClip}
-              onReorderSection={reorderSection}>
+            <DragDropProvider onReorderSection={reorderSection}>
               <BuildTab
                 project={project}
-                density={t.density}
-                buildLayout={t.buildLayout}
-                joinerStyle={t.joinerStyle}
-                sectionGrouping={t.sectionGrouping}
-                inspectorMode={t.inspectorMode}
                 selectedIds={selectedIds}
-                onSelect={(id, e) => selectClip(id, e)}
-                expandedId={expandedId}
-                onToggleExpand={(id) => setExpandedId(e => e === id ? null : id)}
-                selectedBedId={selectedBedId}
-                onSelectBed={(id) => { setSelectedBedId(id); clearClipSelection(); }}
-                onClearSelection={clearClipSelection}
+                onSelect={selectClip}
                 onEditJoiner={(sectionId, anchorRect) => setEditingJoiner({ sectionId, anchorRect })}
                 onRenameSection={renameSection}
-                onAddClips={handleAddClips}
-                onAddClip={handleAddClip}
+                onAddForgeFolder={handleAddForgeFolder}
                 onAddForgeScene={handleAddForgeScene}
-                onAddSection={handleAddSection}
                 onRemoveSection={handleRemoveSection}
-                onEditClip={(seg) => setEditingClip(seg)}
-                onAddTransition={handleAddTransition}
-                onOpenTitleEditor={(sectionId) => setTitleEditor(
-                  sectionId
-                    ? { anchorClipId: null, forSectionId: sectionId }
-                    : { anchorClipId: selectedSeg?.id || null, forSectionId: null }
-                )} />
+                onEditClip={(seg) => setEditingClip(seg)} />
             </DragDropProvider>
           </FATabBody>
           <PreviewBand project={project} totalMs={totalMs} segCount={flatSegments.length} />
         </div>
-        {t.inspectorMode === "right" && (
-          <Inspector
-            segs={selectedSegs} bed={selectedBed} project={project} mode={t.inspectorMode}
-            onClose={() => { clearClipSelection(); setSelectedBedId(null); }}
-            onAddOverlay={(clipId) => setTitleEditor({ anchorClipId: clipId, forSectionId: null })}
-            onBulkUpdate={bulkUpdate}
-            onBulkDuplicate={bulkDuplicate}
-            onBulkRemove={bulkRemove} />
-        )}
+        <Inspector
+          segs={selectedSegs} project={project}
+          onClose={clearClipSelection}
+          onUpdate={updateSelected} />
       </div>
     );
   } else if (tab === "output") {
@@ -1050,18 +665,13 @@ function App() {
     acceptKey = "forge";
     acceptSummary = forging ? "Forging in progress…" : (pipeline.forge.accepted ? "Forged successfully." : "Press Forge to render the combined output.");
     acceptLabel = "Mark forged";
-  } else if (tab === "joiners") {
-    body = <JoinersTab project={project}
-                         onAddUserJoiner={addUserJoiner}
-                         onUpdateUserJoiner={updateUserJoiner}
-                         onRemoveUserJoiner={removeUserJoiner} />;
   }
 
   // ─── Render ─────────────────────────────────────────────────────
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg)" }}>
       <FATopBar project={project} totalMs={totalMs}
-                 segCount={flatSegments.length} sectionCount={project.sections.length}
+                 sceneCount={sceneCount}
                  savedPath={savedPath} dirty={dirty} lastSavedAtMs={lastSavedAtMs}
                  onOpen={handleOpenClick} onSave={handleSaveClick} onNew={handleNewProject}
                  onHome={goHome} />
@@ -1102,39 +712,6 @@ function App() {
             onSaveAsPreset={(j) => setSavePresetFor({ joiner: j })} />
         );
       })()}
-      {savePresetFor && (
-        <SavePresetPrompt
-          joiner={savePresetFor.joiner}
-          onCancel={() => setSavePresetFor(null)}
-          onSave={(name) => {
-            addUserJoiner({
-              id: `uj-${Date.now()}`,
-              name,
-              builtOn: savePresetFor.joiner.kind,
-              params: Object.fromEntries(
-                Object.entries(savePresetFor.joiner).filter(([k]) => k !== "kind")),
-            });
-            setSavePresetFor(null);
-          }} />
-      )}
-
-      {/* ── Title editor modal ── */}
-      {titleEditor && (
-        <TitleEditor
-          selectedSeg={titleEditor.anchorClipId
-            ? flatSegments.find(s => s.id === titleEditor.anchorClipId)
-            : null}
-          userGlyphs={project.userGlyphs || []}
-          userTemplates={project.userTitleTemplates || []}
-          onAddUserGlyph={addUserGlyph}
-          onAddUserTemplate={addUserTemplate}
-          onCancel={() => setTitleEditor(null)}
-          onSave={(payload) => {
-            applyTitlePayload(payload, titleEditor);
-            setTitleEditor(null);
-          }} />
-      )}
-
       {/* ── Project I/O dialogs ── */}
       {ioDialog === "save" && (
         <SaveAsDialog project={project}
@@ -1213,60 +790,8 @@ function App() {
           onClose={() => setEditingClip(null)} />
       )}
 
-      {/* ── Tweaks panel ── */}
-      <TweaksPanel title="ForgeAssembler · Tweaks">
-        <TweakSection label="Build canvas" />
-        <TweakRadio  label="Layout"
-                      value={t.buildLayout}
-                      options={[
-                        { value: "sections", label: "Sections" },
-                        { value: "flat",     label: "Flat" },
-                        { value: "timeline", label: "Timeline" },
-                      ]}
-                      onChange={(v) => setTweak('buildLayout', v)} />
-        <TweakRadio  label="Density"
-                      value={t.density}
-                      options={[
-                        { value: "compact",     label: "Compact" },
-                        { value: "comfortable", label: "Comfy" },
-                        { value: "roomy",       label: "Roomy" },
-                      ]}
-                      onChange={(v) => setTweak('density', v)} />
-        <TweakToggle label="Section grouping"
-                      value={t.sectionGrouping}
-                      onChange={(v) => setTweak('sectionGrouping', v)} />
-
-        <TweakSection label="Joiners" />
-        <TweakRadio  label="Style"
-                      value={t.joinerStyle}
-                      options={[
-                        { value: "inline-pill", label: "Inline pill" },
-                        { value: "divider",     label: "Divider" },
-                        { value: "lane",        label: "Lane" },
-                      ]}
-                      onChange={(v) => setTweak('joinerStyle', v)} />
-
-        <TweakSection label="Inspector" />
-        <TweakRadio  label="Mode"
-                      value={t.inspectorMode}
-                      options={[
-                        { value: "right",  label: "Right panel" },
-                        { value: "inline", label: "Inline" },
-                      ]}
-                      onChange={(v) => setTweak('inspectorMode', v)} />
-
-        <TweakSection label="Sample project" />
-        <TweakRadio  label="Size"
-                      value={t.sampleSize}
-                      options={[
-                        { value: "small",  label: "S · 4" },
-                        { value: "medium", label: "M · 8" },
-                        { value: "large",  label: "L · 14" },
-                      ]}
-                      onChange={(v) => setTweak('sampleSize', v)} />
-      </TweaksPanel>
     </div>
   );
 }
 
-export { App, TWEAK_DEFAULTS };
+export { App };

@@ -1,7 +1,6 @@
 /* @esm-converted */
 import React from 'react';
 import { icons as LucideIcons } from 'lucide-react';
-import { Section } from './TitleEditor';
 
 // Reusable primitives — all named with `ff` prefix to avoid global collisions.
 

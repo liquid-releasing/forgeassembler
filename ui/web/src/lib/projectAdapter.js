@@ -321,9 +321,17 @@ function prettyStem(path) {
 //
 // The engine implements TWO joiners: `none` and `fade_to_black` (whose
 // name is legacy — it's a fade to any colour). `dip_to_color` is the same
-// operation with a different default, so it maps here too. `crossfade`
-// and `swipe` have no engine implementation at all; see UNIMPLEMENTED.
-export const UNIMPLEMENTED_JOINERS = ['crossfade', 'swipe'];
+// operation with a different default, so it maps here too.
+//
+// The UI catalogue used to offer five kinds and name the two the engine
+// could not render (crossfade, swipe) so the picker could grey them out.
+// They are gone from the catalogue instead: a disabled control with a
+// "soon" chip is still a control, and the MVP's whole transition
+// vocabulary is a cut and a fade through black.
+//
+// An unknown `joiner_type` in a project file still passes through
+// untouched, so a hand-written file survives a GUI save.
+export const ENGINE_JOINER_TYPES = ['none', 'fade_to_black'];
 
 const FADE_KINDS = ['fade_through_black', 'dip_to_color'];
 

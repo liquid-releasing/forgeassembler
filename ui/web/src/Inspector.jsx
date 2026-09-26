@@ -2,35 +2,27 @@
 import React from 'react';
 const { useEffect, useMemo, useRef } = React;
 import { fmtClipDur, fmtTotal } from './AppShell';
-import { ClipThumb, InlineEditor } from './BuildTab';
+import { ClipThumb } from './BuildTab';
 import { MediaViewer, TrackStack } from 'forgemoment';
 import { toMediaUrl } from './lib/mediaUrl';
 import { pickFile, readSidecar } from './api/forge';
 import { toAudioWaveform, toBeats, toFunscript } from './lib/sidecars';
-import { Section } from './TitleEditor';
 import { channelGroup, CHANNEL_GROUPS, NEUTRAL_KELVIN } from './lib/projectAdapter';
 import { Button, Field, Icon, Segmented, Slider, TextInput } from './primitives';
 
 // Right inspector. Open when a clip is selected.
 // Five tabs: Source · Audio · Overlays · Color · Funscript.
 // When inspectorMode is "inline", this whole panel is hidden — the
-// expanded clip-row InlineEditor takes its place.
+// scene row's pencil dialog takes its place.
 
 const { useState: insState } = React;
 
-function Inspector({ segs, bed, project, onClose, mode, onAddOverlay,
-                     onBulkUpdate, onBulkDuplicate, onBulkRemove }) {
-  if (mode === "inline") return null;
-  if ((!segs || segs.length === 0) && !bed) return <InspectorEmpty />;
-  if (bed) return <BedInspector bed={bed} project={project} onClose={onClose} />;
-  if (segs.length === 1) {
-    return <ClipInspector seg={segs[0]} onClose={onClose} onAddOverlay={onAddOverlay}
-                          onUpdate={onBulkUpdate} />;
-  }
-  return <MultiSelectInspector segs={segs} onClose={onClose}
-                                  onBulkUpdate={onBulkUpdate}
-                                  onBulkDuplicate={onBulkDuplicate}
-                                  onBulkRemove={onBulkRemove} />;
+// One scene at a time. The bed inspector went with cross-clip audio beds
+// (nothing in the engine ever read them) and the multi-select inspector
+// went with the multi-clip section, which no longer exists.
+function Inspector({ segs, onClose, onUpdate }) {
+  if (!segs || segs.length === 0) return <InspectorEmpty />;
+  return <ClipInspector seg={segs[0]} onClose={onClose} onUpdate={onUpdate} />;
 }
 
 function InspectorEmpty() {
@@ -59,12 +51,14 @@ function InspectorEmpty() {
 }
 
 // ── Clip inspector ────────────────────────────────────────────────
-function ClipInspector({ seg, onClose, onAddOverlay, onUpdate }) {
+function ClipInspector({ seg, onClose, onUpdate }) {
   const [tab, setTab] = insState("source");
+  // No Overlays tab: the only thing that added one was the title editor,
+  // and titles are a later release. A project that already carries
+  // overlays keeps them — the adapter passes them straight through.
   const tabs = [
     { id: "source",   label: "Source",   icon: "film"          },
     { id: "audio",    label: "Audio",    icon: "music"         },
-    { id: "overlays", label: "Overlays", icon: "layers"        },
     { id: "color",    label: "Color",    icon: "thermometer"   },
     { id: "fs",       label: "Funscript", icon: "activity"     },
   ];
@@ -122,7 +116,6 @@ function ClipInspector({ seg, onClose, onAddOverlay, onUpdate }) {
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
         {tab === "source"   && <SourcePane seg={seg} onUpdate={onUpdate} />}
         {tab === "audio"    && <AudioPane seg={seg} onUpdate={onUpdate} />}
-        {tab === "overlays" && <OverlaysPane seg={seg} onAddOverlay={onAddOverlay} />}
         {tab === "color"    && <ColorPane seg={seg} onUpdate={onUpdate} />}
         {tab === "fs"       && <FunscriptPane seg={seg} />}
       </div>
@@ -601,109 +594,6 @@ function AudioPane({ seg, onUpdate }) {
           )}
         </PaneSection>
       )}
-      <PaneSection title="Cross-clip audio"
-                    hint="Audio beds are authored on the Build canvas and sit above per-clip audio.">
-        <div style={{ padding: "8px 10px", border: "1px solid var(--border)",
-                       background: "var(--surface-2)", borderRadius: 6,
-                       fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Icon name="music-4" size={12} style={{ color: "var(--warn)" }} />
-            Beds aren't mixed into the output yet.
-          </span>
-          <div style={{ marginTop: 4 }}>
-            You can place them on the Build canvas and they're saved with the project,
-            but the forge doesn't render them — per-clip audio above is what you hear.
-          </div>
-        </div>
-      </PaneSection>
-    </>
-  );
-}
-
-function OverlaysPane({ seg, onAddOverlay }) {
-  // Prefer the real overlays list if present; fall back to a synthetic
-  // single row when only the counter is set (legacy data).
-  const overlays = (seg.overlaysList && seg.overlaysList.length > 0)
-    ? seg.overlaysList
-    : (seg.overlays > 0
-        ? [{ id: "ov-legacy", kind: "image", file: "logo-white-on-black.png",
-              position: "bl", opacity: 1.0, fadeInS: 1.0, fadeOutS: 0, startS: 0 }]
-        : []);
-  return (
-    <>
-      <PaneSection title="Overlays"
-                    hint="Image overlays (logos, lower-thirds) and title-card overlays authored in the title editor."
-                    right={<Button kind="ghost" size="sm" icon="plus"
-                                    onClick={() => onAddOverlay?.(seg.id)}>Title overlay</Button>}>
-        {overlays.length === 0 ? (
-          <div style={{ padding: "14px 12px", border: "1px dashed var(--border)",
-                         borderRadius: 6, textAlign: "center", color: "var(--text-dim)", fontSize: 12 }}>
-            No overlays on this clip.
-            <div style={{ marginTop: 8 }}>
-              <Button kind="secondary" size="sm" icon="type"
-                       onClick={() => onAddOverlay?.(seg.id)}>Author a title overlay</Button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {overlays.map(o => (
-              <div key={o.id} style={{
-                background: "var(--surface-2)", border: "1px solid var(--border)",
-                borderRadius: 6, padding: 10,
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  {o.thumb ? (
-                    <div style={{ width: 38, height: 22, borderRadius: 3, overflow: "hidden",
-                                    background: "#000", border: "1px solid var(--border)",
-                                    flexShrink: 0, position: "relative" }}>
-                      <img src={o.thumb} alt="" style={{ position: "absolute", inset: 0,
-                                                          width: "100%", height: "100%" }} />
-                    </div>
-                  ) : (
-                    <Icon name={o.kind === "title" ? "type" : "image"} size={13}
-                          style={{ color: "var(--text-muted)" }} />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <span className="mono" style={{ fontSize: 11, color: "var(--text)",
-                                                      overflow: "hidden", textOverflow: "ellipsis",
-                                                      whiteSpace: "nowrap", display: "block" }}>
-                      {o.file}
-                    </span>
-                    {o.title?.title && (
-                      <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
-                        “{o.title.title}”{o.title.subtitle ? ` · ${o.title.subtitle}` : ""}
-                      </span>
-                    )}
-                  </div>
-                  <Button kind="ghost" size="icon"><Icon name="trash-2" size={12} /></Button>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <Field label="Position">
-                    <span className="mono" style={{ fontSize: 11, color: "var(--text)" }}>
-                      {o.position}
-                    </span>
-                  </Field>
-                  <Field label="Opacity">
-                    <span className="mono" style={{ fontSize: 11, color: "var(--text)" }}>
-                      {Math.round((o.opacity ?? 1) * 100)}%
-                    </span>
-                  </Field>
-                  <Field label="Start">
-                    <span className="mono" style={{ fontSize: 11, color: "var(--text)" }}>
-                      {(o.startS ?? 0).toFixed(1)}s
-                    </span>
-                  </Field>
-                  <Field label="Fade">
-                    <span className="mono" style={{ fontSize: 11, color: "var(--text)" }}>
-                      in {(o.fadeInS ?? 0).toFixed(1)}s · out {(o.fadeOutS ?? 0).toFixed(1)}s
-                    </span>
-                  </Field>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </PaneSection>
     </>
   );
 }
@@ -809,325 +699,6 @@ function FunscriptPane({ seg }) {
   );
 }
 
-// ── Bed inspector (when an audio bed is selected) ─────────────────
-function BedInspector({ bed, project, onClose }) {
-  const flat = project.sections.flatMap(s => s.segments);
-  const startSeg = flat.find(s => s.id === bed.startSegmentId);
-  const endSeg = flat.find(s => s.id === bed.endSegmentId);
-  return (
-    <aside style={{
-      width: "var(--inspector-w)", flexShrink: 0,
-      background: "var(--surface)", borderLeft: "1px solid var(--border)",
-      display: "flex", flexDirection: "column",
-    }}>
-      <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 6, flexShrink: 0,
-            background: "linear-gradient(135deg, rgba(255,140,66,0.4), rgba(255,140,66,0.15))",
-            border: "1px solid rgba(255,140,66,0.4)",
-            display: "grid", placeItems: "center",
-          }}>
-            <Icon name="music-4" size={18} style={{ color: "var(--accent-warm)" }} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600 }}>{bed.title}</div>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)",
-                                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {bed.file}
-            </div>
-          </div>
-          <Button kind="ghost" size="icon" onClick={onClose}><Icon name="x" size={14} /></Button>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
-        {/* Beds round-trip through the project file, but nothing in
-            forgeassembler_core reads `audio_beds` — the forge doesn't mix
-            them. Say so here rather than let three live-looking sliders
-            imply otherwise. */}
-        <div style={{ display: "flex", gap: 8, padding: "10px 12px", marginBottom: 14,
-                       borderRadius: 6, background: "var(--surface-2)",
-                       border: "1px solid var(--warn)", lineHeight: 1.5 }}>
-          <Icon name="triangle-alert" size={13} style={{ color: "var(--warn)", marginTop: 2, flexShrink: 0 }} />
-          <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-            <span style={{ fontWeight: 600, color: "var(--text)" }}>Not mixed into the output yet.</span>
-            {" "}This bed is saved with the project and drawn on the canvas, but the forge
-            doesn't render it. The mix settings below are a preview of the intended controls.
-          </div>
-        </div>
-
-        <PaneSection title="Coverage"
-                      hint="Which clips this bed spans. The bed crossfades over joiners between covered clips.">
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Field label="Starts at">
-              <TextInput value={startSeg?.title || "—"} />
-            </Field>
-            <Field label="Ends at">
-              <TextInput value={endSeg?.title || "—"} />
-            </Field>
-          </div>
-        </PaneSection>
-
-        <PaneSection title="Mix">
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <Slider value={bed.level} min={-30} max={0} step={1} disabled
-                    label="Bed level"
-                    valueLabel={`${bed.level} dB`} />
-            <Slider value={bed.fadeInS} min={0} max={10} step={0.5} disabled
-                    label="Fade in"
-                    valueLabel={`${bed.fadeInS.toFixed(1)} s`} />
-            <Slider value={bed.fadeOutS} min={0} max={10} step={0.5} disabled
-                    label="Fade out"
-                    valueLabel={`${bed.fadeOutS.toFixed(1)} s`} />
-          </div>
-        </PaneSection>
-
-        <PaneSection title="Behaviour vs clip audio"
-                      hint="What happens to each covered clip's own audio while the bed plays.">
-          <Segmented value={bed.duckUnderSegmentAudio ? "duck" : "solo"} disabled
-                      options={[
-                        { value: "duck", label: "Duck under clips" },
-                        { value: "solo", label: "Replace clips" },
-                      ]} />
-          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
-            {bed.duckUnderSegmentAudio
-              ? "Intended: clip audio drops to −12 dB while the bed plays, and joiners crossfade the bed over."
-              : "Intended: per-clip audio is muted under this bed's coverage, and joiners use the bed for continuity."}
-          </div>
-        </PaneSection>
-      </div>
-    </aside>
-  );
-}
-
-// ── MultiSelectInspector ─────────────────────────────────────────
-// Shown when more than one clip is selected. Surfaces the values that
-// are common across the selection, marks mixed ones explicitly, and
-// applies edits to every selected clip at once.
-function MultiSelectInspector({ segs, onClose, onBulkUpdate, onBulkDuplicate, onBulkRemove }) {
-  // ── Summaries ──
-  const kinds = uniq(segs.map(s => s.kind));
-  const audioModes = uniq(segs.map(s => s.audio));
-  const temps = uniq(segs.map(s => s.temp));
-  const allVideos = kinds.length === 1 && kinds[0] === "video";
-
-  // Channel coverage across the selection, by REAL channel name. This
-  // used to test `channels.includes(uiCategoryId)` against a fixed list
-  // that included a phantom "alt" channel nothing produces — only "main"
-  // ever matched, so a selection of 20-channel scenes reported one.
-  const channelCoverage = (() => {
-    const counts = new Map();
-    for (const s of segs) {
-      if (s.kind === "still") continue;
-      for (const ch of s.channels || []) counts.set(ch, (counts.get(ch) || 0) + 1);
-    }
-    const total = segs.filter(s => s.kind !== "still").length;
-    return [...counts.entries()]
-      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
-      .map(([id, have]) => ({ id, label: id, have, total }));
-  })();
-
-  // Section spread
-  const sectionCounts = {};
-  for (const s of segs) {
-    const k = s._sectionId || "—"; // not threaded; visualised below by colour
-  }
-
-  const totalMs = segs.reduce((a, s) => a + s.durMs, 0);
-
-  return (
-    <aside style={{
-      width: "var(--inspector-w)", flexShrink: 0, minWidth: 0,
-      background: "var(--surface)", borderLeft: "1px solid var(--border)",
-      display: "flex", flexDirection: "column",
-    }}>
-      {/* Header */}
-      <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 38, height: 38, borderRadius: 7, flexShrink: 0,
-            background: "rgba(255,75,75,0.12)",
-            border: "1px solid rgba(255,75,75,0.3)",
-            display: "grid", placeItems: "center",
-            color: "var(--accent-2)", fontWeight: 700, fontSize: 14,
-            fontFamily: "var(--font-mono)",
-          }}>{segs.length}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600 }}>
-              {segs.length} clips selected
-            </div>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)", marginTop: 1 }}>
-              {fmtTotal(totalMs)} total · {kinds.length === 1
-                ? (kinds[0] === "still" ? "all stills" : "all videos")
-                : `${segs.filter(s => s.kind === "video").length} videos · ${segs.filter(s => s.kind === "still").length} stills`}
-            </div>
-          </div>
-          <Button kind="ghost" size="icon" onClick={onClose} title="Clear (Esc)"><Icon name="x" size={14} /></Button>
-        </div>
-
-        {/* Thumbnail pile */}
-        <div style={{ display: "flex", gap: 4, marginTop: 10, flexWrap: "wrap" }}>
-          {segs.slice(0, 9).map(s => (
-            <span key={s.id} title={s.title}
-                   style={{
-                     width: 26, height: 15, borderRadius: 2, overflow: "hidden",
-                     border: "1px solid var(--border)", flexShrink: 0,
-                     background: "var(--surface-2)",
-                   }}>
-              <img src={s.thumb} alt="" style={{ width: "100%", height: "100%",
-                                                    objectFit: "cover", display: "block" }} />
-            </span>
-          ))}
-          {segs.length > 9 && (
-            <span className="mono" style={{
-              fontSize: 10, color: "var(--text-muted)",
-              padding: "0 4px", alignSelf: "center",
-            }}>+{segs.length - 9}</span>
-          )}
-        </div>
-
-        {/* Quick actions */}
-        <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-          <Button kind="secondary" size="sm" icon="copy" onClick={onBulkDuplicate}>Duplicate</Button>
-          <Button kind="secondary" size="sm" icon="scissors">Split…</Button>
-          <div style={{ flex: 1 }} />
-          <Button kind="danger" size="sm" icon="trash-2" onClick={onBulkRemove}>Remove</Button>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
-
-        {/* Audio mode */}
-        <PaneSection title="Audio mode"
-                      hint={audioModes.length === 1
-                        ? `All ${segs.length} clips use “${audioModes[0]}”.`
-                        : `Mixed — ${segs.length} clips use ${audioModes.length} different values. Pick one to apply to all.`}>
-          <div style={{ display: "flex", gap: 4 }}>
-            {[
-              { v: "keep",    label: "Keep",    icon: "volume-2" },
-              { v: "replace", label: "Replace", icon: "music" },
-              { v: "silence", label: "Silence", icon: "volume-x" },
-            ].map(opt => {
-              const all = audioModes.length === 1 && audioModes[0] === opt.v;
-              return (
-                <button key={opt.v}
-                         onClick={() => onBulkUpdate({ audio: opt.v })}
-                         style={{
-                           flex: 1, display: "flex", flexDirection: "column",
-                           alignItems: "center", gap: 4,
-                           padding: "8px 6px", borderRadius: 6,
-                           background: all ? "rgba(255,75,75,0.08)" : "var(--surface-2)",
-                           border: `1px solid ${all ? "var(--accent)" : "var(--border)"}`,
-                           color: all ? "var(--text)" : "var(--text-muted)",
-                           cursor: "pointer", fontFamily: "inherit",
-                           fontSize: 11, fontWeight: 600,
-                         }}>
-                  <Icon name={opt.icon} size={14} />
-                  <span>{opt.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {audioModes.length > 1 && (
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)", marginTop: 8 }}>
-              currently: {audioModes.map(m =>
-                `${m} (${segs.filter(s => s.audio === m).length})`).join(" · ")}
-            </div>
-          )}
-        </PaneSection>
-
-        {/* Color temperature — videos only */}
-        {allVideos ? (
-          <PaneSection title="Color temperature"
-                        hint={temps.length === 1
-                          ? `All clips: ${temps[0] === 0 ? "neutral" : (temps[0] >= 0 ? "+" : "") + temps[0] + "K"}.`
-                          : `Mixed — ${temps.length} different values across selection.`}>
-            <BulkTempControl segs={segs} onApply={(v) => onBulkUpdate({ temp: v })} />
-          </PaneSection>
-        ) : (
-          <PaneSection title="Color temperature">
-            <div style={{ padding: "8px 10px", fontSize: 11.5, color: "var(--text-dim)",
-                            border: "1px solid var(--border)", borderRadius: 6,
-                            background: "var(--surface-2)" }}>
-              Selection includes still images — colour temperature only applies to video clips.
-            </div>
-          </PaneSection>
-        )}
-
-        {/* Channel coverage */}
-        <PaneSection title="Funscript channels"
-                      hint="Which channels are present across the selected clips.">
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {channelCoverage.length === 0 && (
-              <div style={{ padding: "8px 10px", fontSize: 11.5, color: "var(--text-dim)",
-                              border: "1px solid var(--border)", borderRadius: 6,
-                              background: "var(--surface-2)" }}>
-                None of the selected clips carries a funscript channel.
-              </div>
-            )}
-            {channelCoverage.map(c => {
-              const full = c.have === c.total;
-              return (
-                <div key={c.id} style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "5px 8px", borderRadius: 5,
-                  background: full ? "rgba(62,213,152,0.06)" : "var(--surface-2)",
-                  border: `1px solid ${full ? "rgba(62,213,152,0.25)" : "var(--border)"}`,
-                }}>
-                  <Icon name={full ? "check" : "alert-circle"} size={11}
-                        style={{ color: full ? "var(--success)" : "var(--warn)" }} />
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{c.label}</span>
-                  <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)", marginLeft: "auto" }}>
-                    {c.have} / {c.total}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </PaneSection>
-
-        {/* Bulk overlay add — disabled until a single anchor concept makes sense */}
-        <PaneSection title="Overlay"
-                      hint="To add a title overlay across many clips, do them one at a time — overlay timing is per-clip and benefits from individual review.">
-          <Button kind="ghost" size="sm" icon="info" disabled>Bulk overlay (coming soon)</Button>
-        </PaneSection>
-      </div>
-    </aside>
-  );
-}
-
-// Small helper — values seen across an array, deduped.
-function uniq(arr) {
-  const seen = new Set();
-  const out = [];
-  for (const v of arr) { if (!seen.has(v)) { seen.add(v); out.push(v); } }
-  return out;
-}
-
-function BulkTempControl({ segs, onApply }) {
-  const temps = uniq(segs.map(s => s.temp));
-  const initialKelvin = temps.length === 1 ? NEUTRAL_KELVIN + temps[0] : NEUTRAL_KELVIN;
-  const [kelvin, setKelvin] = insState(initialKelvin);
-  insUseEffect(() => { setKelvin(initialKelvin); }, [initialKelvin]);
-  const offset = kelvin - NEUTRAL_KELVIN;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <Slider value={kelvin} min={4000} max={10000} step={100}
-              onChange={setKelvin}
-              valueLabel={`${kelvin}K · ${offset >= 0 ? "+" : ""}${offset} from neutral`} />
-      <div style={{ display: "flex", gap: 6 }}>
-        <Button kind="secondary" size="sm" icon="check"
-                 onClick={() => onApply(offset)}>
-          Apply {offset >= 0 ? "+" : ""}{offset}K to {segs.length} clips
-        </Button>
-        <Button kind="ghost" size="sm" onClick={() => onApply(0)}>Reset</Button>
-      </div>
-    </div>
-  );
-}
-
 // (insState was imported at the top of this file from React; alias
 //  insUseEffect for completeness since we use both.)
 const insUseEffect = React.useEffect;
@@ -1135,4 +706,5 @@ const insUseEffect = React.useEffect;
 Object.assign(window, { Inspector });
 
 
-export { AudioPane, BedInspector, BulkTempControl, ClipInspector, ColorPane, FunscriptPane, Handle, Inspector, InspectorEmpty, MultiSelectInspector, OverlaysPane, PaneSection, SourcePane, TrimScrubber, insUseEffect, uniq };
+export { AudioPane, ClipInspector, ColorPane, FunscriptPane, Handle, Inspector,
+         InspectorEmpty, PaneSection, SourcePane, TrimScrubber, insUseEffect };

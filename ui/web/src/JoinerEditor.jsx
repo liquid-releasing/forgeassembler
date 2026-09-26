@@ -1,12 +1,10 @@
 /* @esm-converted */
 import React from 'react';
-import { JoinerEl } from './BuildTab';
 import { VideoPoster } from './MediaViewer';
 import { FA_DATA } from './data';
-import { UNIMPLEMENTED_JOINERS } from './lib/projectAdapter';
 import { Button, Field, Icon, Pill, Slider, TextInput } from './primitives';
 
-// JoinerEditor — popover anchored to a JoinerEl click.
+// JoinerEditor — popover anchored to a joiner row click.
 // Lets the user pick a kind (built-in + user-authored presets), set
 // the timing breakdown (fade out · hold · fade in for fade-style
 // joiners; duration for others), and tune kind-specific params.
@@ -19,10 +17,6 @@ function makeJoinerFromKind(kind) {
   return { kind, ...(k?.defaults || {}) };
 }
 
-// Apply a user preset: same as the kind it's built on + its overrides.
-function makeJoinerFromPreset(preset) {
-  return { kind: preset.builtOn, ...preset.params };
-}
 
 // ── Animated joiner preview ──────────────────────────────────────
 // Plays the transition on loop. Two stand-in "clips" — left and right
@@ -231,7 +225,7 @@ function ClipPanel({ src, label, tint, opacity = 1 }) {
   );
 }
 
-function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onChange, onClose, onSaveAsPreset }) {
+function JoinerEditor({ joiner, prevClip, nextClip, anchorRect, onChange, onClose }) {
   const ref = jeRef();
   const kind = FA_DATA.joinerKind(joiner);
 
@@ -250,7 +244,6 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
 
   function setParam(id, v) { onChange({ ...joiner, [id]: v }); }
   function setKind(newKind) { onChange(makeJoinerFromKind(newKind)); }
-  function applyPreset(p) { onChange(makeJoinerFromPreset(p)); }
 
   return (
     <div ref={ref} style={{
@@ -266,7 +259,7 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
         <Icon name={kind.icon} size={15} style={{ color: kind.kind === "none" ? "var(--text-muted)" : "var(--accent-warm)" }} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600 }}>Joiner</div>
-          <div style={{ fontSize: 11, color: "var(--text-dim)" }}>How this section transitions in</div>
+          <div style={{ fontSize: 11, color: "var(--text-dim)" }}>How this scene comes in</div>
         </div>
         <Button kind="ghost" size="icon" onClick={onClose}><Icon name="x" size={14} /></Button>
       </div>
@@ -282,62 +275,22 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
               {FA_DATA.JOINER_KINDS.map(k => {
                 const active = joiner.kind === k.kind;
-                // The engine renders `none` and `fade_to_black` (a fade to
-                // any colour) and nothing else. Offering crossfade or swipe
-                // would let the user configure a transition that forges as a
-                // hard cut — the joiner settings would be written to the
-                // project and silently ignored, which is exactly the failure
-                // this whole change is fixing. Show them, disabled, so the
-                // roadmap is visible without being a trap.
-                const unavailable = UNIMPLEMENTED_JOINERS.includes(k.kind);
                 return (
-                  <button key={k.kind} disabled={unavailable}
-                          title={unavailable
-                            ? `${k.label} isn't rendered by the forge engine yet — picking it would produce a straight cut.`
-                            : k.desc}
-                          onClick={() => { if (!unavailable) setKind(k.kind); }} style={{
+                  <button key={k.kind} title={k.desc}
+                          onClick={() => setKind(k.kind)} style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
                     padding: "5px 10px", borderRadius: 6,
                     background: active ? "rgba(255,75,75,0.08)" : "var(--surface-2)",
                     border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
                     color: active ? "var(--text)" : "var(--text-muted)",
                     fontFamily: "inherit", fontSize: 11.5, fontWeight: 600,
-                    cursor: unavailable ? "not-allowed" : "pointer",
-                    opacity: unavailable ? 0.4 : 1,
+                    cursor: "pointer",
                   }}>
                     <Icon name={k.icon} size={11} /> {k.label}
-                    {unavailable && <span style={{ fontSize: 9.5, fontWeight: 700 }}>soon</span>}
                   </button>
                 );
               })}
             </div>
-            {userJoiners?.length > 0 && (
-              <>
-                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
-                                  textTransform: "uppercase", letterSpacing: "0.1em" }}>Your joiners</span>
-                  <Pill style={{ fontSize: 9 }}>{userJoiners.length}</Pill>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-                  {userJoiners.map(p => {
-                    const builtOn = FA_DATA.JOINER_KINDS.find(k => k.kind === p.builtOn);
-                    return (
-                      <button key={p.id} onClick={() => applyPreset(p)} style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        padding: "5px 10px", borderRadius: 6,
-                        background: "var(--surface-2)", border: "1px solid var(--border)",
-                        color: "var(--text)", fontFamily: "inherit", fontSize: 11.5, fontWeight: 600,
-                        cursor: "pointer",
-                      }}>
-                        <Icon name={builtOn?.icon || "bookmark"} size={11}
-                              style={{ color: "var(--accent-warm)" }} />
-                        {p.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
           </div>
           <div style={{ padding: "10px 14px", fontSize: 11.5, color: "var(--text-muted)",
                          lineHeight: 1.5, borderTop: "1px solid var(--border)" }}>
@@ -349,7 +302,8 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
         <div style={{ flex: 1, minWidth: 0, overflow: "auto" }}>
           {joiner.kind === "none" ? (
             <div style={{ padding: 18, fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>
-              A hard cut — no settings. Pick a transition type on the left to add a fade or wipe.
+              A hard cut — no settings. Pick “Fade through black” on the left to
+              fade out, hold on black, and fade the next scene in.
             </div>
           ) : (
             <div style={{ padding: 14 }}>
@@ -375,12 +329,6 @@ function JoinerEditor({ joiner, userJoiners, prevClip, nextClip, anchorRect, onC
       {/* Footer */}
       <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)",
                      display: "flex", alignItems: "center", gap: 8 }}>
-        {joiner.kind !== "none" && (
-          <Button kind="ghost" size="sm" icon="bookmark-plus"
-                  onClick={() => onSaveAsPreset(joiner)}>
-            Save as preset…
-          </Button>
-        )}
         <div style={{ flex: 1 }} />
         <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>
           total {(FA_DATA.joinerTotalMs(joiner) / 1000).toFixed(2)}s
@@ -506,43 +454,8 @@ function ParamControl({ param, value, onChange }) {
   return null;
 }
 
-// ── Save-as-preset prompt (lightweight inline form) ──────────────
-function SavePresetPrompt({ joiner, onSave, onCancel }) {
-  const [name, setName] = jeState("");
-  const kind = FA_DATA.joinerKind(joiner);
-  return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 40,
-      background: "rgba(0,0,0,0.65)",
-      display: "grid", placeItems: "center",
-    }} onClick={onCancel}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: 420, background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: 10, padding: 18, display: "flex", flexDirection: "column", gap: 14,
-        boxShadow: "var(--elev-3)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Icon name="bookmark-plus" size={16} style={{ color: "var(--accent-warm)" }} />
-          <span style={{ fontSize: 14, fontWeight: 600 }}>Save joiner as preset</span>
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
-          Builds on <strong style={{ color: "var(--text)" }}>{kind.label}</strong>.
-          Your preset will appear in the Joiner picker and on the Joiners tab.
-        </div>
-        <Field label="Name">
-          <TextInput value={name} onChange={setName} placeholder="e.g. Quick fade · 0.4s" />
-        </Field>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Button kind="ghost" size="sm" onClick={onCancel}>Cancel</Button>
-          <Button kind="primary" size="sm" disabled={!name.trim()}
-                  onClick={() => onSave(name.trim())}>Save preset</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-Object.assign(window, { JoinerEditor, SavePresetPrompt, makeJoinerFromKind, makeJoinerFromPreset });
+Object.assign(window, { JoinerEditor, makeJoinerFromKind });
 
 
-export { AnimatedJoinerPreview, ClipPanel, JoinerEditor, ParamControl, SavePresetPrompt, TimingVisual, computePos, makeJoinerFromKind, makeJoinerFromPreset, renderJoinerFrame };
+export { AnimatedJoinerPreview, ClipPanel, JoinerEditor, ParamControl, TimingVisual,
+         computePos, makeJoinerFromKind, renderJoinerFrame };

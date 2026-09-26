@@ -2,15 +2,15 @@
 import React from 'react';
 import { FAGlyph } from './AppShell';
 import { Button, Icon, Pill } from './primitives';
+import { APP_VERSION_LABEL } from './version';
 
 // ── Home / launcher ───────────────────────────────────────────────
 // Replaces the old "Project" pipeline tab. Pre-pipeline landing: start a
 // new compilation, open an existing .forgeproject.json, or reopen a recent
 // one. When a project is already loaded (e.g. the demo sample, or work in
 // progress), a "Continue" card jumps straight back into Build.
-function HomeScreen({ recents = [], hasWork, projectName, segCount, sectionCount,
-                      totalLabel, onNew, onOpen, onOpenRecent, onContinue,
-                      onLoadSample }) {
+function HomeScreen({ recents = [], hasWork, projectName, sceneCount,
+                      totalLabel, onNew, onOpen, onOpenRecent, onContinue }) {
   return (
     <div style={{
       flex: 1, minHeight: 0, overflow: "auto", background: "var(--bg)",
@@ -26,11 +26,11 @@ function HomeScreen({ recents = [], hasWork, projectName, segCount, sectionCount
               ForgeAssembler
             </h1>
             <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-              Stitch finished scenes into one compilation — video, funscripts, and haptic-estim audio together.
+              Join finished .forge scenes into one compilation — video, funscripts, and haptic-estim audio together.
             </div>
           </div>
           <div style={{ flex: 1 }} />
-          <Pill tone="accent" dot>Alpha 0.2</Pill>
+          <Pill tone="accent" dot>{APP_VERSION_LABEL}</Pill>
         </div>
 
         {/* Continue current work (only when a project is loaded with clips) */}
@@ -45,7 +45,7 @@ function HomeScreen({ recents = [], hasWork, projectName, segCount, sectionCount
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700 }}>Continue — {projectName}</div>
               <div className="mono" style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2 }}>
-                {sectionCount} section{sectionCount === 1 ? "" : "s"} · {segCount} clips · {totalLabel}
+                {sceneCount} scene{sceneCount === 1 ? "" : "s"} · {totalLabel}
               </div>
             </div>
             <Icon name="arrow-right" size={16} style={{ color: "var(--text-dim)" }} />
@@ -58,7 +58,7 @@ function HomeScreen({ recents = [], hasWork, projectName, segCount, sectionCount
             <Icon name="file-plus" size={22} style={{ color: "var(--accent)" }} />
             <div style={{ fontSize: 14, fontWeight: 700, marginTop: 10 }}>New compilation</div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-              Start empty, then add clips or .forge scenes.
+              Start empty, then add .forge scenes.
             </div>
           </button>
           <button onClick={onOpen} style={cardBtn(false)}>
@@ -69,25 +69,6 @@ function HomeScreen({ recents = [], hasWork, projectName, segCount, sectionCount
             </div>
           </button>
         </div>
-
-        {/* Sample project — design reference, labelled as such. It used to
-            BE the boot state, which meant every launch opened on a
-            compilation the user never made, pointing at files that don't
-            exist. Reachable on purpose is fine; arriving unannounced is not. */}
-        {onLoadSample && (
-          <button onClick={onLoadSample} style={{
-            display: "flex", alignItems: "center", gap: 10, width: "100%",
-            padding: "10px 14px", textAlign: "left", cursor: "pointer",
-            background: "transparent", border: "1px dashed var(--border)",
-            borderRadius: 8, fontFamily: "inherit", color: "var(--text-muted)",
-          }}>
-            <Icon name="flask-conical" size={15} />
-            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Load the sample compilation</span>
-            <span style={{ fontSize: 11.5 }}>
-              — 8 clips of placeholder data, to see the layout. Its files aren't real.
-            </span>
-          </button>
-        )}
 
         {/* Recents */}
         <div>

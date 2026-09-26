@@ -3,7 +3,6 @@ import React from 'react';
 const { useState, useEffect } = React;
 import { FASectionLabel, FATabBody, FATabHeader, fmtTotal } from './AppShell';
 import { ParamControl, TimingVisual } from './JoinerEditor';
-import { Section } from './TitleEditor';
 import { FA_DATA } from './data';
 import { pickFile, videoEncoder } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
@@ -395,9 +394,8 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) 
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <tbody>
               {[
-                ["Sections",      project.sections.length],
-                ["Segments",      flat.length],
-                ["Audio beds",    project.audioBeds.length],
+                ["Scenes",        flat.length],
+                ["Chapters",      flat.length],
                 ["Total duration", fmtTotal(totalMs)],
                 ["Resolution",    project.output.resolution],
                 ["Loudness",      project.output.normalizeAudio ? "−16 LUFS" : "off"],
@@ -625,225 +623,6 @@ function ForgePanel({ project, onForge, forging, progress, forgeStage, totalMs }
   );
 }
 
-// ── Joiners library (utility tab) ─────────────────────────────────
-function JoinersTab({ project, onAddUserJoiner, onUpdateUserJoiner, onRemoveUserJoiner }) {
-  const [authoring, setAuthoring] = React.useState(null);    // { id?, name, builtOn, params }
-  const [previewKind, setPreviewKind] = React.useState(null); // for editing built-in defaults visually
-
-  return (
-    <FATabBody>
-      <FATabHeader
-        eyebrow="Library · Joiners"
-        title="Joiners"
-        subtitle={<>Joiners sit between sections and describe how one ends and the next begins. <strong style={{ color: "var(--text)" }}>Fade out → hold → fade in</strong> is one joiner — the same transition has three timing values you can tune. Author your own presets here and they show up in the inline picker on Build.</>}
-        right={<Button kind="primary" size="sm" icon="plus"
-                       onClick={() => setAuthoring({
-                         name: "", builtOn: "fade_through_black",
-                         params: FA_DATA.JOINER_KINDS.find(k => k.kind === "fade_through_black").defaults,
-                       })}>New joiner</Button>}
-      />
-
-      <FASectionLabel>Built-in kinds</FASectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 24 }}>
-        {FA_DATA.JOINER_KINDS.map(k => (
-          <Card key={k.kind}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8,
-                              background: "var(--surface-2)", border: "1px solid var(--border)",
-                              display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <Icon name={k.icon} size={16} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{k.label}</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.5 }}>{k.desc}</div>
-                {k.params.length > 0 && (
-                  <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {k.params.map(p => (
-                      <span key={p.id} className="mono" style={{
-                        fontSize: 10.5, padding: "1px 7px", borderRadius: 3,
-                        background: "var(--surface-2)", border: "1px solid var(--border)",
-                        color: "var(--text-muted)",
-                      }}>
-                        {p.label}: <span style={{ color: "var(--text)" }}>
-                          {p.kind === "color"
-                            ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                <span style={{ width: 9, height: 9, borderRadius: 2,
-                                                background: k.defaults[p.id], border: "1px solid var(--border-strong)" }} />
-                                {k.defaults[p.id]}
-                              </span>
-                            : `${k.defaults[p.id]}${p.unit || ""}`}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {k.kind !== "none" && (
-                  <Button kind="ghost" size="sm" icon="bookmark-plus"
-                          style={{ marginTop: 10 }}
-                          onClick={() => setAuthoring({
-                            name: "", builtOn: k.kind, params: { ...k.defaults },
-                          })}>
-                    Create preset from this
-                  </Button>
-                )}
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      <FASectionLabel right={<span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>
-        {project.userJoiners?.length || 0} preset{(project.userJoiners?.length || 0) === 1 ? "" : "s"}
-      </span>}>
-        Your joiners
-      </FASectionLabel>
-      {(project.userJoiners?.length || 0) === 0 ? (
-        <div style={{
-          padding: 20, border: "1px dashed var(--border)", borderRadius: 8,
-          color: "var(--text-muted)", fontSize: 12.5, textAlign: "center",
-        }}>
-          No custom joiners yet. Build on a kind above, or click <strong style={{ color: "var(--text)" }}>New joiner</strong> in the top-right.
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {project.userJoiners.map(p => {
-            const builtOn = FA_DATA.JOINER_KINDS.find(k => k.kind === p.builtOn);
-            return (
-              <Card key={p.id} padding={14}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 6,
-                                  background: "rgba(255,140,66,0.12)",
-                                  border: "1px solid rgba(255,140,66,0.3)",
-                                  display: "grid", placeItems: "center", flexShrink: 0 }}>
-                    <Icon name={builtOn?.icon || "bookmark"} size={13}
-                          style={{ color: "var(--accent-warm)" }} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
-                    <div className="mono" style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
-                      {builtOn?.label.toLowerCase()} · {builtOn?.params
-                        .filter(par => par.kind !== "color")
-                        .map(par => `${par.label.toLowerCase()} ${p.params[par.id]}${par.unit || ""}`)
-                        .join(" · ")}
-                    </div>
-                  </div>
-                  <Button kind="ghost" size="sm" icon="pencil"
-                          onClick={() => setAuthoring({ ...p })}>Edit</Button>
-                  <Button kind="ghost" size="icon"
-                          onClick={() => onRemoveUserJoiner(p.id)}><Icon name="trash-2" size={13} /></Button>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {authoring && (
-        <UserJoinerAuthor authoring={authoring}
-                            onCancel={() => setAuthoring(null)}
-                            onSave={(payload) => {
-                              if (payload.id) onUpdateUserJoiner(payload);
-                              else onAddUserJoiner(payload);
-                              setAuthoring(null);
-                            }} />
-      )}
-    </FATabBody>
-  );
-}
-
-function UserJoinerAuthor({ authoring, onCancel, onSave }) {
-  const [draft, setDraft] = React.useState(() => ({ ...authoring }));
-  const kind = FA_DATA.JOINER_KINDS.find(k => k.kind === draft.builtOn);
-  function setParam(id, v) { setDraft(d => ({ ...d, params: { ...d.params, [id]: v } })); }
-  function setBuiltOn(newKind) {
-    const k = FA_DATA.JOINER_KINDS.find(x => x.kind === newKind);
-    setDraft(d => ({ ...d, builtOn: newKind, params: { ...k.defaults } }));
-  }
-  // Build a "joiner" shape so we can reuse the TimingVisual.
-  const joinerShape = { kind: draft.builtOn, ...draft.params };
-  React.useEffect(() => { window.lucide?.createIcons?.(); }, [draft.builtOn]);
-
-  return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 40,
-      background: "rgba(0,0,0,0.65)", display: "grid", placeItems: "center",
-    }} onClick={onCancel}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: 520, maxHeight: "85vh", overflow: "auto",
-        background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: 12, boxShadow: "var(--elev-3)",
-      }}>
-        <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border)",
-                       display: "flex", alignItems: "center", gap: 10 }}>
-          <Icon name="bookmark-plus" size={16} style={{ color: "var(--accent-warm)" }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              {draft.id ? "Edit joiner" : "New joiner"}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-              A reusable preset built on top of a kind, with your own param defaults.
-            </div>
-          </div>
-          <Button kind="ghost" size="icon" onClick={onCancel}><Icon name="x" size={14} /></Button>
-        </div>
-
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Field label="Name">
-            <TextInput value={draft.name}
-                        onChange={(v) => setDraft(d => ({ ...d, name: v }))}
-                        placeholder="e.g. Brand wipe · 0.5s" />
-          </Field>
-          <Field label="Built on">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-              {FA_DATA.JOINER_KINDS.filter(k => k.kind !== "none").map(k => {
-                const active = draft.builtOn === k.kind;
-                return (
-                  <button key={k.kind} onClick={() => setBuiltOn(k.kind)} style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    padding: "5px 10px", borderRadius: 6,
-                    background: active ? "rgba(255,75,75,0.08)" : "var(--surface-2)",
-                    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                    color: active ? "var(--text)" : "var(--text-muted)",
-                    fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
-                  }}><Icon name={k.icon} size={11} /> {k.label}</button>
-                );
-              })}
-            </div>
-          </Field>
-          <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5,
-                          padding: "8px 12px", background: "var(--surface-2)",
-                          border: "1px solid var(--border)", borderRadius: 6 }}>{kind.desc}</div>
-
-          {(draft.builtOn === "fade_through_black" || draft.builtOn === "dip_to_color") && (
-            <TimingVisual joiner={joinerShape} kind={kind} />
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {kind.params.map(p => (
-              <ParamControl key={p.id} param={p}
-                             value={draft.params[p.id] ?? p.default}
-                             onChange={(v) => setParam(p.id, v)} />
-            ))}
-          </div>
-        </div>
-
-        <div style={{ padding: "12px 18px", borderTop: "1px solid var(--border)",
-                       display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Button kind="ghost" size="sm" onClick={onCancel}>Cancel</Button>
-          <Button kind="primary" size="sm" disabled={!draft.name.trim()}
-                  onClick={() => onSave({
-                    ...draft,
-                    id: draft.id || `uj-${Date.now()}`,
-                    name: draft.name.trim(),
-                  })}>
-            {draft.id ? "Save changes" : "Create preset"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Small toggle (used by Project / Channels) ─────────────────────
 function Toggle({ label, checked, disabled, onChange }) {
   return (
@@ -870,7 +649,7 @@ function Toggle({ label, checked, disabled, onChange }) {
   );
 }
 
-Object.assign(window, { OutputTab, ForgeTab, JoinersTab, Toggle });
+Object.assign(window, { OutputTab, ForgeTab, Toggle });
 
 
-export { ChapterMarkersCard, ForgePanel, ForgeTab, JoinersTab, OutputChannelsCard, OutputTab, ResolutionPicker, Toggle, UserJoinerAuthor };
+export { ChapterMarkersCard, ForgePanel, ForgeTab, OutputChannelsCard, OutputTab, ResolutionPicker, Toggle };
