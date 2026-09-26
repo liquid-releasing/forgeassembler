@@ -3,7 +3,7 @@ import React from 'react';
 import { FAAcceptBar, FAStatusBar, FATabBody, FATabStrip, FATopBar, fmtTotal } from './AppShell';
 import { BuildTab, ClipEditor } from './BuildTab';
 import { Inspector } from './Inspector';
-import { JoinerEditor } from './JoinerEditor';
+import { JoinerEditor, makeJoinerFromKind } from './JoinerEditor';
 import { ForgeTab, OutputTab } from './OtherTabs';
 import { HomeScreen } from './HomeScreen';
 import { PreviewBand } from './PreviewBand';
@@ -53,6 +53,14 @@ function App() {
 
   // Joiner being edited: { sectionId, anchorRect } | null.
   const [editingJoiner, setEditingJoiner] = useState(null);
+
+  // What a newly added scene joins with. Adding a folder of sixteen
+  // scenes used to produce fifteen hard cuts and leave the user to click
+  // each boundary in turn — for a compilation, the transition is the
+  // point, so the default is the fade and a cut is what you opt into.
+  // Shown on the Build header rather than inferred, so the rule is
+  // visible before the import rather than discovered after it.
+  const [newSceneJoinerKind, setNewSceneJoinerKind] = useState('fade_through_black');
 
   // ── Project file I/O state ─────────────────────────────────────
   //   savedPath        absolute path of the .forgeproject.json on disk;
@@ -375,11 +383,24 @@ function App() {
     const title = seg.title || '';
     setProject(p => {
       const last = p.sections[p.sections.length - 1];
+      // A section's leading joiner is the transition INTO it, so the
+      // first scene never gets one — there is nothing before it to
+      // transition from.
+      const isFirst = (i) => i === 0;
       if (last && last.segments.length === 0) {
+        const i = p.sections.length - 1;
         return {
           ...p,
-          sections: p.sections.map((s, i) => i === p.sections.length - 1
-            ? { ...s, title: s.title || title, segments: [seg] }
+          sections: p.sections.map((s, idx) => idx === i
+            ? {
+                ...s,
+                title: s.title || title,
+                segments: [seg],
+                // Reusing the empty boot section: it only needs a joiner
+                // if something already plays before it.
+                joiner: isFirst(idx) ? { kind: 'none' }
+                                     : makeJoinerFromKind(newSceneJoinerKind),
+              }
             : s),
         };
       }
@@ -387,7 +408,8 @@ function App() {
         ...p,
         sections: [...p.sections, {
           id: `sec-${Date.now()}`, title, color: '#ff8c42',
-          joiner: { kind: 'none' }, segments: [seg], overlays: [],
+          joiner: makeJoinerFromKind(newSceneJoinerKind),
+          segments: [seg], overlays: [],
         }],
       };
     });
@@ -643,6 +665,8 @@ function App() {
                 onEditJoiner={(sectionId, anchorRect) => setEditingJoiner({ sectionId, anchorRect })}
                 onRenameSection={renameSection}
                 onAddForgeFolder={handleAddForgeFolder}
+                newSceneJoinerKind={newSceneJoinerKind}
+                onSetNewSceneJoinerKind={setNewSceneJoinerKind}
                 onAddForgeScene={handleAddForgeScene}
                 onRemoveSection={handleRemoveSection}
                 onEditClip={(seg) => setEditingClip(seg)} />

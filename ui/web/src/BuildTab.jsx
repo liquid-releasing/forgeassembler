@@ -552,10 +552,56 @@ function EmptyCanvas({ onAddForgeScene }) {
   );
 }
 
+// ── "New scenes join with" picker ─────────────────────────────────
+// Adding a folder of sixteen scenes made fifteen boundaries, and every
+// one of them was a hard cut the user then had to click and change. For
+// a compilation the transition IS the point, so the default is the fade
+// — but the rule is stated on the header rather than inferred, so it can
+// be seen and changed BEFORE the import rather than discovered after it.
+//
+// Only affects scenes added from here on; existing boundaries are left
+// alone, because silently rewriting joiners someone already set is worse
+// than the fifteen clicks.
+function NewSceneJoinerPicker({ value, onChange }) {
+  const opts = FA_DATA.JOINER_KINDS.map(k => ({ kind: k.kind, label: k.label, icon: k.icon }));
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
+                     textTransform: "uppercase", letterSpacing: "0.08em",
+                     whiteSpace: "nowrap" }}>
+        New scenes join with
+      </span>
+      <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 7,
+                    background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+        {opts.map(o => {
+          const active = o.kind === value;
+          return (
+            <button key={o.kind} onClick={() => onChange?.(o.kind)}
+                    title={o.kind === "none"
+                      ? "New scenes cut straight in"
+                      : "New scenes fade out, hold on black, and fade in"}
+                    style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              padding: "4px 9px", borderRadius: 5, cursor: "pointer",
+              fontFamily: "inherit", fontSize: 11.5, fontWeight: 600,
+              background: active ? "var(--accent-warm)" : "transparent",
+              color: active ? "#1a1a1a" : "var(--text-muted)",
+              border: "1px solid transparent",
+            }}>
+              <Icon name={o.icon} size={11} /> {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Build tab ─────────────────────────────────────────────────────
 function BuildTab({ project, selectedIds, onSelect,
                     onEditJoiner, onRenameSection, onAddForgeFolder, onAddForgeScene,
-                    onRemoveSection, onEditClip }) {
+                    onRemoveSection, onEditClip,
+                    newSceneJoinerKind, onSetNewSceneJoinerKind }) {
 
   const scenes = project.sections.filter(s => s.segments.length);
   const totalMs = projectDurationMs(project, FA_DATA.joinerAddedMs);
@@ -568,6 +614,10 @@ function BuildTab({ project, selectedIds, onSelect,
         subtitle="Order the scenes, then click the line between any two to set how one becomes the next. Each scene is a chapter in the output."
         right={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <NewSceneJoinerPicker value={newSceneJoinerKind}
+                                   onChange={onSetNewSceneJoinerKind} />
+            <span style={{ width: 1, alignSelf: "stretch", background: "var(--border)",
+                            margin: "0 2px" }} />
             <Button kind="secondary" size="sm" icon="folder-plus"
                      title="Pick a folder of finished .forge scenes — each becomes its own scene, and its own chapter"
                      onClick={() => onAddForgeFolder?.()}>Add folder&#8230;</Button>
@@ -625,4 +675,5 @@ Object.assign(window, { BuildTab });
 
 
 export { AudioModeBadge, BuildTab, ClipEditor, ClipThumb, DevicePills,
-         Divider, EmptyCanvas, JoinerRow, ROW, SceneList, SceneRow, StatItem };
+         Divider, EmptyCanvas, JoinerRow, NewSceneJoinerPicker, ROW,
+         SceneList, SceneRow, StatItem };
