@@ -80,8 +80,28 @@ def concat_funscripts(parts: Iterable[FunscriptPart]) -> dict:
     for part in parts:
         actions = part.funscript.get("actions") or []
         for a in actions:
+            at = int(a["at"])
+            # A part occupies [0, duration_ms) of the output and nothing
+            # more. An action outside that window describes footage that is
+            # not in the result, so it cannot play where it claims to —
+            # and at a hard cut it lands on top of the NEXT scene.
+            #
+            # This is not hypothetical. A funscript can outlast its own
+            # video: one real bundle's motion track ends at 5,592,934ms
+            # while the video probes at 5,592,730ms, a 204ms overhang
+            # (the track was authored against a duration measured
+            # differently from ffmpeg's). Concatenating two of those with
+            # a cut put the second scene's opening actions BEFORE the
+            # first scene's closing ones. The final sort then interleaved
+            # them, and an 18ms gap between two actions 26 units apart
+            # read as 1,444 units/s — a lurch no content contains.
+            #
+            # A joiner's hold hides this by putting seconds of margin at
+            # the seam, so it only bites on cuts.
+            if at < 0 or at >= part.duration_ms:
+                continue
             out_actions.append({
-                "at": int(a["at"]) + offset_ms,
+                "at": at + offset_ms,
                 "pos": int(a["pos"]),
             })
         if part.chapter_name:

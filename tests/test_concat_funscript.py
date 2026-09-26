@@ -577,3 +577,55 @@ def test_four_phase_electrodes_can_be_vetoed(tmp_path: Path):
         "FOC-Stim 4-phase/out.e1.funscript",
         "FOC-Stim 4-phase/out.e2.funscript",
     }
+
+
+# ── a part cannot spill past its own duration ──────────────────────────
+# A funscript can outlast its own video: one real bundle's motion track
+# ended 204ms after the video probed. Concatenating two of those with a
+# hard CUT put scene two's opening actions before scene one's closing
+# ones, the final sort interleaved them, and an 18ms gap between actions
+# 26 units apart read as 1,444 units/s. A joiner's hold masks it, so this
+# only ever bit on cuts.
+def test_action_past_the_part_duration_is_dropped():
+    # Second action sits beyond this part's 100ms window.
+    a = _fs((0, 0), (50, 100), (150, 20))
+    result = concat_funscripts([FunscriptPart(a, duration_ms=100)])
+    assert result["actions"] == [{"at": 0, "pos": 0}, {"at": 50, "pos": 100}]
+
+
+def test_overhanging_action_cannot_land_inside_the_next_scene():
+    # `a` occupies 0..1000 but its track runs to 1200 — a 200ms overhang.
+    a = _fs((0, 0), (900, 90), (1100, 10), (1200, 95))
+    b = _fs((0, 40), (100, 60))
+    result = concat_funscripts([
+        FunscriptPart(a, duration_ms=1000),
+        FunscriptPart(b, duration_ms=500),
+    ])
+    assert result["actions"] == [
+        {"at": 0, "pos": 0},
+        {"at": 900, "pos": 90},
+        {"at": 1000, "pos": 40},   # scene b starts cleanly at the seam
+        {"at": 1100, "pos": 60},
+    ]
+    # Nothing from `a` survives past the boundary, so no action of the
+    # first scene can appear after the second scene has begun.
+    assert all(x["at"] <= 900 or x["pos"] in (40, 60) for x in result["actions"])
+
+
+def test_action_exactly_at_the_boundary_belongs_to_the_next_part():
+    # An action at exactly duration_ms would share its timestamp with the
+    # next part's first action — a zero-length gap, which reads as
+    # infinite speed. The window is half-open for that reason.
+    a = _fs((0, 10), (100, 90))
+    b = _fs((0, 20))
+    result = concat_funscripts([
+        FunscriptPart(a, duration_ms=100),
+        FunscriptPart(b, duration_ms=100),
+    ])
+    assert result["actions"] == [{"at": 0, "pos": 10}, {"at": 100, "pos": 20}]
+
+
+def test_negative_timestamp_is_dropped():
+    a = _fs((-50, 10), (0, 20), (50, 80))
+    result = concat_funscripts([FunscriptPart(a, duration_ms=100)])
+    assert result["actions"] == [{"at": 0, "pos": 20}, {"at": 50, "pos": 80}]
