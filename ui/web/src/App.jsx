@@ -705,13 +705,11 @@ function App() {
         return (
           <JoinerEditor
             joiner={sec.joiner}
-            userJoiners={project.userJoiners || []}
             prevClip={prevClip}
             nextClip={nextClip}
             anchorRect={editingJoiner.anchorRect}
             onChange={(newJ) => updateSectionJoiner(sec.id, newJ)}
-            onClose={() => setEditingJoiner(null)}
-            onSaveAsPreset={(j) => setSavePresetFor({ joiner: j })} />
+            onClose={() => setEditingJoiner(null)} />
         );
       })()}
       {/* ── Project I/O dialogs ── */}

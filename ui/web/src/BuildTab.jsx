@@ -5,7 +5,8 @@ import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
 import { Button, Field, Icon, Pill, TextInput } from './primitives';
 import { toMediaUrl } from './lib/mediaUrl';
-import { channelGapsFor, effectiveDurMs, projectDurationMs } from './lib/projectAdapter';
+import { channelGapsFor, channelName, effectiveDurMs,
+         projectDurationMs } from './lib/projectAdapter';
 
 // ForgeAssembler — Build tab.
 //
@@ -25,6 +26,17 @@ const { useState: bsState, useRef: bsRef, useEffect: bsUseEffect } = React;
 // ── Row metrics ───────────────────────────────────────────────────
 // One set, not three switchable ones.
 const ROW = { thumb: 76, pad: "12px 14px", gap: 10, font: 13, sub: 11.5 };
+
+// Which raw channel names belong to which device group. These lived next
+// to the (now deleted) ChannelChip and went out with it, which left
+// bucketChannels referencing two names that no longer existed — a crash
+// on the first scene row, because nothing evaluates it until one renders.
+const _MULTI_AXIS = new Set(["surge", "sway", "twist", "roll", "pitch"]);
+const _DEVICE_META = {
+  stroke:    { label: "Stroke",     color: "#ff7b7b" },
+  multiaxis: { label: "Multi-axis", color: "#4dabf7" },
+  estim:     { label: "E-Stim",     color: "#3ed598" },
+};
 
 function bucketChannels(channels) {
   const g = { stroke: [], multiaxis: [], estim: [] };

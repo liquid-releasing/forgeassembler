@@ -1,7 +1,7 @@
 {
   "name": "forgeassembler-tauri",
   "version": "0.1.0-alpha",
-  "description": "ForgeAssembler \u2014 Tauri + React desktop app",
+  "description": "ForgeAssembler — Tauri + React desktop app",
   "private": true,
   "type": "module",
   "scripts": {
@@ -26,6 +26,8 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.5",
+    "globals": "^17.12.0",
     "vite": "^6.0.3",
     "vitest": "^4.1.7"
   }
