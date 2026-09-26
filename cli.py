@@ -718,6 +718,12 @@ def cmd_forge(args: argparse.Namespace) -> int:
     # are coming, so it doesn't have to guess our stage count from its own
     # copy of the project. `meta:` lines carry data, not stage text — the
     # footer shows `progress:` lines only.
+    # Stages that failed without being fatal. These ride out on the JSON
+    # summary so the UI can say which outputs are missing: a forge that
+    # quietly produces less than it was asked for is worse than one that
+    # says so.
+    warnings: list[str] = []
+
     stage_total, weights = forge_stage_plan(out)
     emit(
         f"meta: duration_ms={layout.total_duration_ms} "
@@ -819,11 +825,20 @@ def cmd_forge(args: argparse.Namespace) -> int:
                 project, layout, ffmpeg_exe=ffmpeg_exe,
             )
         except Exception as e:  # noqa: BLE001
+            # Warn and carry on, for the same reason the .forge packaging
+            # below does: the video is already on disk and is what the user
+            # waited hours for. This used to `return 3`, so a single failed
+            # ffmpeg spawn at the e-stim stage threw away the .forge bundle
+            # too — and the only way to get it back was to re-encode the
+            # whole video. Observed for real: a 16-minute 4K render lost its
+            # bundle to a transient 0xC0000142 (the OS refusing to start one
+            # more process), with nothing wrong with the audio at all.
             print(
-                f"ERROR: audio-estim concat failed: {e}",
+                f"WARNING: audio-estim concat failed: {e}",
                 file=sys.stderr,
             )
-            return 3
+            warnings.append(f"e-stim audio was not written: {e}")
+            written_audio = []
         forged_audio = list(written_audio or [])
         if written_audio:
             summary["audio_estim"] = [str(p) for p in written_audio]
@@ -871,6 +886,12 @@ def cmd_forge(args: argparse.Namespace) -> int:
         finally:
             if thumb_dir:
                 shutil.rmtree(thumb_dir, ignore_errors=True)
+
+    if warnings:
+        summary["warnings"] = warnings
+        for w in warnings:
+            print(f"WARNING: {w}", file=sys.stderr)
+        say(f"Finished with {len(warnings)} warning(s) — see above.")
 
     emit("progress: done")
     if as_json:

@@ -437,3 +437,95 @@ def test_discovery_sees_channels_only_the_bundle_supplies(tmp_path):
     project = Project(sections=[Section(id="sec", segments=[seg])])
     layout = lay_out(project, probe=lambda _p: 10_000)
     assert "prostate.mp3" in discover_channels_in_layout(project, layout)
+
+
+# ── OS-level spawn failures ───────────────────────────────────────────
+# Observed for real: forging a 4K compilation on a machine with ~460
+# processes and 320k open handles, Windows refused to create one more
+# process and reported 0xC0000142 (STATUS_DLL_INIT_FAILED) in place of an
+# exit code. ffmpeg never ran. Nothing was wrong with the audio.
+
+def test_a_real_ffmpeg_failure_is_not_retried():
+    from forgeassembler_core import concat_audio_estim as m
+
+    calls = []
+
+    def fake_run(argv, **kw):
+        calls.append(argv)
+
+        class R:
+            returncode = 1
+            stdout = "Invalid argument"
+
+        return R()
+
+    import subprocess
+
+    orig = subprocess.run
+    subprocess.run = fake_run
+    try:
+        result = m._run_with_startup_retry(["ffmpeg"])
+    finally:
+        subprocess.run = orig
+
+    assert result.returncode == 1
+    assert len(calls) == 1, "ffmpeg's own verdict must stand the first time"
+
+
+def test_a_refused_process_start_is_retried():
+    from forgeassembler_core import concat_audio_estim as m
+
+    calls = []
+
+    def fake_run(argv, **kw):
+        calls.append(argv)
+
+        class R:
+            # Fail to start twice, then succeed.
+            returncode = 0xC0000142 if len(calls) < 3 else 0
+            stdout = ""
+
+        return R()
+
+    import subprocess
+
+    orig_run, orig_pause = subprocess.run, m._STARTUP_RETRY_PAUSE_S
+    subprocess.run = fake_run
+    m._STARTUP_RETRY_PAUSE_S = 0.0
+    try:
+        result = m._run_with_startup_retry(["ffmpeg"])
+    finally:
+        subprocess.run = orig_run
+        m._STARTUP_RETRY_PAUSE_S = orig_pause
+
+    assert result.returncode == 0
+    assert len(calls) == 3, "should retry a refused start, then succeed"
+
+
+def test_retries_are_bounded():
+    from forgeassembler_core import concat_audio_estim as m
+
+    calls = []
+
+    def fake_run(argv, **kw):
+        calls.append(argv)
+
+        class R:
+            returncode = 0xC0000142
+            stdout = ""
+
+        return R()
+
+    import subprocess
+
+    orig_run, orig_pause = subprocess.run, m._STARTUP_RETRY_PAUSE_S
+    subprocess.run = fake_run
+    m._STARTUP_RETRY_PAUSE_S = 0.0
+    try:
+        result = m._run_with_startup_retry(["ffmpeg"])
+    finally:
+        subprocess.run = orig_run
+        m._STARTUP_RETRY_PAUSE_S = orig_pause
+
+    assert result.returncode == 0xC0000142
+    assert len(calls) == 1 + m._STARTUP_RETRIES, "must give up, not spin"

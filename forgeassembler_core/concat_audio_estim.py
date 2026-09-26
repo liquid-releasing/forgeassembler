@@ -20,6 +20,8 @@ Two entry points mirror the funscript / video sides:
 
 from __future__ import annotations
 
+import sys
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -270,6 +272,54 @@ def build_audio_estim_command(
     )
 
 
+# Exit codes that mean ffmpeg never actually ran: Windows failed to create
+# the process and reported an NTSTATUS in place of a program exit code.
+# Observed in the wild as 0xC0000142 (STATUS_DLL_INIT_FAILED) while forging
+# a 4K compilation on a machine with ~460 processes and 320k open handles —
+# the loader could not start one more console process. Nothing was wrong
+# with the audio, the project, or the command; the next attempt succeeds.
+#
+# These are worth retrying precisely because they are NOT ffmpeg's verdict
+# on the work. A genuine ffmpeg failure (bad filter, missing input) exits
+# with a small code and says why, and must fail the first time, every time.
+_PROCESS_STARTUP_FAILURES = frozenset({
+    0xC0000142,  # STATUS_DLL_INIT_FAILED
+    0xC0000017,  # STATUS_NO_MEMORY
+    0xC0000018,  # STATUS_CONFLICTING_ADDRESSES
+})
+
+_STARTUP_RETRIES = 2
+_STARTUP_RETRY_PAUSE_S = 3.0
+
+
+def _run_with_startup_retry(argv: list[str]):
+    """Run ffmpeg, retrying only when the OS refused to start the process."""
+    import subprocess  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    attempt = 0
+    while True:
+        result = subprocess.run(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        code = result.returncode & 0xFFFFFFFF if result.returncode else 0
+        if code not in _PROCESS_STARTUP_FAILURES or attempt >= _STARTUP_RETRIES:
+            return result
+        attempt += 1
+        print(
+            f"WARNING: the OS would not start ffmpeg (0x{code:08X}); "
+            f"retrying in {_STARTUP_RETRY_PAUSE_S:.0f}s "
+            f"({attempt}/{_STARTUP_RETRIES})",
+            file=sys.stderr,
+        )
+        time.sleep(_STARTUP_RETRY_PAUSE_S)
+
+
 def forge_audio_estim(
     project: "Project",
     layout: "Layout",
@@ -309,14 +359,7 @@ def forge_audio_estim(
             project, layout, channel_key, str(out_path),
         )
         argv = cmd.to_argv(exe)
-        result = subprocess.run(
-            argv,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        result = _run_with_startup_retry(argv)
         if result.returncode != 0:
             tail = "\n".join(result.stdout.splitlines()[-40:])
             raise RuntimeError(
