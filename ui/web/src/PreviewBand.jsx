@@ -4,7 +4,8 @@ const { useMemo, useRef } = React;
 import { fmtTotal } from './AppShell';
 import { Icon } from './primitives';
 import { previewProject } from './api/forge';
-import { projectChannelCoverage, segmentHasChannel, toForgeProject } from './lib/projectAdapter';
+import { effectiveDurMs, projectChannelCoverage, segmentHasChannel,
+         toForgeProject } from './lib/projectAdapter';
 
 // Sticky preview band — sits just above the Accept/Forge bar.
 //
@@ -264,7 +265,7 @@ function SectionBoundaries({ project, totalMs }) {
   const marks = [];
   for (const sec of project.sections) {
     if (cursor > 0) marks.push({ t: cursor / totalMs, color: sec.color });
-    for (const seg of sec.segments) cursor += seg.durMs;
+    for (const seg of sec.segments) cursor += effectiveDurMs(seg);
   }
   return (
     <>

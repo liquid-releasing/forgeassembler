@@ -217,6 +217,49 @@ export function timecodeToMs(tc) {
   return (((+h * 60) + +mm) * 60 + +ss) * 1000 + Number(frac.padEnd(3, '0'));
 }
 
+// ── how long a scene actually contributes ──────────────────────────────
+// `durMs` on the view model is the SOURCE duration: it comes from the
+// bundle's duration_ms or a `probe`, and nothing rewrites it when the user
+// trims. So summing `durMs` over the scenes answers "how long are these
+// videos", not "how long is the compilation" — and every number the UI
+// showed was the untrimmed one: total duration, the chapter times on each
+// row, the Forge estimate.
+//
+// The forge itself was always right (Segment.effective_duration_ms in
+// forgeassembler_core/project.py does this same arithmetic), so this was
+// the UI disagreeing with the output it was about to produce, right next
+// to a pill saying "trimmed".
+//
+// Mirrors the engine deliberately: trim_end or source, minus trim_start,
+// never negative.
+export function effectiveDurMs(seg) {
+  if (!seg) return 0;
+  const source = seg.durMs || 0;
+  const start = seg.trimStartMs || 0;
+  const end = seg.trimEndMs == null ? source : seg.trimEndMs;
+  return Math.max(0, end - start);
+}
+
+// Total runtime of the compilation: every scene's contribution plus the
+// bridge each joiner inserts between them.
+//
+// `joinerAddedMs` must be the ADDED time, not the transition's visual span.
+// A fade's fade-out and fade-in happen inside the neighbouring scenes and
+// add nothing; only the hold is new output. Pass FA_DATA.joinerAddedMs, not
+// joinerTotalMs.
+//
+// The first section's leading joiner is not a transition into anything, so
+// it never counts.
+export function projectDurationMs(project, joinerAddedMs) {
+  if (!project?.sections) return 0;
+  let total = 0;
+  project.sections.forEach((sec, i) => {
+    total += sec.segments.reduce((a, s) => a + effectiveDurMs(s), 0);
+    if (i > 0 && sec.joiner && joinerAddedMs) total += joinerAddedMs(sec.joiner);
+  });
+  return total;
+}
+
 // ── segment ───────────────────────────────────────────────────────────
 function segToReal(seg) {
   const isStill = seg.kind === 'still' || IMAGE_EXT.test(seg.file || '');

@@ -50,11 +50,32 @@
   function joinerKind(j) {
     return JOINER_KINDS.find(k => k.kind === j.kind) || JOINER_KINDS[0];
   }
+  // How long the transition READS as: fade out, hold, fade in. This is what
+  // the joiner row and the editor footer show, because it is the span the
+  // user is authoring.
   function joinerTotalMs(j) {
     if (j.kind === "none") return 0;
     if (FADE_KINDS.includes(j.kind)) {
       return Math.round(((j.fadeOutS || 0) + (j.holdS || 0) + (j.fadeInS || 0)) * 1000);
     }
+    return Math.round((j.durationS || 0) * 1000);
+  }
+
+  // How much time the joiner ADDS to the output — which is only the hold.
+  //
+  // The engine is explicit about this in its own params_schema: `fade_s` is
+  // "applied within the existing segments — does not add to the output
+  // duration", while `duration_s` is the solid-colour bridge between them.
+  // Measured on a real forge: two 40s scenes with a 1s/2s/1s fade produced
+  // 82.03s, and the chapters landed at 0-42000 and 42000-82000. Scene plus
+  // HOLD, not scene plus the whole transition.
+  //
+  // Using joinerTotalMs for duration arithmetic over-reported every total
+  // and every chapter time by fade-out + fade-in per boundary — 2s each
+  // with the default fade.
+  function joinerAddedMs(j) {
+    if (j.kind === "none") return 0;
+    if (FADE_KINDS.includes(j.kind)) return Math.round((j.holdS || 0) * 1000);
     return Math.round((j.durationS || 0) * 1000);
   }
   function joinerShortLabel(j) {
@@ -66,7 +87,7 @@
 
   const FA_DATA = {
     JOINER_KINDS,
-    joinerKind, joinerTotalMs, joinerShortLabel,
+    joinerKind, joinerTotalMs, joinerAddedMs, joinerShortLabel,
   };
   window.FA_DATA = FA_DATA;
 })();

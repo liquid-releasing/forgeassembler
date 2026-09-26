@@ -8,10 +8,12 @@ import { ForgeTab, OutputTab } from './OtherTabs';
 import { HomeScreen } from './HomeScreen';
 import { PreviewBand } from './PreviewBand';
 import { OpenProjectDialog, SaveAsDialog, UnsavedChangesDialog } from './ProjectIO';
+import { FA_DATA } from './data';
 import { loadProject, saveProject, pickFolder, pickFile, detectForgeFolder, probeDuration,
          forgeProject, onForgeProgress, revealPath, validateProject,
          importForgeBundle } from './api/forge';
-import { fromForgeProject, toForgeProject, fromForgeBundleSegment } from './lib/projectAdapter';
+import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
+         projectDurationMs } from './lib/projectAdapter';
 import { parseProgressLine } from './lib/forgeProgress';
 import { DragDropProvider, reorderSectionInProject } from './dragdrop';
 
@@ -425,7 +427,7 @@ function App() {
 
   const flatSegments = project.sections.flatMap(s => s.segments);
   const sceneCount = project.sections.filter(s => s.segments.length).length;
-  const totalMs = flatSegments.reduce((a, s) => a + s.durMs, 0);
+  const totalMs = projectDurationMs(project, FA_DATA.joinerAddedMs);
   const selectedSegs = flatSegments.filter(s => selectedIds.includes(s.id));
 
   function selectClip(id) { setSelectedIds([id]); }

@@ -6,7 +6,7 @@ import { ParamControl, TimingVisual } from './JoinerEditor';
 import { FA_DATA } from './data';
 import { pickFile, videoEncoder } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
-import { projectChannelCoverage, segmentHasChannel } from './lib/projectAdapter';
+import { effectiveDurMs, projectChannelCoverage, segmentHasChannel } from './lib/projectAdapter';
 
 // Sketched other pipeline tabs. Intentionally light — the Build tab is
 // where the design work is concentrated; these convey the structure
@@ -470,14 +470,13 @@ function ChapterMarkersCard({ project }) {
   let cursor = 0;
   const rows = project.sections.map((sec, i) => {
     const start = cursor;
-    const dur = sec.segments.reduce((a, s) => a + s.durMs, 0);
+    const dur = sec.segments.reduce((a, s) => a + effectiveDurMs(s), 0);
     cursor += dur;
-    if (i < project.sections.length - 1) {
-      const nextJoiner = project.sections[i + 1].joiner;
-      if (nextJoiner && nextJoiner.kind !== "none") {
-        cursor += FA_DATA.joinerTotalMs(nextJoiner);
-      }
-    }
+    // Only the joiner's hold advances the timeline; see FA_DATA.joinerAddedMs.
+    // This card is where a user checks where the chapters will land, so it
+    // was the worst place to be 2s per boundary out.
+    const nextJoiner = project.sections[i + 1]?.joiner;
+    if (nextJoiner) cursor += FA_DATA.joinerAddedMs(nextJoiner);
     return { sec, idx: i, start, dur };
   });
 

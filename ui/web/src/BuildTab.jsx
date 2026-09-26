@@ -5,7 +5,7 @@ import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
 import { Button, Field, Icon, Pill, TextInput } from './primitives';
 import { toMediaUrl } from './lib/mediaUrl';
-import { channelGapsFor } from './lib/projectAdapter';
+import { channelGapsFor, effectiveDurMs, projectDurationMs } from './lib/projectAdapter';
 
 // ForgeAssembler — Build tab.
 //
@@ -484,9 +484,9 @@ function SceneList({ project, selectedIds, onSelect, onEditJoiner, onRenameSecti
   const starts = {};
   for (let i = 0; i < project.sections.length; i++) {
     starts[project.sections[i].id] = cursor;
-    cursor += project.sections[i].segments.reduce((a, s) => a + s.durMs, 0);
+    cursor += project.sections[i].segments.reduce((a, s) => a + effectiveDurMs(s), 0);
     const nextJoiner = project.sections[i + 1]?.joiner;
-    if (nextJoiner && nextJoiner.kind !== "none") cursor += FA_DATA.joinerTotalMs(nextJoiner);
+    if (nextJoiner) cursor += FA_DATA.joinerAddedMs(nextJoiner);
   }
 
   // A section with no clip is the empty boot state, not a scene.
@@ -546,7 +546,7 @@ function BuildTab({ project, selectedIds, onSelect,
                     onRemoveSection, onEditClip }) {
 
   const scenes = project.sections.filter(s => s.segments.length);
-  const totalMs = project.sections.flatMap(s => s.segments).reduce((a, s) => a + s.durMs, 0);
+  const totalMs = projectDurationMs(project, FA_DATA.joinerAddedMs);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, paddingBottom: 4 }}>

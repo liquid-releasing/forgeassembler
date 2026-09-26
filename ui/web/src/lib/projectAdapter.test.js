@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toForgeProject, fromForgeProject, fromDetected, fromForgeBundleSegment,
   msToTimecode, timecodeToMs, segmentHasChannel,
+  effectiveDurMs, projectDurationMs,
   channelGroup, projectChannelCoverage, channelGapsFor, NEUTRAL_KELVIN,
   channelName, channelStation, stationLabel,
   joinerToReal, joinerFromReal, ENGINE_JOINER_TYPES,
@@ -808,5 +809,76 @@ describe('the .forge output flags', () => {
     const real = toForgeProject({ ...vm, sections: [], audioBeds: [] });
     expect(real.output.produce_forge_bundle).toBe(false);
     expect(real.output.produce_forge_bundle_media).toBe(true);
+  });
+});
+
+
+// ── how long the compilation actually is ───────────────────────────────
+// `durMs` is the SOURCE duration and nothing rewrites it on a trim, so
+// summing it reported the untrimmed runtime everywhere: the total, each
+// row's chapter time, the forge estimate. The engine was always right
+// (Segment.effective_duration_ms), so the UI disagreed with the output it
+// was about to produce — while showing a "trimmed" pill on the same row.
+describe('effective duration', () => {
+  it('is the source duration when nothing is trimmed', () => {
+    expect(effectiveDurMs({ durMs: 40000 })).toBe(40000);
+    expect(effectiveDurMs({ durMs: 40000, trimStartMs: 0, trimEndMs: null })).toBe(40000);
+  });
+
+  it('drops what the trim throws away at each end', () => {
+    expect(effectiveDurMs({ durMs: 40000, trimStartMs: 5000 })).toBe(35000);
+    expect(effectiveDurMs({ durMs: 40000, trimEndMs: 30000 })).toBe(30000);
+    expect(effectiveDurMs({ durMs: 40000, trimStartMs: 5000, trimEndMs: 30000 })).toBe(25000);
+  });
+
+  it('never goes negative on an inverted window', () => {
+    expect(effectiveDurMs({ durMs: 40000, trimStartMs: 30000, trimEndMs: 10000 })).toBe(0);
+  });
+
+  it('survives a segment whose duration has not been probed yet', () => {
+    expect(effectiveDurMs({})).toBe(0);
+    expect(effectiveDurMs(null)).toBe(0);
+  });
+
+  it('adds only the joiner HOLD, which is the measured output length', () => {
+    // Two 40s scenes with a 1s/2s/1s fade between them. The real forge
+    // produced 82.03s and put its chapters at 0-42000 / 42000-82000: scene
+    // plus HOLD. The fades happen inside the neighbouring scenes and add
+    // nothing, which the engine's own params_schema says outright.
+    //
+    // Passing the transition's full 4s span here instead would claim 84s
+    // for a file that is 82s long.
+    const project = {
+      sections: [
+        { id: 'a', joiner: { kind: 'none' }, segments: [{ id: 's1', durMs: 40000 }] },
+        { id: 'b',
+          joiner: { kind: 'fade_through_black', fadeOutS: 1, holdS: 2, fadeInS: 1 },
+          segments: [{ id: 's2', durMs: 40000 }] },
+      ],
+    };
+    const addedMs = (j) => (j.kind === 'none' ? 0 : Math.round((j.holdS || 0) * 1000));
+    expect(projectDurationMs(project, addedMs)).toBe(82000);
+
+    // The leading joiner of the FIRST scene is not a transition into
+    // anything, so it must never be counted.
+    project.sections[0].joiner = { kind: 'fade_through_black', fadeOutS: 5, holdS: 5, fadeInS: 5 };
+    expect(projectDurationMs(project, addedMs)).toBe(82000);
+  });
+
+  it('counts the trimmed length of each scene, not the source', () => {
+    const project = {
+      sections: [
+        { id: 'a', joiner: { kind: 'none' },
+          segments: [{ id: 's1', durMs: 40000, trimStartMs: 10000 }] },
+        { id: 'b', joiner: { kind: 'none' },
+          segments: [{ id: 's2', durMs: 40000, trimEndMs: 15000 }] },
+      ],
+    };
+    expect(projectDurationMs(project, () => 0)).toBe(30000 + 15000);
+  });
+
+  it('is zero for an empty project rather than throwing', () => {
+    expect(projectDurationMs({ sections: [] }, () => 0)).toBe(0);
+    expect(projectDurationMs(null, () => 0)).toBe(0);
   });
 });
