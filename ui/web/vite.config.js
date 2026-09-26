@@ -1,8 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 
 const host = process.env.TAURI_DEV_HOST;
+
+// The version the UI shows comes from package.json, which is one of the
+// four files `scripts/bump_version.py` writes. It used to be three
+// hardcoded strings in the source, so the window said "v0.2.0-alpha"
+// while package.json said 0.1.0-alpha, and CI's `--dev-stamp` — the whole
+// point of which is that a test build cannot be mistaken for a release —
+// never reached the screen at all.
+const pkg = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf-8'));
 
 // ForgeAssembler's Tauri front-end.
 //
@@ -30,6 +40,9 @@ export default defineConfig({
     // this one shared file and let Vite do a normal module reload instead.
     exclude: /[\\/]forgemoment[\\/]src[\\/]MediaViewer\.jsx$/,
   })],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   clearScreen: false,
   resolve: {
     alias: [
