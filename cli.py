@@ -621,6 +621,33 @@ def cmd_new_project(args: argparse.Namespace) -> int:
     return 0
 
 
+# Each forge stage's share of the wall clock, so the UI can size its slice
+# of the progress bar. Equal slices made the bar crawl to 25% across the
+# sixteen minutes of a 4K encode and then leap to 100% in the last ninety
+# seconds: monotonic, and useless as an estimate — a user watching "22%"
+# had no way to know the render was nearly done.
+#
+# Measured on a 59-minute 4K compilation (2 scenes, 3 e-stim channels):
+# video ~16min, funscripts seconds, e-stim audio ~2min, bundle ~1.5min.
+# These are ratios rather than seconds, normalised over whichever stages
+# are actually enabled, so a funscripts-only run still fills the whole bar.
+#
+# The stage ORDER here must match the order cmd_forge runs them in.
+STAGE_COSTS = (
+    ("produce_video", 80.0),
+    ("produce_funscripts", 2.0),
+    ("produce_audio_estim", 10.0),
+    ("produce_forge_bundle", 8.0),
+)
+
+
+def forge_stage_plan(out) -> tuple[int, str]:
+    """(stage count, comma-separated weights) for an Output's enabled stages."""
+    costs = [c for attr, c in STAGE_COSTS if bool(getattr(out, attr, False))]
+    total = sum(costs) or 1.0
+    return len(costs), ",".join(f"{c / total:.4f}" for c in costs)
+
+
 def cmd_forge(args: argparse.Namespace) -> int:
     path = Path(args.project)
     if not path.is_file():
@@ -691,13 +718,11 @@ def cmd_forge(args: argparse.Namespace) -> int:
     # are coming, so it doesn't have to guess our stage count from its own
     # copy of the project. `meta:` lines carry data, not stage text — the
     # footer shows `progress:` lines only.
-    stage_total = sum((
-        bool(out.produce_video),
-        bool(out.produce_funscripts),
-        bool(out.produce_audio_estim),
-        bool(out.produce_forge_bundle),
-    ))
-    emit(f"meta: duration_ms={layout.total_duration_ms} stages={stage_total}")
+    stage_total, weights = forge_stage_plan(out)
+    emit(
+        f"meta: duration_ms={layout.total_duration_ms} "
+        f"stages={stage_total} weights={weights}"
+    )
 
     # Resolve "source" resolution by probing the first video segment.
     resolution_override = None

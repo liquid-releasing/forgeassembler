@@ -13,11 +13,12 @@ import { loadProject, saveProject, pickFolder, pickFile, detectForgeFolder, prob
          forgeProject, onForgeProgress, revealPath, validateProject,
          importForgeBundle } from './api/forge';
 import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
-         projectDurationMs } from './lib/projectAdapter';
-import { parseProgressLine } from './lib/forgeProgress';
+         projectDurationMs, projectSignature } from './lib/projectAdapter';
+import { parseProgressLine, stageProgress } from './lib/forgeProgress';
+import { markForgedGate } from './lib/forgeGate';
 import { DragDropProvider, reorderSectionInProject } from './dragdrop';
 
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 // A brand-new, empty project — the state the app boots into.
 function emptyProject() {
@@ -46,6 +47,10 @@ function App() {
   const [forging, setForging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [forgeStage, setForgeStage] = useState(null); // live progress line from the backend
+  // The signature of the project that was last forged successfully, or null
+  // if nothing has been. Compared against the live project to tell a
+  // finished render from a stale one — see lib/forgeGate.js.
+  const [forgedSig, setForgedSig] = useState(null);
 
   // Editable project state. Starts empty; Home's New / Open / recents
   // fill it with the user's own work.
@@ -243,6 +248,43 @@ function App() {
     setPendingAfterSave(null);
     setIoDialog("open");
   }
+  // A saved .forgeproject.json carries NO durations. The engine probes every
+  // video itself at forge time, so nothing ever had a reason to write them
+  // down — but the UI needs them, and only the *add* path was probing. The
+  // result: every reopened project showed 0.0s on each scene and a total of
+  // just the joiner holds ("0:03" for a 59-minute compilation), while the
+  // forge quietly produced the correct file. Nothing was wrong with the
+  // output; the canvas simply had no idea how long anything was.
+  //
+  // Probes are deduped in api/forge.js, so several scenes cut from one
+  // source cost a single call. This is cached data, not an edit, so it
+  // deliberately does not markDirty().
+  async function hydrateDurations(vm) {
+    const files = new Set();
+    for (const sec of vm.sections || []) {
+      for (const seg of sec.segments || []) {
+        if (seg.file && !seg.durMs) files.add(seg.file);
+      }
+    }
+    if (!files.size) return;
+    const pairs = await Promise.all([...files].map(async (f) => {
+      try { return [f, await probeDuration(f)]; } catch { return [f, 0]; }
+    }));
+    const byFile = new Map(pairs.filter(([, ms]) => ms > 0));
+    if (!byFile.size) return;
+    setProject(p => ({
+      ...p,
+      sections: p.sections.map(s => ({
+        ...s,
+        segments: s.segments.map(seg => (
+          !seg.durMs && seg.file && byFile.has(seg.file)
+            ? { ...seg, durMs: byFile.get(seg.file) }
+            : seg
+        )),
+      })),
+    }));
+  }
+
   async function handleOpenProject({ path, name }) {
     // Real load: read the .forgeproject.json via the bridge and adapt the
     // snake_case schema into the camelCase view-model. loadProject() returns
@@ -268,6 +310,9 @@ function App() {
       setLastSavedAtMs(Date.now());
       pushRecent(path, vm.name || name);
       setTab('build');
+      // Not awaited: the canvas should appear at once and fill in its
+      // durations a moment later, exactly as it does after an import.
+      hydrateDurations(vm).catch(e => console.warn('[open] duration probe failed', e));
     } catch (e) {
       console.error('[open] failed', e);
       setIoError(`Couldn't open ${path}: ${e?.message || e}`);
@@ -450,6 +495,12 @@ function App() {
   const flatSegments = project.sections.flatMap(s => s.segments);
   const sceneCount = project.sections.filter(s => s.segments.length).length;
   const totalMs = projectDurationMs(project, FA_DATA.joinerAddedMs);
+
+  // Whether "Mark forged" may be pressed. Memoized on the project because
+  // this stringifies it, and App re-renders on every ffmpeg progress tick
+  // during a forge.
+  const sig = useMemo(() => projectSignature(project), [project]);
+  const markForged = markForgedGate({ forging, sig, forgedSig });
   const selectedSegs = flatSegments.filter(s => selectedIds.includes(s.id));
 
   function selectClip(id) { setSelectedIds([id]); }
@@ -589,13 +640,23 @@ function App() {
     let stage = 0;          // 1-based index of the stage in flight
     let durationMs = 0;     // output length, from the CLI's `meta:` line
     let shown = 0;          // last value pushed — the bar never walks back
+    // Each stage's share of the bar, in stage order, from the CLI. Equal
+    // slices were badly wrong: the video encode is the overwhelming
+    // majority of the wall clock but was worth only 1/4 of the bar, so a
+    // 4K render sat at "22%" while nearly finished. Null until `meta:`
+    // arrives, and for an older CLI that never sends it — equal slices
+    // then, which is the old behaviour rather than a broken one.
+    let weights = null;
     const advance = (frac) => {
-      const v = Math.min(0.95,
-        (Math.max(0, stage - 1) + Math.min(1, Math.max(0, frac))) / stageCount);
+      const v = stageProgress({ stage, stageCount, weights, frac });
       if (v > shown) { shown = v; setProgress(v); }
     };
 
     setIoError(null);
+    // The project as the engine is about to see it, captured before the
+    // render starts. Editing the canvas while ffmpeg runs must not leave a
+    // finished file looking current.
+    const renderedSig = sig;
     setForging(true); setProgress(0); setForgeStage('Starting…');
     let unlisten = () => {};
     try {
@@ -605,6 +666,7 @@ function App() {
         if (ev.kind === 'meta') {
           if (ev.durationMs) durationMs = ev.durationMs;
           if (ev.stages) stageCount = Math.max(1, ev.stages);
+          if (ev.weights) weights = ev.weights;
           return;
         }
         if (ev.kind === 'stage') {
@@ -621,6 +683,8 @@ function App() {
       let summary = null;
       try { summary = JSON.parse(summaryStr); } catch { /* non-JSON summary */ }
       shown = 1; setProgress(1); setForgeStage('Done');
+      // Record WHAT was rendered, not merely that a render happened.
+      setForgedSig(renderedSig);
       accept('forge');
       const reveal = summary?.video || project.output?.folder;
       if (reveal) revealPath(reveal).catch(() => {});
@@ -636,6 +700,7 @@ function App() {
 
   // ─── Tab body ──────────────────────────────────────────────────
   let body, acceptKey = null, acceptSummary = "", acceptLabel = "Accept and chain";
+  let acceptDisabled = false, acceptDisabledReason = null;
 
   if (tab === "home") {
     body = (
@@ -691,6 +756,10 @@ function App() {
     acceptKey = "forge";
     acceptSummary = forging ? "Forging in progress…" : (pipeline.forge.accepted ? "Forged successfully." : "Press Forge to render the combined output.");
     acceptLabel = "Mark forged";
+    // Marking the output forged claims the files on disk are this project.
+    // Until a forge of this exact project has finished, that claim is false.
+    acceptDisabled = !markForged.enabled;
+    acceptDisabledReason = markForged.reason;
   }
 
   // ─── Render ─────────────────────────────────────────────────────
@@ -713,6 +782,8 @@ function App() {
           chainFile={pipeline[acceptKey].chainFile}
           accepted={pipeline[acceptKey].accepted}
           primaryLabel={acceptLabel}
+          disabled={acceptDisabled}
+          disabledReason={acceptDisabledReason}
           onAccept={() => accept(acceptKey)}
           onReset={() => reset(acceptKey)} />
       )}

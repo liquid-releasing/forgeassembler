@@ -1,19 +1,19 @@
 // Copyright (c) 2026 Liquid Releasing. Licensed under the MIT License.
 
 import { describe, expect, it } from 'vitest';
-import { parseProgressLine } from './forgeProgress';
+import { parseProgressLine, stageProgress } from './forgeProgress';
 
 describe('parseProgressLine', () => {
   it('reads duration and stage count off a meta line', () => {
     expect(parseProgressLine('meta: duration_ms=11000 stages=2'))
-      .toEqual({ kind: 'meta', durationMs: 11000, stages: 2 });
+      .toEqual({ kind: 'meta', durationMs: 11000, stages: 2, weights: null });
   });
 
   it('tolerates a meta line carrying only one of the two fields', () => {
     expect(parseProgressLine('meta: duration_ms=500'))
-      .toEqual({ kind: 'meta', durationMs: 500, stages: null });
+      .toEqual({ kind: 'meta', durationMs: 500, stages: null, weights: null });
     expect(parseProgressLine('meta: stages=3'))
-      .toEqual({ kind: 'meta', durationMs: null, stages: 3 });
+      .toEqual({ kind: 'meta', durationMs: null, stages: 3, weights: null });
   });
 
   it('strips the prefix off a stage line', () => {
@@ -57,5 +57,63 @@ describe('parseProgressLine', () => {
 
   it('returns null for a malformed meta line rather than NaN', () => {
     expect(parseProgressLine('meta: something-else')).toBeNull();
+  });
+
+  it('reads the per-stage weights off the meta line', () => {
+    const ev = parseProgressLine(
+      'meta: duration_ms=3548178 stages=4 weights=0.8000,0.0200,0.1000,0.0800');
+    expect(ev.kind).toBe('meta');
+    expect(ev.durationMs).toBe(3548178);
+    expect(ev.stages).toBe(4);
+    expect(ev.weights).toEqual([0.8, 0.02, 0.1, 0.08]);
+  });
+
+  it('reports no weights when an older CLI omits them', () => {
+    const ev = parseProgressLine('meta: duration_ms=1000 stages=2');
+    expect(ev.weights).toBeNull();
+  });
+});
+
+describe('stageProgress', () => {
+  // The real shape: video, funscripts, e-stim audio, bundle.
+  const W = [0.8, 0.02, 0.1, 0.08];
+
+  it('gives the encode its real share of the bar', () => {
+    // The bug this replaced: 88% through the video read as 22% overall,
+    // because the video owned a flat quarter.
+    expect(stageProgress({ stage: 1, stageCount: 4, weights: W, frac: 0.88 }))
+      .toBeCloseTo(0.704, 3);
+    expect(stageProgress({ stage: 1, stageCount: 4, weights: null, frac: 0.88 }))
+      .toBeCloseTo(0.22, 3);
+  });
+
+  it('starts each stage where the previous ones ended', () => {
+    expect(stageProgress({ stage: 2, stageCount: 4, weights: W, frac: 0 }))
+      .toBeCloseTo(0.8, 6);
+    expect(stageProgress({ stage: 3, stageCount: 4, weights: W, frac: 0 }))
+      .toBeCloseTo(0.82, 6);
+    expect(stageProgress({ stage: 4, stageCount: 4, weights: W, frac: 1 }))
+      .toBeCloseTo(0.95, 6);   // capped
+  });
+
+  it('never claims completion — only the summary may', () => {
+    expect(stageProgress({ stage: 4, stageCount: 4, weights: W, frac: 5 }))
+      .toBeLessThan(1);
+    expect(stageProgress({ stage: 99, stageCount: 4, weights: W, frac: 9 }))
+      .toBeLessThanOrEqual(0.95);
+  });
+
+  it('falls back to equal slices without weights', () => {
+    expect(stageProgress({ stage: 2, stageCount: 4, frac: 0.5 })).toBeCloseTo(0.375, 6);
+  });
+
+  it('clamps a nonsense fraction instead of walking backwards', () => {
+    expect(stageProgress({ stage: 1, stageCount: 4, weights: W, frac: -3 })).toBe(0);
+    expect(stageProgress({ stage: 0, stageCount: 0, frac: null })).toBe(0);
+  });
+
+  it('fills the whole bar when only one stage runs', () => {
+    expect(stageProgress({ stage: 1, stageCount: 1, weights: [1], frac: 0.5 }))
+      .toBeCloseTo(0.5, 6);
   });
 });

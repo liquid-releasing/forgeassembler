@@ -400,3 +400,51 @@ def test_cli_detect_forge_rejects_a_non_directory(tmp_path):
     assert r.returncode == 2
     assert "not a directory" in r.stderr.lower()
 
+
+
+# ── forge progress weighting ──────────────────────────────────────────
+# The bar used to give every stage an equal slice, so a 4K encode that was
+# nearly finished reported "22%". These pin the weighting that replaced it.
+
+class _Out:
+    """Just the four produce_* flags forge_stage_plan reads."""
+
+    def __init__(self, video=True, funscripts=True, estim=True, bundle=True):
+        self.produce_video = video
+        self.produce_funscripts = funscripts
+        self.produce_audio_estim = estim
+        self.produce_forge_bundle = bundle
+
+
+def _plan(**kw):
+    sys.path.insert(0, str(REPO))
+    import cli
+
+    return cli.forge_stage_plan(_Out(**kw))
+
+
+def test_stage_plan_gives_the_encode_most_of_the_bar():
+    count, weights = _plan()
+    assert count == 4
+    shares = [float(x) for x in weights.split(",")]
+    assert shares[0] > 0.75, "the video encode dominates the wall clock"
+    assert abs(sum(shares) - 1.0) < 1e-6
+
+
+def test_stage_plan_normalises_over_enabled_stages_only():
+    count, weights = _plan(video=False)
+    shares = [float(x) for x in weights.split(",")]
+    assert count == 3
+    assert abs(sum(shares) - 1.0) < 1e-6, "a video-less run still fills the bar"
+
+
+def test_stage_plan_with_a_single_stage_fills_the_bar():
+    count, weights = _plan(video=False, estim=False, bundle=False)
+    assert count == 1
+    assert abs(float(weights) - 1.0) < 1e-6
+
+
+def test_stage_plan_with_nothing_enabled_does_not_divide_by_zero():
+    count, weights = _plan(video=False, funscripts=False, estim=False, bundle=False)
+    assert count == 0
+    assert weights == ""

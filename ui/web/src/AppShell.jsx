@@ -183,7 +183,9 @@ function FAStatusBar({ activeTab, chainFile, ffmpeg = "imageio-ffmpeg 5.1" }) {
 }
 
 // ── AcceptBar — bottom of every pipeline tab ──────────────────────
-function FAAcceptBar({ summary, chainFile, accepted, onAccept, onReset, primaryLabel = "Accept and chain" }) {
+function FAAcceptBar({ summary, chainFile, accepted, onAccept, onReset,
+                      primaryLabel = "Accept and chain",
+                      disabled = false, disabledReason = null }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 14,
@@ -194,15 +196,20 @@ function FAAcceptBar({ summary, chainFile, accepted, onAccept, onReset, primaryL
             style={{ color: accepted ? "var(--success)" : "var(--text-dim)" }} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", lineHeight: 1.3 }}>
         <span style={{ fontSize: 12, color: "var(--text)" }}>{summary}</span>
-        {chainFile && (
+        {disabled && disabledReason ? (
+          // Why the button is dead matters more than what it would have
+          // written: a disabled control with no reason reads as a bug.
+          <span style={{ fontSize: 11, color: "var(--warn)" }}>{disabledReason}</span>
+        ) : chainFile ? (
           <span className="mono" style={{ fontSize: 11, color: "var(--text-dim)" }}>
             writes <span style={{ color: "#ff7b7b" }}>{chainFile}</span> · downstream tabs read this file
           </span>
-        )}
+        ) : null}
       </div>
       {accepted && <Pill tone="success" dot>Accepted</Pill>}
       <Button kind="ghost" size="sm" onClick={onReset}>Reset</Button>
       <Button kind={accepted ? "secondary" : "primary"} icon={accepted ? "rotate-cw" : "check"}
+              disabled={disabled} title={disabled ? disabledReason : undefined}
               onClick={onAccept}>
         {accepted ? "Re-accept" : primaryLabel}
       </Button>

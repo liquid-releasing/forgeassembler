@@ -33,15 +33,22 @@
       icon: "circle-dot",
       params: [
         { id: "fadeOutS", label: "Fade out",   kind: "time", min: 0, max: 10, step: 0.1, default: 1.0, unit: "s" },
-        { id: "holdS",    label: "Hold black", kind: "time", min: 0, max: 10, step: 0.1, default: 2.0, unit: "s" },
+        { id: "holdS",    label: "Hold black", kind: "time", min: 0, max: 10, step: 0.1, default: 3.0, unit: "s" },
         { id: "fadeInS",  label: "Fade in",    kind: "time", min: 0, max: 10, step: 0.1, default: 1.0, unit: "s" },
         { id: "color",    label: "Hold color", kind: "color", default: "#000000" },
       ],
-      // A second of fade, two seconds of black, a second back in: the
-      // transition this app exists to make. The hold used to default to
-      // 0.0s, which is a dissolve through black rather than a beat of
-      // nothing between two scenes.
-      defaults: { fadeOutS: 1.0, holdS: 2.0, fadeInS: 1.0, color: "#000000" },
+      // A second of fade, three seconds of black, a second back in: five
+      // seconds of joiner, which is the beat the user dialled in by hand on
+      // the first real compilation. The hold used to default to 0.0s, which
+      // is a dissolve through black rather than a beat of nothing between
+      // two scenes, and then to 2.0s, which read as hurried.
+      //
+      // Read the arithmetic carefully: the fades do NOT add output time —
+      // the engine applies them inside the scenes that already exist, so
+      // only the hold lengthens the compilation. This default spans 5s of
+      // transition and adds 3s per boundary. joinerTotalMs vs
+      // joinerAddedMs below is exactly that distinction.
+      defaults: { fadeOutS: 1.0, holdS: 3.0, fadeInS: 1.0, color: "#000000" },
     },
   ];
 

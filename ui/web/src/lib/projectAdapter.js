@@ -629,3 +629,24 @@ export function fromDetected(detectPayload) {
     };
   });
 }
+
+
+/**
+ * A stable signature of what the forge engine would be handed for this
+ * view-model: the stringified forgeproject, which is literally the file the
+ * CLI reads. Two view-models with the same signature forge to the same
+ * output, so this is what distinguishes a finished render from a stale one
+ * — see lib/forgeGate.js.
+ *
+ * Stable across calls by construction: nothing in toForgeProject reads a
+ * clock or a random source. Returns null rather than throwing, so a
+ * project that cannot be serialized reads as "changed" and fails closed.
+ */
+export function projectSignature(vm) {
+  try {
+    return JSON.stringify(toForgeProject(vm, { folder: vm?.output?.folder ?? null }));
+  } catch (e) {
+    console.warn('[projectSignature] could not serialize the project', e);
+    return null;
+  }
+}
