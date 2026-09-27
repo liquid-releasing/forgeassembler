@@ -40,8 +40,10 @@ export function buildCues(project, joinerAddedMs) {
   let t = 0;
   const sections = project?.sections || [];
 
-  sections.forEach((sec, i) => {
-    const joiner = i > 0 ? sec.joiner : null;
+  sections.forEach((sec) => {
+    // The first section's joiner counts too — it is the compilation's
+    // opening card, and the engine lays it down before any footage.
+    const joiner = sec.joiner;
     const holdMs = joiner && joinerAddedMs ? joinerAddedMs(joiner) : 0;
     if (holdMs > 0) {
       cues.push({

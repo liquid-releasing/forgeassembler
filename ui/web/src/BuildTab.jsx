@@ -470,20 +470,37 @@ function SceneRow({ section, seg, idx, chapterStartMs, selected,
 // ── Joiner row ────────────────────────────────────────────────────
 // The transition INTO the scene below. A section's leading joiner is what
 // the engine renders at that boundary, so this sits above its own scene.
-function JoinerRow({ joiner, onClick }) {
+//
+// The FIRST section's row is the compilation's opening — the engine lays
+// that joiner down at t=0, before any footage, so a title card there is
+// the title for the whole thing. The row was hidden on the reasoning
+// that a joiner joins two scenes and the first one joins nothing, which
+// left the opening title unreachable even though the engine would have
+// rendered it.
+function JoinerRow({ joiner, onClick, isOpening = false }) {
   const isCut = joiner.kind === "none";
   const label = FA_DATA.joinerShortLabel(joiner);
+  // A bare "cut" reads as noise at the top of the list, where there is
+  // nothing above to cut from. Say what the row is FOR instead, so an
+  // empty opening invites a title rather than looking like a setting
+  // someone already made.
+  const text = isOpening
+    ? (isCut ? "add an opening title" : `opening \u00b7 ${label}`)
+    : `\u21b3 ${label}`;
+  const tip = isOpening
+    ? "Click to open the compilation with a title card or a fade up"
+    : "Click to set the transition between these two scenes";
 
   return (
     <button onClick={(e) => onClick(e.currentTarget.getBoundingClientRect())} style={{
       display: "flex", alignItems: "center", gap: 12, width: "100%",
       padding: "8px 14px", background: "transparent", border: "none",
       cursor: "pointer", color: "var(--text-dim)", fontFamily: "inherit",
-    }} title="Click to set the transition between these two scenes">
+    }} title={tip}>
       <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
       <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase",
                                       color: isCut ? "var(--text-dim)" : "var(--accent-warm)" }}>
-        &#8627; {label}
+        {text}
       </span>
       <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
     </button>
@@ -495,13 +512,18 @@ function SceneList({ project, selectedIds, onSelect, onEditJoiner, onRenameSecti
                      onRemoveSection, onEditClip, onAddForgeScene }) {
   // Each scene's chapter start: the scenes before it, plus the joiners
   // between them (a joiner's bridge adds real time to the output).
+  // ⚠ A section's own LEADING joiner comes before it, so the clock moves
+  // on before the start is recorded — including for the first section,
+  // whose joiner is the compilation's opening card. Reading the NEXT
+  // section's joiner instead happened to give the same answer only while
+  // the first section could not have one.
   let cursor = 0;
   const starts = {};
   for (let i = 0; i < project.sections.length; i++) {
-    starts[project.sections[i].id] = cursor;
-    cursor += project.sections[i].segments.reduce((a, s) => a + effectiveDurMs(s), 0);
-    const nextJoiner = project.sections[i + 1]?.joiner;
-    if (nextJoiner) cursor += FA_DATA.joinerAddedMs(nextJoiner);
+    const sec = project.sections[i];
+    if (sec.joiner) cursor += FA_DATA.joinerAddedMs(sec.joiner);
+    starts[sec.id] = cursor;
+    cursor += sec.segments.reduce((a, s) => a + effectiveDurMs(s), 0);
   }
 
   // A section with no clip is the empty boot state, not a scene.
@@ -515,8 +537,8 @@ function SceneList({ project, selectedIds, onSelect, onEditJoiner, onRenameSecti
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {scenes.map(({ sec, seg }, i) => (
         <React.Fragment key={sec.id}>
-          {i > 0 && <JoinerRow joiner={sec.joiner}
-                                onClick={(rect) => onEditJoiner(sec.id, rect)} />}
+          <JoinerRow joiner={sec.joiner} isOpening={i === 0}
+                      onClick={(rect) => onEditJoiner(sec.id, rect)} />
           <SceneRow
             section={sec} seg={seg} idx={i}
             chapterStartMs={starts[sec.id]}

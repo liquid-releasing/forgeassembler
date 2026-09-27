@@ -288,7 +288,12 @@ function SourcePane({ seg, onUpdate }) {
             showMark={false}
             railGuides
             thumbnailAspect="16/9"
-            controls={["back5", "frame-back", "play", "frame-forward", "forward5"]}
+            // Start and end bracket the transport because trimming is a
+            // question about the ENDS of the clip: "where do the end
+            // credits begin" is answered by jumping to the end and
+            // walking back with 5s and frame steps.
+            controls={["start", "back5", "frame-back", "play",
+                        "frame-forward", "forward5", "end"]}
             modeToggleAlign="start"
             modeToggleSize="sm"
             showModeLabel={false} />

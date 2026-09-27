@@ -248,14 +248,23 @@ export function effectiveDurMs(seg) {
 // add nothing; only the hold is new output. Pass FA_DATA.joinerAddedMs, not
 // joinerTotalMs.
 //
-// The first section's leading joiner is not a transition into anything, so
-// it never counts.
+// EVERY section's leading joiner counts, the first one included.
+//
+// This used to skip the first, on the reasoning that it is not a
+// transition into anything. It is not — it is the compilation's OPENING,
+// and the engine lays it down at t=0 before a frame of footage: measured,
+// a 4s title card on section one renders 0.00s→4.00s and the first scene
+// starts at 4.00s. Skipping it under-reported the total, and every
+// chapter time with it, by the opening card's hold.
+//
+// ⚠ The joiner goes in BEFORE its own section's scenes, because a
+// leading joiner precedes what it leads into.
 export function projectDurationMs(project, joinerAddedMs) {
   if (!project?.sections) return 0;
   let total = 0;
-  project.sections.forEach((sec, i) => {
+  project.sections.forEach((sec) => {
+    if (sec.joiner && joinerAddedMs) total += joinerAddedMs(sec.joiner);
     total += sec.segments.reduce((a, s) => a + effectiveDurMs(s), 0);
-    if (i > 0 && sec.joiner && joinerAddedMs) total += joinerAddedMs(sec.joiner);
   });
   return total;
 }

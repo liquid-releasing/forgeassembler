@@ -859,10 +859,14 @@ describe('effective duration', () => {
     const addedMs = (j) => (j.kind === 'none' ? 0 : Math.round((j.holdS || 0) * 1000));
     expect(projectDurationMs(project, addedMs)).toBe(82000);
 
-    // The leading joiner of the FIRST scene is not a transition into
-    // anything, so it must never be counted.
+    // The leading joiner of the FIRST scene DOES count. It is not a
+    // transition into anything — it is the compilation's opening, and
+    // the engine lays it down at t=0 before any footage: measured, a 4s
+    // card on section one renders 0.00s→4.00s and the first scene starts
+    // at 4.00s. This used to assert it was ignored, which made the app
+    // under-report the total by the opening card's hold.
     project.sections[0].joiner = { kind: 'fade_through_black', fadeOutS: 5, holdS: 5, fadeInS: 5 };
-    expect(projectDurationMs(project, addedMs)).toBe(82000);
+    expect(projectDurationMs(project, addedMs)).toBe(87000);
   });
 
   it('counts the trimmed length of each scene, not the source', () => {
