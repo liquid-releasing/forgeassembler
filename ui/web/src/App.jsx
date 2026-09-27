@@ -7,11 +7,12 @@ import { JoinerEditor, makeJoinerFromKind } from './JoinerEditor';
 import { ForgeTab, OutputTab } from './OtherTabs';
 import { HomeScreen } from './HomeScreen';
 import { PreviewBand } from './PreviewBand';
+import { CompilationPreview } from './CompilationPreview';
 import { OpenProjectDialog, SaveAsDialog, UnsavedChangesDialog } from './ProjectIO';
 import { FA_DATA } from './data';
 import { loadProject, saveProject, pickFolder, pickFile, detectForgeFolder, probeDuration,
          forgeProject, onForgeProgress, revealPath, validateProject,
-         importForgeBundle } from './api/forge';
+         importForgeBundle, extractThumbnail, thumbnailPathFor } from './api/forge';
 import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
          projectDurationMs, projectSignature } from './lib/projectAdapter';
 import { parseProgressLine, stageProgress } from './lib/forgeProgress';
@@ -66,6 +67,9 @@ function App() {
   // Shown on the Build header rather than inferred, so the rule is
   // visible before the import rather than discovered after it.
   const [newSceneJoinerKind, setNewSceneJoinerKind] = useState('fade_through_black');
+  // Collapsed by default: it loads video, and most passes over the
+  // canvas are about order and naming, not watching.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // ── Project file I/O state ─────────────────────────────────────
   //   savedPath        absolute path of the .forgeproject.json on disk;
@@ -259,6 +263,57 @@ function App() {
   // Probes are deduped in api/forge.js, so several scenes cut from one
   // source cost a single call. This is cached data, not an edit, so it
   // deliberately does not markDirty().
+  // Scene rows showed a film icon instead of a frame. `extract_thumbnail`
+  // has existed in the bridge the whole time and nothing ever called it,
+  // so the only scenes with a picture were `.forge` imports, which carry
+  // a hero still in the bundle — and even those lost it on reopen,
+  // because the project file records no thumbnail path. Same shape of
+  // hole as the missing durations.
+  //
+  // Frames are taken a second past the trim-in point: scenes commonly
+  // open on black or a fade, and a black thumbnail is no more use than
+  // the icon it replaced.
+  //
+  // Run one at a time, not Promise.all. Each is an ffmpeg process, and a
+  // folder import is sixteen of them — see the 0xC0000142 note in
+  // concat_audio_estim.py for what happens when this machine is asked
+  // for too many processes at once.
+  async function hydrateThumbs(vm) {
+    const wanted = [];
+    for (const sec of vm.sections || []) {
+      for (const seg of sec.segments || []) {
+        if (!seg.file || seg.thumb || seg.thumbPath) continue;
+        if (seg.kind === 'still') continue;
+        wanted.push(seg);
+      }
+    }
+    if (!wanted.length) return;
+    for (const seg of wanted) {
+      const at = (seg.trimStartMs || 0) + 1000;
+      try {
+        const out = await thumbnailPathFor(seg.file, at);
+        if (!out) return;                 // no filesystem (browser mock)
+        const written = await extractThumbnail(seg.file, at, out);
+        if (!written) continue;
+        setProject(p => ({
+          ...p,
+          sections: p.sections.map(s => ({
+            ...s,
+            segments: s.segments.map(x => (
+              x.id === seg.id && !x.thumb && !x.thumbPath
+                ? { ...x, thumbPath: written }
+                : x
+            )),
+          })),
+        }));
+      } catch (e) {
+        // A missing codec or an unreadable file costs this one picture,
+        // never the import.
+        console.warn('[thumb] could not extract', seg.file, e);
+      }
+    }
+  }
+
   async function hydrateDurations(vm) {
     const files = new Set();
     for (const sec of vm.sections || []) {
@@ -313,6 +368,7 @@ function App() {
       // Not awaited: the canvas should appear at once and fill in its
       // durations a moment later, exactly as it does after an import.
       hydrateDurations(vm).catch(e => console.warn('[open] duration probe failed', e));
+      hydrateThumbs(vm).catch(e => console.warn('[open] thumbnails failed', e));
     } catch (e) {
       console.error('[open] failed', e);
       setIoError(`Couldn't open ${path}: ${e?.message || e}`);
@@ -469,6 +525,12 @@ function App() {
         }],
       };
     });
+    // A `.forge` import already carries its bundle's hero still; anything
+    // else gets a frame pulled from the video.
+    if (seg.file && !seg.thumb && !seg.thumbPath && seg.kind !== 'still') {
+      hydrateThumbs({ sections: [{ segments: [seg] }] })
+        .catch(e => console.warn('[add] thumbnail failed', e));
+    }
     if (seg.file && !seg.durMs) {
       probeDuration(seg.file).then(ms => {
         if (!ms) return;
@@ -748,6 +810,8 @@ function App() {
                 onEditClip={(seg) => setEditingClip(seg)} />
             </DragDropProvider>
           </FATabBody>
+          <CompilationPreview project={project} open={previewOpen}
+                               onToggle={() => setPreviewOpen(o => !o)} />
           <PreviewBand project={project} totalMs={totalMs} segCount={flatSegments.length} />
         </div>
         <Inspector

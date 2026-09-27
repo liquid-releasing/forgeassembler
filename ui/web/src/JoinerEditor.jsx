@@ -137,7 +137,7 @@ function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t }) {
                        label={t < 0.5 ? "previous clip" : "next clip"}
                        tint={t < 0.5 ? "left" : "right"} />;
   }
-  if (k === "fade_through_black" || k === "dip_to_color") {
+  if (k === "fade_through_black" || k === "dip_to_color" || k === "title_card") {
     const fo = joiner.fadeOutS || 0;
     const ho = joiner.holdS    || 0;
     const fi = joiner.fadeInS  || 0;
@@ -155,11 +155,18 @@ function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t }) {
       const x = (cur - fo - ho) / fi; // 0 → 1
       holdOp = 1 - x; rightOp = x;
     }
+    // The card's words are on the BRIDGE, which only exists during the
+    // hold — the fades happen inside the neighbouring scenes, fading to
+    // and from the bridge colour. So the text cuts in and out at the
+    // hold boundaries rather than fading with it, which is exactly what
+    // `enable='between(t,0,hold)'` does in the real filter graph.
+    const showText = k === "title_card" && cur >= fo && cur < fo + ho;
     return (
       <>
         {leftOp > 0 && <ClipPanel src={prevSrc} label="previous clip" tint="left" opacity={leftOp} />}
         {rightOp > 0 && <ClipPanel src={nextSrc} label="next clip" tint="right" opacity={rightOp} />}
         <span style={{ position: "absolute", inset: 0, background: color, opacity: holdOp }} />
+        {showText && <TitleCardText joiner={joiner} />}
       </>
     );
   }
@@ -196,6 +203,36 @@ function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t }) {
     );
   }
   return <ClipPanel src={prevSrc} label="previous clip" tint="left" />;
+}
+
+// The words on a title card, drawn at the size they will actually be.
+//
+// An SVG with a 1920x1080 viewBox scales to whatever the preview box is,
+// so `font_size` renders at exactly its output proportion — which is the
+// only way the size control can tell the truth. Drawing it with a CSS
+// font-size would have meant picking a number that looks right in the
+// preview and says nothing about the render.
+function TitleCardText({ joiner }) {
+  const text = String(joiner.text || "");
+  if (!text.trim()) return null;
+  const size = Number(joiner.fontSize) > 0 ? Number(joiner.fontSize) : 96;
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  // Centre the block vertically: shift up by half the extra lines.
+  const lead = size * 1.2;
+  const top = 540 - ((lines.length - 1) * lead) / 2;
+  return (
+    <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet"
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+      {lines.map((line, i) => (
+        <text key={i} x="960" y={top + i * lead}
+              fill={joiner.textColor || "#ffffff"}
+              fontSize={size} textAnchor="middle" dominantBaseline="middle"
+              style={{ fontFamily: "var(--font-sans)" }}>
+          {line}
+        </text>
+      ))}
+    </svg>
+  );
 }
 
 // Pretty fallback when no real thumb is available. Uses FunscriptForge's
@@ -469,4 +506,4 @@ Object.assign(window, { JoinerEditor, makeJoinerFromKind });
 
 
 export { AnimatedJoinerPreview, ClipPanel, JoinerEditor, ParamControl, TimingVisual,
-         computePos, makeJoinerFromKind, renderJoinerFrame };
+         TitleCardText, computePos, makeJoinerFromKind, renderJoinerFrame };

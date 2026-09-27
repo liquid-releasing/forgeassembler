@@ -78,6 +78,31 @@ export function probeDuration(path) {
     call('probe_duration', { path }, () => Promise.resolve(0)));
 }
 
+// Where a generated thumbnail lives.
+//
+// Thumbnails are derived data, so they go in the OS cache directory
+// rather than next to the user's media — a folder of scenes should not
+// grow PNGs because you looked at it. The name is keyed on the source
+// path and timestamp, so reopening a project reuses the frame instead
+// of re-running ffmpeg, and two scenes cut from one source at different
+// points still get their own.
+//
+// Returns null outside Tauri; the browser mock has no filesystem.
+export async function thumbnailPathFor(video, atMs) {
+  if (!isTauri()) return null;
+  const { appCacheDir, join } = await import('@tauri-apps/api/path');
+  // FNV-1a: short, stable across runs, and collision-resistant enough
+  // for a cache whose worst failure is drawing the wrong 320px frame.
+  let h = 0x811c9dc5;
+  const key = String(video);
+  for (let i = 0; i < key.length; i += 1) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  const name = `${h.toString(16)}-${Math.round(atMs)}.png`;
+  return join(await appCacheDir(), 'thumbs', name);
+}
+
 export function extractThumbnail(video, atMs, out) {
   return dedupedCall(`extract_thumbnail::${video}::${atMs}`, () =>
     call('extract_thumbnail', { video, atMs, out }, () => Promise.resolve(out)));
