@@ -4,6 +4,7 @@ import { FASectionLabel } from './AppShell';
 import { Button, Field, Icon, TextInput } from './primitives';
 import { pickFile, pickFolder } from './api/forge';
 import { lastFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
+import { PROJECT_EXT, PROJECT_FILTERS, projectFileName } from './lib/projectFile';
 
 // ProjectIO — Save / Open / Unsaved-changes dialogs.
 //
@@ -20,11 +21,11 @@ const { useState: ioState, useEffect: ioUseEffect, useRef: ioRef } = React;
 
 // ── A few mock recents shown in OpenProjectDialog ────────────────
 const PIO_RECENTS = [
-  { path: "C:/Users/bruce/Videos/forgeassembler/vol_03_compilation.forgeproject.json",
+  { path: `C:/Users/bruce/Videos/forgeassembler/vol_03_compilation.${PROJECT_EXT}`,
     name: "vol_03_compilation", when: "today · 14:22", segs: 8, dur: "8:46", res: "1080p" },
-  { path: "C:/Users/bruce/Videos/forgeassembler/longform_session_aug.forgeproject.json",
+  { path: `C:/Users/bruce/Videos/forgeassembler/longform_session_aug.${PROJECT_EXT}`,
     name: "longform_session_aug", when: "yesterday · 23:51", segs: 14, dur: "20:52", res: "1440p" },
-  { path: "C:/Users/bruce/Videos/forgeassembler/lqr_marketing.forgeproject.json",
+  { path: `C:/Users/bruce/Videos/forgeassembler/lqr_marketing.${PROJECT_EXT}`,
     name: "lqr_marketing", when: "Aug 12 · 19:00", segs: 4, dur: "0:48", res: "1080p" },
   { path: "C:/Users/bruce/Videos/forgeassembler/draft_test.forgeproject.json",
     name: "draft_test", when: "Aug 11 · 09:42", segs: 6, dur: "5:11", res: "1080p" },
@@ -40,7 +41,7 @@ function SaveAsDialog({ project, defaultFolder, onCancel, onSave }) {
   // requires a folder, so Save stays disabled until one is chosen.
   const [folder, setFolder]     = ioState(
     defaultFolder || lastFolder('output') || lastFolder('projectOpen') || "");
-  const filename = `${slug(basename)}.forgeproject.json`;
+  const filename = projectFileName(slug(basename));
   const valid = basename.trim().length > 0 && folder.trim().length > 0;
 
   return (
@@ -122,7 +123,14 @@ function OpenProjectDialog({ onCancel, onOpen }) {
                      // last saved to — those are different folders here,
                      // and sharing one memory made Open land in the
                      // output folder.
-                     const path = await pickFile({ startDir: lastFolder('projectOpen') });
+                     // Filters, plural: a project can have either name, and
+                     // passing none at all was why this listed every sidecar
+                     // in the folder.
+                     const path = await pickFile({
+                       title: 'Open project',
+                       filters: PROJECT_FILTERS,
+                       startDir: lastFolder('projectOpen'),
+                     });
                      if (path) { rememberFileFolder('projectOpen', path); onOpen({ path }); }
                    }}>
             Browse…

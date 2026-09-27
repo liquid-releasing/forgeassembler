@@ -7,6 +7,7 @@ import { FA_DATA } from './data';
 import { pickFile, videoEncoder } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
 import { effectiveDurMs, projectChannelCoverage, segmentHasChannel } from './lib/projectAdapter';
+import { projectFileName } from './lib/projectFile';
 
 // Sketched other pipeline tabs. Intentionally light — the Build tab is
 // where the design work is concentrated; these convey the structure
@@ -436,7 +437,7 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) 
                 on: project.output.funscripts !== false,
                 sub: c.id !== "main",
               }))),
-              { f: `${project.name}.forgeproject.json`, on: true },
+              { f: projectFileName(project.name), on: true },
             ].filter(x => x.on).map((x, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8,
                                       padding: "5px 8px", paddingLeft: x.sub ? 22 : 8,
