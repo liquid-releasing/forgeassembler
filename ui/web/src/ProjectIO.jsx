@@ -33,7 +33,13 @@ const PIO_RECENTS = [
 // ── Save As dialog ───────────────────────────────────────────────
 function SaveAsDialog({ project, defaultFolder, onCancel, onSave }) {
   const [basename, setBasename] = ioState(project.name || "untitled");
-  const [folder, setFolder]     = ioState(defaultFolder || "C:/Users/bruce/Videos/forgeassembler");
+  // Where this project already lives, else where the last one was saved.
+  // The fallback used to be a hardcoded "C:/Users/bruce/Videos/..." —
+  // one machine's path, shipped, and the reason this field never showed
+  // the folder you actually used. An empty field is honest: `valid`
+  // requires a folder, so Save stays disabled until one is chosen.
+  const [folder, setFolder]     = ioState(
+    defaultFolder || lastFolder('output') || lastFolder('projectOpen') || "");
   const filename = `${slug(basename)}.forgeproject.json`;
   const valid = basename.trim().length > 0 && folder.trim().length > 0;
 
@@ -50,7 +56,8 @@ function SaveAsDialog({ project, defaultFolder, onCancel, onSave }) {
         </Field>
         <Field label="Folder">
           <div style={{ display: "flex", gap: 6 }}>
-            <TextInput value={folder} onChange={setFolder} mono style={{ flex: 1 }} />
+            <TextInput value={folder} onChange={setFolder} mono style={{ flex: 1 }}
+                        placeholder="Choose a folder…" />
             <Button kind="secondary" size="sm" icon="folder-open"
                     onClick={async () => {
                       // Start where the last output went, and record
@@ -111,8 +118,12 @@ function OpenProjectDialog({ onCancel, onOpen }) {
           </div>
           <Button kind="primary" size="sm" icon="folder-open"
                    onClick={async () => {
-                     const path = await pickFile({ startDir: lastFolder('project') });
-                     if (path) { rememberFileFolder('project', path); onOpen({ path }); }
+                     // Where you last OPENED from, which is not where you
+                     // last saved to — those are different folders here,
+                     // and sharing one memory made Open land in the
+                     // output folder.
+                     const path = await pickFile({ startDir: lastFolder('projectOpen') });
+                     if (path) { rememberFileFolder('projectOpen', path); onOpen({ path }); }
                    }}>
             Browse…
           </Button>

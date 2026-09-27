@@ -252,9 +252,24 @@ function App() {
   // Save flow:
   //   • If no savedPath  → open Save As dialog
   //   • Else save in place (mocked) → clear dirty, update lastSavedAt
+  // Pressing Save and getting nothing back reads as a broken button, and
+  // it was: an unchanged project returned silently, and even a real save
+  // only nudged a pill and a "saved just now" that already said that. Say
+  // something every time, including when there was nothing to do.
+  const [saveFlash, setSaveFlash] = useState(null);
+  const saveFlashTimer = useRef(null);
+  function flashSaved(text) {
+    setSaveFlash(text);
+    if (saveFlashTimer.current) clearTimeout(saveFlashTimer.current);
+    saveFlashTimer.current = setTimeout(() => setSaveFlash(null), 2600);
+  }
+  useEffect(() => () => {
+    if (saveFlashTimer.current) clearTimeout(saveFlashTimer.current);
+  }, []);
+
   function handleSaveClick() {
     if (!savedPath) { setIoDialog("save"); return; }
-    if (!dirty) return; // no-op
+    if (!dirty) { flashSaved("No changes to save"); return; }
     saveInPlace();
   }
   async function saveInPlace() {
@@ -267,6 +282,7 @@ function App() {
       // so a project that fell off the end of the list (or whose entry was
       // lost) never came back no matter how often you saved it.
       pushRecent(savedPath, project.name);
+      flashSaved(`Saved ${savedPath.split(/[\/]/).pop()}`);
     } catch (e) {
       console.error('[save] failed', e);
       setIoError(`Couldn't save ${savedPath}: ${e?.message || e}`);
@@ -288,9 +304,9 @@ function App() {
       setDirty(false);
       setLastSavedAtMs(Date.now());
       pushRecent(path, nextVm.name);
+      flashSaved(`Saved ${path.split(/[\/]/).pop()}`);
       // Where this project was saved is where the next one starts, and
       // its folder is where the forge writes.
-      rememberFileFolder('project', path);
       if (folder) rememberFolder('output', folder);
       setIoDialog(null);
       // If we were saving en route to opening another project, continue.
@@ -418,6 +434,7 @@ function App() {
         setDirty(false);
         setLastSavedAtMs(Date.now());
         pushRecent(path, name);
+        rememberFileFolder('projectOpen', path);
         setTab('build');
         return;
       }
@@ -427,7 +444,7 @@ function App() {
       setDirty(false);
       setLastSavedAtMs(Date.now());
       pushRecent(path, vm.name || name);
-      rememberFileFolder('project', path);
+      rememberFileFolder('projectOpen', path);
       setTab('build');
       // Not awaited: the canvas should appear at once and fill in its
       // durations a moment later, exactly as it does after an import.
@@ -916,6 +933,7 @@ function App() {
       <FATopBar project={project} totalMs={totalMs}
                  sceneCount={sceneCount}
                  savedPath={savedPath} dirty={dirty} lastSavedAtMs={lastSavedAtMs}
+                 saveFlash={saveFlash}
                  onOpen={handleOpenClick} onSave={handleSaveClick} onNew={handleNewProject}
                  onHome={goHome} />
       <FATabStrip active={tab} onChange={setTab} pipeline={pipeline} />

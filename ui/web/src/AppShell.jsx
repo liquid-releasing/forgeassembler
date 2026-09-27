@@ -30,7 +30,7 @@ function FAGlyph({ size = 44 }) {
 
 // ── TopBar ────────────────────────────────────────────────────────
 function FATopBar({ project, totalMs, sceneCount,
-                    savedPath, dirty, lastSavedAtMs,
+                    savedPath, dirty, lastSavedAtMs, saveFlash,
                     onOpen, onSave, onNew, onHome }) {
   // "saved 2 min ago" / "saving…" / "unsaved changes" / "new project"
   const filename = savedPath ? savedPath.split("/").pop() : `${project.name}.forgeproject.json`;
@@ -63,7 +63,18 @@ function FATopBar({ project, totalMs, sceneCount,
                             textTransform: "uppercase", letterSpacing: "0.08em",
                             border: "1px solid rgba(255,181,71,0.3)" }}>unsaved changes</span>
           )}
-          {savedPath && !dirty && (
+          {saveFlash && (
+            // Deliberately louder than the "saved" pill it sits beside:
+            // the pill is a STATE and says nothing about whether the
+            // button you just pressed did anything.
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px",
+                            borderRadius: 3, background: "var(--success)",
+                            color: "#0e1117",
+                            textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              {saveFlash}
+            </span>
+          )}
+          {savedPath && !dirty && !saveFlash && (
             <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px",
                             borderRadius: 3, background: "rgba(62,213,152,0.10)",
                             color: "var(--success)",
