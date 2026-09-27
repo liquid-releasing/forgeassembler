@@ -454,7 +454,10 @@ function SceneRow({ section, seg, idx, chapterStartMs, selected,
           <Button kind="ghost" size="icon" title="Remove this scene"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!window.confirm(`Remove "${section.title || seg.title}" from the compilation?`)) return;
+                    // Confirmation belongs to the app, not to the browser:
+                    // Tauri turns window.confirm into an async call, so the
+                    // old `if (!confirm(...)) return` tested a Promise,
+                    // never fired, and removed the scene unasked.
                     onRemove?.(section.id);
                   }}><Icon name="trash-2" size={13} /></Button>
         </div>

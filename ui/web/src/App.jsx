@@ -8,7 +8,8 @@ import { ForgeTab, OutputTab } from './OtherTabs';
 import { HomeScreen } from './HomeScreen';
 import { PreviewBand } from './PreviewBand';
 import { CompilationPreview } from './CompilationPreview';
-import { OpenProjectDialog, SaveAsDialog, UnsavedChangesDialog } from './ProjectIO';
+import { Modal, ModalFooter, OpenProjectDialog, SaveAsDialog,
+         UnsavedChangesDialog } from './ProjectIO';
 import { FA_DATA } from './data';
 import { loadProject, saveProject, pickFolder, pickFile, detectForgeFolder, probeDuration,
          forgeProject, onForgeProgress, revealPath, validateProject,
@@ -170,6 +171,24 @@ function App() {
   function reorderSection(sectionId, anchorSectionId, position) {
     setProject(p => reorderSectionInProject(p, sectionId, anchorSectionId, position));
     markDirty();
+  }
+
+  // { sectionId, title } while the removal is being confirmed.
+  const [confirmRemove, setConfirmRemove] = useState(null);
+
+  // Ask before throwing away a scene. This used to be a window.confirm
+  // inside the button, which under Tauri returns a Promise -- so the
+  // guard tested a truthy object, never fired, and the scene went
+  // without a question being asked.
+  function requestRemoveSection(sectionId) {
+    const sec = project.sections.find(s => s.id === sectionId);
+    if (!sec) return;
+    // An empty row has nothing to lose; do not make a ceremony of it.
+    if (!sec.segments.length) { handleRemoveSection(sectionId); return; }
+    setConfirmRemove({
+      sectionId,
+      title: sec.title || sec.segments[0]?.title || 'this scene',
+    });
   }
 
   // ── Remove a scene ─────────────────────────────────────────────
@@ -850,7 +869,7 @@ function App() {
                 onPickNewSceneJoiner={pickNewSceneJoiner}
                 onEditNewSceneJoiner={(anchorRect) => setEditingNewJoiner({ anchorRect })}
                 onAddForgeScene={handleAddForgeScene}
-                onRemoveSection={handleRemoveSection}
+                onRemoveSection={requestRemoveSection}
                 onEditClip={(seg) => setEditingClip(seg)} />
             </DragDropProvider>
           </FATabBody>
@@ -944,6 +963,34 @@ function App() {
             onClose={() => setEditingNewJoiner(null)} />
         );
       })()}
+
+      {/* ── Confirm removing a scene ── */}
+      {confirmRemove && (
+        <Modal onClose={() => setConfirmRemove(null)} width={440}
+                title="Remove this scene?"
+                icon="trash-2"
+                iconTone="warn"
+                subtitle={
+                  <span className="mono" style={{ color: "var(--text)" }}>
+                    {confirmRemove.title}
+                  </span>
+                }>
+          <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            The scene leaves the compilation, along with its chapter and the
+            transition into it. Your <span className="mono">.forge</span> file
+            on disk is untouched, so you can add it back.
+          </div>
+          <ModalFooter>
+            <Button kind="ghost" size="sm"
+                     onClick={() => setConfirmRemove(null)}>Cancel</Button>
+            <Button kind="danger" size="sm" icon="trash-2"
+                     onClick={() => {
+                       handleRemoveSection(confirmRemove.sectionId);
+                       setConfirmRemove(null);
+                     }}>Remove scene</Button>
+          </ModalFooter>
+        </Modal>
+      )}
 
       {/* ── Project I/O dialogs ── */}
       {ioDialog === "save" && (
