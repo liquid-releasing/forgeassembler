@@ -440,22 +440,48 @@ pub async fn pick_folder(
     Ok(folder.map(|p| p.to_string()))
 }
 
+/// One entry in a file dialog's type dropdown.
+#[derive(serde::Deserialize)]
+pub struct DialogFilter {
+    pub name: String,
+    pub extensions: Vec<String>,
+}
+
+/// Apply `filters` in order. The first becomes the dialog's default, so
+/// the caller's preferred type is the one the user sees first.
+fn with_filters<R: tauri::Runtime>(
+    mut builder: tauri_plugin_dialog::FileDialogBuilder<R>,
+    filters: Option<&Vec<DialogFilter>>,
+) -> tauri_plugin_dialog::FileDialogBuilder<R> {
+    if let Some(list) = filters {
+        for f in list {
+            let refs: Vec<&str> = f.extensions.iter().map(|s| s.as_str()).collect();
+            builder = builder.add_filter(&f.name, &refs);
+        }
+    }
+    builder
+}
+
 #[tauri::command]
 pub async fn pick_file(
     app: AppHandle,
     title: Option<String>,
     filter_name: Option<String>,
     extensions: Option<Vec<String>>,
+    filters: Option<Vec<DialogFilter>>,
     start_dir: Option<String>,
 ) -> Result<Option<String>, String> {
     let mut builder = with_start_dir(app.dialog().file(), start_dir.as_deref());
     if let Some(t) = title.as_deref() {
         builder = builder.set_title(t);
     }
+    // The single-filter form is still here: most callers want one type,
+    // and rewriting them to a list would be churn for its own sake.
     if let (Some(name), Some(exts)) = (filter_name.as_deref(), extensions.as_ref()) {
         let refs: Vec<&str> = exts.iter().map(|s| s.as_str()).collect();
         builder = builder.add_filter(name, &refs);
     }
+    builder = with_filters(builder, filters.as_ref());
     let file = builder.blocking_pick_file();
     Ok(file.map(|p| p.to_string()))
 }
@@ -464,12 +490,16 @@ pub async fn pick_file(
 pub async fn pick_save_path(
     app: AppHandle,
     default_name: Option<String>,
+    filters: Option<Vec<DialogFilter>>,
     start_dir: Option<String>,
 ) -> Result<Option<String>, String> {
     let mut builder = with_start_dir(app.dialog().file(), start_dir.as_deref());
     if let Some(name) = default_name {
         builder = builder.set_file_name(&name);
     }
+    // A filter here is not decoration: it is what makes the shell put the
+    // extension back when the user types a bare name.
+    builder = with_filters(builder, filters.as_ref());
     let path = builder.blocking_save_file();
     Ok(path.map(|p| p.to_string()))
 }

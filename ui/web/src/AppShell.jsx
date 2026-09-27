@@ -1,5 +1,6 @@
 /* @esm-converted */
 import React from 'react';
+import { projectFileName } from './lib/projectFile';
 import { Button, Icon, Pill } from './primitives';
 import { APP_VERSION, APP_VERSION_LABEL } from './version';
 
@@ -33,7 +34,12 @@ function FATopBar({ project, totalMs, sceneCount,
                     savedPath, dirty, lastSavedAtMs, saveFlash,
                     onOpen, onSave, onNew, onHome }) {
   // "saved 2 min ago" / "saving…" / "unsaved changes" / "new project"
-  const filename = savedPath ? savedPath.split("/").pop() : `${project.name}.forgeproject.json`;
+  // Split on BOTH separators: a path from the Windows file dialog has
+  // none of the forward slashes this used to look for, so the header
+  // showed the whole absolute path instead of the filename.
+  const filename = savedPath
+    ? (savedPath.split(/[\\/]/).pop() || savedPath)
+    : projectFileName(project.name);
   const subtitle = savedPath ? null : "unsaved";
   return (
     <header style={{

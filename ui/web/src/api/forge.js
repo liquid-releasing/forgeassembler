@@ -206,13 +206,17 @@ export async function onForgeProgress(handler) {
 export function pickFolder({ startDir = null } = {}) {
   return call('pick_folder', { startDir }, () => Promise.resolve(null));
 }
+// `filters` is a LIST — [{name, extensions}] — for a dialog that has to
+// offer more than one type, such as a project under either of its two
+// names. `filterName`/`extensions` remain for the single-type callers.
 export function pickFile({ title = null, filterName = null, extensions = null,
-                            startDir = null } = {}) {
-  return call('pick_file', { title, filterName, extensions, startDir },
+                            filters = null, startDir = null } = {}) {
+  return call('pick_file', { title, filterName, extensions, filters, startDir },
               () => Promise.resolve(null));
 }
-export function pickSavePath(defaultName, { startDir = null } = {}) {
-  return call('pick_save_path', { defaultName, startDir }, () => Promise.resolve(null));
+export function pickSavePath(defaultName, { filters = null, startDir = null } = {}) {
+  return call('pick_save_path', { defaultName, filters, startDir },
+              () => Promise.resolve(null));
 }
 export function revealPath(path) {
   return call('reveal_path', { path }, () => Promise.resolve());

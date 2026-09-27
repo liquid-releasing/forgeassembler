@@ -65,7 +65,7 @@ function HomeScreen({ recents = [], hasWork, projectName, sceneCount,
             <Icon name="folder-open" size={22} style={{ color: "var(--text-muted)" }} />
             <div style={{ fontSize: 14, fontWeight: 700, marginTop: 10 }}>Open project…</div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-              Reopen a saved .forgeproject.json.
+              Reopen a saved .forgeproject.
             </div>
           </button>
         </div>
