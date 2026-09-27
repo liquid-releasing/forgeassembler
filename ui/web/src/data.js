@@ -50,9 +50,29 @@
       // joinerAddedMs below is exactly that distinction.
       defaults: { fadeOutS: 1.0, holdS: 3.0, fadeInS: 1.0, color: "#000000" },
     },
+    { kind: "title_card", label: "Title", icon: "type",
+      desc: "The scene fades out, a title card holds while its name is on screen, and the next scene fades in.",
+      pickerHint: "New scenes fade into a title card naming the scene",
+      params: [
+        { id: "text",      label: "Title",       kind: "text", default: "" },
+        { id: "fadeOutS",  label: "Fade out",    kind: "time", min: 0, max: 10, step: 0.1, default: 1.0, unit: "s" },
+        { id: "holdS",     label: "Card on screen", kind: "time", min: 0.1, max: 20, step: 0.1, default: 3.0, unit: "s" },
+        { id: "fadeInS",   label: "Fade in",     kind: "time", min: 0, max: 10, step: 0.1, default: 1.0, unit: "s" },
+        { id: "fontSize",  label: "Font size",   kind: "range", min: 16, max: 240, step: 2, default: 96 },
+        { id: "textColor", label: "Text colour", kind: "color", default: "#ffffff" },
+        { id: "color",     label: "Card colour", kind: "color", default: "#000000" },
+      ],
+      // Same timing shape as the fade, because that is exactly what it
+      // is: the card IS the hold. Only the hold adds output time.
+      defaults: { text: "", fadeOutS: 1.0, holdS: 3.0, fadeInS: 1.0,
+                  color: "#000000", textColor: "#ffffff", fontSize: 96 },
+    },
   ];
 
-  const FADE_KINDS = ["fade_through_black", "dip_to_color"];
+  // Kinds built from fade-out / hold / fade-in. A title card is one of
+  // them — the card IS the hold — so it gets the same arithmetic and
+  // cannot drift from the fade's.
+  const FADE_KINDS = ["fade_through_black", "dip_to_color", "title_card"];
 
   function joinerKind(j) {
     return JOINER_KINDS.find(k => k.kind === j.kind) || JOINER_KINDS[0];

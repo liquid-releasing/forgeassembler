@@ -135,9 +135,15 @@ def _fade_duration_s(joiner: ProjectJoiner, side: str = "both") -> float:
     fade/hold split have only `duration_s` and get the old 0.5s default
     so their output renders with the subtle fade they used to have.
     """
-    if joiner.joiner_type != "fade_to_black":
+    if joiner.joiner_type == "none":
         return 0.0
     inst = instantiate_joiner(joiner.joiner_type, joiner.params)
+    # Capability, not identity. This used to test
+    # `joiner_type == "fade_to_black"`, so any joiner added later — a
+    # title card, say — hard-cut into its own bridge no matter what its
+    # params said. Ask whether the joiner knows how to fade instead.
+    if not hasattr(inst, "fade_s"):
+        return 0.0
     keys = ("fade_s", "fade_in_s", "fade_out_s")
     if not any(k in joiner.params for k in keys):
         return _LEGACY_FADE_S
@@ -484,7 +490,7 @@ def build_ffmpeg_command(
             continue
         # Joiner
         assert isinstance(item, ProjectJoiner)
-        if item.joiner_type == "fade_to_black":
+        if item.joiner_type != "none":
             joiner_inst = instantiate_joiner(item.joiner_type, item.params)
             d_ms = joiner_inst.duration_ms()
             d_s = d_ms / 1000.0
@@ -506,6 +512,42 @@ def build_ffmpeg_command(
                 filter_parts.append(
                     f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_bridge}]",
                 )
+
+                # A joiner that has words draws them on its own bridge.
+                # Timing is relative to the bridge, which starts at 0 and
+                # runs for d_s — unlike section overlays, which are
+                # placed on the concatenated timeline in absolute time.
+                title = getattr(joiner_inst, "text", None)
+                title_text = title() if callable(title) else ""
+                if title_text:
+                    from .fonts import list_fonts, resolve_font_path
+                    stem = ""
+                    fam = getattr(joiner_inst, "font_family", None)
+                    if callable(fam):
+                        stem = fam()
+                    fontfile = resolve_font_path(stem) if stem else None
+                    if fontfile is None:
+                        installed = list_fonts()
+                        # No fonts at all: emit the bare bridge rather
+                        # than a broken filter. The card still holds,
+                        # it just has nothing written on it.
+                        fontfile = installed[0][1] if installed else None
+                    if fontfile is not None:
+                        v_titled = f"v_title{bridge_idx - 1}"
+                        filter_parts.append(text_overlay_filter(
+                            in_video_label=v_bridge,
+                            out_label=v_titled,
+                            text=title_text,
+                            textfile=(text_files or {}).get(item.id),
+                            fontfile=fontfile,
+                            font_size=joiner_inst.font_size(),
+                            font_color=joiner_inst.text_color(),
+                            position="center",
+                            start_s=0.0,
+                            end_s=d_s,
+                        ))
+                        v_bridge = v_titled
+
                 concat_pairs.append((v_bridge, a_bridge))
         # "none" joiner: no bridge, concat handles it naturally.
 
@@ -983,6 +1025,19 @@ def _build_text_files(
     """
     files: dict[str, str] = {}
     for sec in project.sections:
+        # A title card's words go through the same textfile path as a
+        # section overlay, and for the same reason: a title like
+        # "Katie's Scene: part 2" is full of characters that are
+        # filter_complex syntax. Keyed by joiner id, which cannot
+        # collide with an overlay id.
+        j = sec.leading_joiner
+        if j is not None and j.joiner_type == "title_card":
+            text = (j.params or {}).get("text") or ""
+            if isinstance(text, str) and text.strip():
+                path = temp_dir / f"text_{j.id}.txt"
+                normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+                path.write_bytes(normalized.encode("utf-8"))
+                files[j.id] = str(path)
         for ov in sec.overlays:
             if ov.kind != "text":
                 continue

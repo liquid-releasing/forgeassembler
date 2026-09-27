@@ -374,7 +374,11 @@ function prettyStem(path) {
 //
 // An unknown `joiner_type` in a project file still passes through
 // untouched, so a hand-written file survives a GUI save.
-export const ENGINE_JOINER_TYPES = ['none', 'fade_to_black'];
+// Titles came back as a separator choice: `title_card` is a fade-to-colour
+// bridge that carries words, and it keeps the SAME name on both sides on
+// purpose. The fade's UI/engine name mismatch above is what silently
+// turned a styled fade into a hard cut; there is no reason to repeat it.
+export const ENGINE_JOINER_TYPES = ['none', 'fade_to_black', 'title_card'];
 
 const FADE_KINDS = ['fade_through_black', 'dip_to_color'];
 
@@ -393,6 +397,21 @@ export function joinerToReal(joiner) {
     }
     if (joiner.color) params.color = joiner.color;
     return { joiner_type: 'fade_to_black', params };
+  }
+  if (kind === 'title_card') {
+    const out = num(joiner.fadeOutS, 1);
+    const inn = num(joiner.fadeInS, 1);
+    const params = {
+      text: String(joiner.text || ''),
+      duration_s: num(joiner.holdS, 3),
+      fade_s: Math.max(out, inn),
+    };
+    if (out !== inn) { params.fade_out_s = out; params.fade_in_s = inn; }
+    if (joiner.color) params.color = joiner.color;
+    if (joiner.textColor) params.text_color = joiner.textColor;
+    if (joiner.fontSize) params.font_size = num(joiner.fontSize, 96);
+    if (joiner.fontFamily) params.font_family = String(joiner.fontFamily);
+    return { joiner_type: 'title_card', params };
   }
   if (kind === 'none') return { joiner_type: 'none', params: {} };
   // A joiner type we don't translate — it came from the file and goes back
@@ -415,6 +434,20 @@ export function joinerFromReal(lj) {
       holdS: num(p.duration_s, 0),
       fadeInS: num(p.fade_in_s, sym),
       color: p.color || '#000000',
+    };
+  }
+  if (type === 'title_card') {
+    const sym = num(p.fade_s, 1);
+    return {
+      kind: 'title_card',
+      text: p.text || '',
+      fadeOutS: num(p.fade_out_s, sym),
+      holdS: num(p.duration_s, 3),
+      fadeInS: num(p.fade_in_s, sym),
+      color: p.color || '#000000',
+      textColor: p.text_color || '#ffffff',
+      fontSize: num(p.font_size, 96),
+      ...(p.font_family ? { fontFamily: p.font_family } : {}),
     };
   }
   if (type === 'none') return { kind: 'none' };

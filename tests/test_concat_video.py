@@ -1620,3 +1620,66 @@ def test_text_overlay_roundtrips_json(tmp_path: Path):
     assert ov2.font_size == 48
     assert ov2.font_family == "Arial"
     assert ov2.position == "tc"
+
+
+# ── Title card joiner renders into the graph ──────────────────────────
+
+def _two_scene_project(joiner):
+    from forgeassembler_core.project import Project
+
+    return Project.from_dict({
+        "version": 1,
+        "output": {"folder": ".", "basename": "t", "resolution": "1080p"},
+        "sections": [
+            {"id": "s1", "title": "A",
+             "leading_joiner": {"id": "j1", "joiner_type": "none", "params": {}},
+             "segments": [{"id": "g1", "video": "a.mp4"}]},
+            {"id": "s2", "title": "B", "leading_joiner": joiner,
+             "segments": [{"id": "g2", "video": "b.mp4"}]},
+        ]})
+
+
+def _graph(joiner):
+    from forgeassembler_core.concat_video import build_ffmpeg_command
+    from forgeassembler_core.layout import lay_out
+
+    project = _two_scene_project(joiner)
+    layout = lay_out(project, probe=lambda p: 10000)
+    cmd = build_ffmpeg_command(project, layout, frame_rate_override=30)
+    return " ".join(cmd.to_argv("ffmpeg"))
+
+
+TITLE_JOINER = {
+    "id": "j2", "joiner_type": "title_card",
+    "params": {"text": "Part Two", "duration_s": 3.0, "fade_s": 1.0,
+               "font_size": 96, "text_color": "#ffcc00"},
+}
+
+
+def test_title_card_draws_its_text_on_its_own_bridge():
+    g = _graph(TITLE_JOINER)
+    assert "color=c=0x000000:s=1920x1080:d=3" in g
+    assert "drawtext" in g
+    assert "fontsize=96" in g
+    assert "fontcolor=#ffcc00" in g
+
+
+def test_title_card_text_is_visible_for_the_whole_card():
+    # Relative to the bridge, which starts at 0 -- not absolute time on
+    # the concatenated timeline, the way section overlays are placed.
+    assert "enable='between(t,0,3)'" in _graph(TITLE_JOINER)
+
+
+def test_title_card_fades_its_neighbours_like_a_fade_does():
+    # The regression this guards: the fade lookup tested
+    # `joiner_type == "fade_to_black"`, so a title card hard-cut into
+    # its own bridge no matter what its params said.
+    g = _graph(TITLE_JOINER)
+    assert "fade=t=out:st=9:d=1" in g, "previous scene must fade out"
+    assert "fade=t=in:st=0:d=1" in g, "next scene must fade in"
+
+
+def test_a_cut_still_produces_no_bridge():
+    g = _graph({"id": "j2", "joiner_type": "none", "params": {}})
+    assert "color=c=" not in g
+    assert "drawtext" not in g

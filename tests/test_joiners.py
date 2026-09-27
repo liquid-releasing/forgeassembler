@@ -92,3 +92,63 @@ def test_none_joiner_no_params():
     j = NoneJoiner()
     assert j.validate() == []
     assert j.duration_ms() == 0
+
+
+# ── Title card ────────────────────────────────────────────────────────
+# A title card is a fade-to-colour bridge that carries words. It inherits
+# FadeToBlack so its timing cannot drift from a plain fade's.
+
+from forgeassembler_core.joiners import instantiate as _instantiate
+
+
+def _title(**params):
+    base = {"text": "Part Two", "duration_s": 3.0, "fade_s": 1.0}
+    base.update(params)
+    return _instantiate("title_card", base)
+
+
+def test_title_card_duration_is_the_hold_only():
+    # The fades live inside the neighbouring scenes and add no output
+    # time, exactly as for a plain fade.
+    assert _title().duration_ms() == 3000
+    assert _title(fade_s=5.0).duration_ms() == 3000
+
+
+def test_title_card_needs_words():
+    errors = _instantiate("title_card", {"duration_s": 3.0}).validate()
+    assert any("text" in e for e in errors)
+    assert _title().validate() == []
+
+
+def test_title_card_needs_a_frame_to_draw_on():
+    errors = _title(duration_s=0).validate()
+    assert any("duration_s" in e for e in errors)
+
+
+def test_title_card_errors_name_the_thing_the_user_picked():
+    # The parent's messages say "FadeToBlack", which is not what the
+    # user chose in the UI.
+    for e in _title(duration_s=-1).validate():
+        assert "FadeToBlack" not in e
+
+
+def test_title_card_rejects_a_font_size_ffmpeg_would_refuse():
+    # An out-of-range drawtext option kills the whole filter graph at
+    # setup rather than clamping, so a zero must never reach ffmpeg.
+    assert _title(font_size=0).font_size() > 0
+    assert _title(font_size=-10).font_size() > 0
+    assert _title(font_size="nonsense").font_size() > 0
+
+
+def test_title_card_defaults_to_white_on_black():
+    t = _title()
+    assert t.text_color() == "#ffffff"
+    assert t.color() == "#000000"
+    assert _title(text_color="ffcc00").text_color() == "#ffcc00"
+    assert _title(text_color="not-a-colour").text_color() == "#ffffff"
+
+
+def test_title_card_is_registered():
+    from forgeassembler_core.joiners import REGISTRY
+
+    assert "title_card" in REGISTRY

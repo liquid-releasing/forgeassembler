@@ -142,13 +142,19 @@ function Field({ label, hint, children }) {
     </div>
   );
 }
-function TextInput({ value, onChange, mono, placeholder, style = {}, ...rest }) {
+// `onFocus`/`onBlur` are pulled out and composed rather than left to
+// `...rest`, which is spread last and would otherwise replace the
+// internal handlers — a caller that wanted to commit on blur would
+// silently break the focus ring and leave the field looking active.
+function TextInput({ value, onChange, mono, placeholder, style = {},
+                     onFocus, onBlur, ...rest }) {
   const [focus, setFocus] = useState(false);
   return (
     <input
       type="text" value={value ?? ""} placeholder={placeholder}
       onChange={(e) => onChange?.(e.target.value)}
-      onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+      onFocus={(e) => { setFocus(true); onFocus?.(e); }}
+      onBlur={(e) => { setFocus(false); onBlur?.(e); }}
       style={{
         background: "var(--surface-2)", border: `1px solid ${focus ? "var(--accent)" : "var(--border)"}`,
         borderRadius: 6, padding: "8px 10px", color: "var(--text)", outline: "none",

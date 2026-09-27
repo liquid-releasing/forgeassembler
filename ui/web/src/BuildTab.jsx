@@ -563,7 +563,9 @@ function EmptyCanvas({ onAddForgeScene }) {
 // alone, because silently rewriting joiners someone already set is worse
 // than the fifteen clicks.
 function NewSceneJoinerPicker({ value, onChange }) {
-  const opts = FA_DATA.JOINER_KINDS.map(k => ({ kind: k.kind, label: k.label, icon: k.icon }));
+  const opts = FA_DATA.JOINER_KINDS.map(k => ({
+    kind: k.kind, label: k.label, icon: k.icon, hint: k.pickerHint,
+  }));
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
@@ -577,9 +579,9 @@ function NewSceneJoinerPicker({ value, onChange }) {
           const active = o.kind === value;
           return (
             <button key={o.kind} onClick={() => onChange?.(o.kind)}
-                    title={o.kind === "none"
+                    title={o.hint || (o.kind === "none"
                       ? "New scenes cut straight in"
-                      : "New scenes fade out, hold on black, and fade in"}
+                      : "New scenes fade out, hold on black, and fade in")}
                     style={{
               display: "inline-flex", alignItems: "center", gap: 5,
               padding: "4px 9px", borderRadius: 5, cursor: "pointer",

@@ -23,7 +23,7 @@ from typing import Any, Literal, Optional
 PROJECT_VERSION = "2.0"
 
 AudioMode = Literal["keep", "replace", "silence"]
-JoinerType = Literal["none", "fade_to_black"]
+JoinerType = Literal["none", "fade_to_black", "title_card"]
 OverlayType = Literal["image", "text"]
 BugCorner = Literal["tl", "tr", "bl", "br"]
 SegmentBackground = Literal["black", "previous_last_frame"]
@@ -1301,7 +1301,18 @@ def validate(project: Project) -> list[ValidationIssue]:
 
     # Joiner params
     for j in project.joiners():
-        if j.joiner_type == "fade_to_black":
+        # A joiner's own validator knows its rules better than this
+        # function does; surface those first, then the legacy
+        # duration/fade checks below.
+        try:
+            from .joiners import instantiate as _inst
+            for msg in _inst(j.joiner_type, j.params).validate():
+                issues.append(ValidationIssue("error", msg))
+        except ValueError:
+            issues.append(ValidationIssue(
+                "error", f"Unknown joiner type: {j.joiner_type!r}.",
+            ))
+        if j.joiner_type in ("fade_to_black", "title_card"):
             d = j.params.get("duration_s")
             f = j.params.get("fade_s")
             # With fade/hold decoupled, duration_s (hold) = 0 is a

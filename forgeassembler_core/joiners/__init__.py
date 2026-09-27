@@ -9,10 +9,12 @@ from __future__ import annotations
 from .base import Joiner, JoinerSpec
 from .fade_to_black import FadeToBlack
 from .none_joiner import NoneJoiner
+from .title_card import TitleCard
 
 REGISTRY: dict[str, type[Joiner]] = {
     NoneJoiner.joiner_type: NoneJoiner,
     FadeToBlack.joiner_type: FadeToBlack,
+    TitleCard.joiner_type: TitleCard,
 }
 
 

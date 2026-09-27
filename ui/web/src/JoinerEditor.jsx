@@ -431,6 +431,17 @@ function ParamControl({ param, value, onChange }) {
       </Field>
     );
   }
+  if (param.kind === "text") {
+    // The words on a title card. Blank is allowed here and caught at
+    // forge time rather than blocked as you type — you may well be
+    // clearing it to retype it.
+    return (
+      <Field label={param.label}>
+        <TextInput value={value || ""} onChange={onChange}
+                    placeholder="The words on the card" />
+      </Field>
+    );
+  }
   if (param.kind === "color") {
     return (
       <Field label={param.label}>

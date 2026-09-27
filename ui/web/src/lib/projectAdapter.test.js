@@ -882,3 +882,59 @@ describe('effective duration', () => {
     expect(projectDurationMs(null, () => 0)).toBe(0);
   });
 });
+
+
+// ── Title card joiner ─────────────────────────────────────────────────
+// Titles came back as a separator choice. The kind keeps the SAME name on
+// both sides deliberately: the fade's UI/engine name mismatch is what once
+// turned a styled fade into a hard cut on save.
+
+describe('title_card joiner', () => {
+  it('is a joiner type the engine can actually render', () => {
+    expect(ENGINE_JOINER_TYPES).toContain('title_card');
+  });
+
+  it('round-trips view -> real -> view without losing the words', () => {
+    const view = {
+      kind: 'title_card', text: "Katie's Scene: part 2",
+      fadeOutS: 1, holdS: 3, fadeInS: 1,
+      color: '#000000', textColor: '#ffcc00', fontSize: 120,
+    };
+    const real = joinerToReal(view);
+    expect(real.joiner_type).toBe('title_card');
+    expect(real.params.text).toBe("Katie's Scene: part 2");
+    expect(real.params.duration_s).toBe(3);
+    expect(real.params.fade_s).toBe(1);
+
+    const back = joinerFromReal(real);
+    expect(back.kind).toBe('title_card');
+    expect(back.text).toBe("Katie's Scene: part 2");
+    expect(back.holdS).toBe(3);
+    expect(back.textColor).toBe('#ffcc00');
+    expect(back.fontSize).toBe(120);
+  });
+
+  it('spells out both sides only when the fades differ', () => {
+    const sym = joinerToReal({ kind: 'title_card', text: 'x', fadeOutS: 1, fadeInS: 1, holdS: 3 });
+    expect(sym.params.fade_out_s).toBeUndefined();
+    const asym = joinerToReal({ kind: 'title_card', text: 'x', fadeOutS: 0.5, fadeInS: 2, holdS: 3 });
+    expect(asym.params.fade_out_s).toBe(0.5);
+    expect(asym.params.fade_in_s).toBe(2);
+  });
+
+  it('survives a project with no text set yet', () => {
+    const real = joinerToReal({ kind: 'title_card', holdS: 3 });
+    expect(real.params.text).toBe('');
+    expect(joinerFromReal(real).text).toBe('');
+  });
+
+  it('reads a hand-written engine title card', () => {
+    const back = joinerFromReal({
+      joiner_type: 'title_card',
+      params: { text: 'Intro', duration_s: 4, fade_s: 0.5 },
+    });
+    expect(back).toMatchObject({
+      kind: 'title_card', text: 'Intro', holdS: 4, fadeOutS: 0.5, fadeInS: 0.5,
+    });
+  });
+});

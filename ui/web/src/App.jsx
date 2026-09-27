@@ -422,6 +422,17 @@ function App() {
   // the chapter title is the scene's name without the user renaming
   // anything. Reuses a trailing EMPTY section (the boot state has one)
   // instead of leaving a blank chapter in front of the first scene.
+  // A title card with nothing written on it is a blank three seconds the
+  // engine refuses to forge. Adding a folder of sixteen scenes with the
+  // picker on Title must not produce sixteen of those, so the card is
+  // born naming the scene it introduces — which is also the chapter
+  // name. Renaming it afterwards is a normal edit.
+  function makeSceneJoiner(kind, sceneTitle) {
+    const j = makeJoinerFromKind(kind);
+    if (j.kind === 'title_card' && !j.text) j.text = sceneTitle || '';
+    return j;
+  }
+
   function appendSceneAsSection(seg) {
     if (!seg) return;
     markDirty();
@@ -444,7 +455,7 @@ function App() {
                 // Reusing the empty boot section: it only needs a joiner
                 // if something already plays before it.
                 joiner: isFirst(idx) ? { kind: 'none' }
-                                     : makeJoinerFromKind(newSceneJoinerKind),
+                                     : makeSceneJoiner(newSceneJoinerKind, title),
               }
             : s),
         };
@@ -453,7 +464,7 @@ function App() {
         ...p,
         sections: [...p.sections, {
           id: `sec-${Date.now()}`, title, color: '#ff8c42',
-          joiner: makeJoinerFromKind(newSceneJoinerKind),
+          joiner: makeSceneJoiner(newSceneJoinerKind, title),
           segments: [seg], overlays: [],
         }],
       };

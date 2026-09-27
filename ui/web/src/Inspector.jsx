@@ -7,7 +7,8 @@ import { MediaViewer, TrackStack } from 'forgemoment';
 import { toMediaUrl } from './lib/mediaUrl';
 import { pickFile, readSidecar } from './api/forge';
 import { toAudioWaveform, toBeats, toFunscript } from './lib/sidecars';
-import { channelGroup, CHANNEL_GROUPS, NEUTRAL_KELVIN } from './lib/projectAdapter';
+import { channelGroup, CHANNEL_GROUPS, NEUTRAL_KELVIN,
+         msToTimecode, timecodeToMs } from './lib/projectAdapter';
 import { Button, Field, Icon, Segmented, Slider, TextInput } from './primitives';
 
 // Right inspector. Open when a clip is selected.
@@ -333,6 +334,20 @@ function SourcePane({ seg, onUpdate }) {
                           currentMs={currentMs}
                           onChange={commitTrim}
                           onSeek={(ms) => setCurrentMs(ms)} />
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <div style={{ flex: 1 }}>
+              <TimecodeField label="In" ms={trim.trimInMs}
+                              minMs={0} maxMs={trim.trimOutMs}
+                              title="hh:mm:ss.mmm — where this scene starts"
+                              onCommit={(v) => commitTrim({ ...trim, trimInMs: v })} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <TimecodeField label="Out" ms={trim.trimOutMs}
+                              minMs={trim.trimInMs} maxMs={sourceDurMs || undefined}
+                              title="hh:mm:ss.mmm — where this scene ends"
+                              onCommit={(v) => commitTrim({ ...trim, trimOutMs: v })} />
+            </div>
+          </div>
           <div className="mono" style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
             keeps {fmtClipDur(effectiveMs)} of {fmtClipDur(sourceDurMs)}
           </div>
@@ -349,6 +364,53 @@ function SourcePane({ seg, onUpdate }) {
   );
 }
 
+// ── Timecode field ────────────────────────────────────────────────
+// Type an exact in/out point as hh:mm:ss.mmm.
+//
+// Dragging a handle is fine for finding a moment and hopeless for
+// landing on one: at a typical scrubber width a pixel is most of a
+// second, so an exact cut was unreachable. hh:mm:ss.mmm is also the
+// format the .forgeproject.json already stores trim_start / trim_end
+// in, so what you type is what is written — no unit to translate and
+// no rounding between the two.
+//
+// Commits on blur or Enter, never per keystroke: "00:0" is a state you
+// pass through while typing, and committing it would fight you.
+function TimecodeField({ label, ms, minMs = 0, maxMs, onCommit, title }) {
+  const [draft, setDraft] = insState(() => msToTimecode(ms));
+  const [bad, setBad] = insState(false);
+
+  // Follow the value when it changes elsewhere — dragging a handle, Set
+  // in/out, Reset — unless the user is mid-edit on a bad value.
+  insUseEffect(() => { setDraft(msToTimecode(ms)); setBad(false); }, [ms]);
+
+  function commit() {
+    const parsed = timecodeToMs(draft);
+    if (parsed == null) { setBad(true); return; }
+    const clamped = Math.max(minMs, maxMs != null ? Math.min(parsed, maxMs) : parsed);
+    setBad(false);
+    setDraft(msToTimecode(clamped));
+    onCommit(clamped);
+  }
+
+  return (
+    <Field label={label}>
+      <TextInput
+        value={draft}
+        mono
+        title={title}
+        onChange={(v) => { setDraft(v); if (bad) setBad(false); }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { commit(); e.currentTarget.blur(); }
+          // Escape abandons the edit and shows the real value again.
+          if (e.key === "Escape") { setDraft(msToTimecode(ms)); setBad(false); e.currentTarget.blur(); }
+        }}
+        style={bad ? { borderColor: "var(--danger)", color: "var(--danger)" } : undefined} />
+    </Field>
+  );
+}
+
 // ── Trim scrubber ─────────────────────────────────────────────────
 // A horizontal source-duration track with two draggable handles bracketing
 // the trim window. The MediaViewer's currentMs rides through as a thin
@@ -358,12 +420,9 @@ function TrimScrubber({ sourceDurMs, trimInMs, trimOutMs, currentMs, onChange, o
   const [dragging, setDragging] = React.useState(null);
 
   function pct(ms) { return Math.max(0, Math.min(100, (ms / sourceDurMs) * 100)); }
-  function fmt(ms) {
-    const s = Math.max(0, ms / 1000);
-    const m = Math.floor(s / 60);
-    const sec = s - m * 60;
-    return `${String(m).padStart(2, "0")}:${sec.toFixed(2).padStart(5, "0")}`;
-  }
+  // Same units as the In/Out fields below the track. Two different time
+  // formats on one control is how you misread one for the other.
+  function fmt(ms) { return msToTimecode(ms); }
   function durFmt(ms) {
     const s = Math.max(0, Math.round(ms / 100) / 10);
     if (s < 60) return `${s.toFixed(1)}s`;
