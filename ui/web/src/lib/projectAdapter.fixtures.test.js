@@ -38,16 +38,37 @@ function assertWellFormed(vm) {
   }
 }
 
-describe('real fixtures → fromForgeProject yields a well-formed view-model', () => {
-  it('v1.0 lqr_marketing.forgeproject.json (items schema)', () => {
-    const vm = fromForgeProject(loadJson(FIXTURES.lqrMarketing));
-    assertWellFormed(vm);
-  });
+// `output/` is gitignored, so this fixture exists only on a machine that
+// has actually forged. It was read at MODULE level, so on a fresh
+// checkout -- CI, or a git worktree -- the whole file failed to collect
+// with an ENOENT that reads like a broken adapter rather than a missing
+// artifact. Resolved once, here, and everything below is guarded on it.
+// ⚠ BOTH `output/` and `test_media/` are gitignored, so EVERY fixture in
+// this file is a local-only artifact. Read at module level they took the
+// whole file down on any fresh checkout -- CI, or a git worktree -- with
+// an ENOENT that reads like a broken adapter rather than a missing file.
+// Resolve presence once, load only what is there, and guard every block
+// on it, so a clean checkout reports skips instead of a failure.
+const HAS_COMBINED = existsSync(REPO + FIXTURES.combined);
+const COMBINED_JSON = HAS_COMBINED ? loadJson(FIXTURES.combined) : null;
+const HAS_LQR = existsSync(REPO + FIXTURES.lqrMarketing);
+const LQR_JSON = HAS_LQR ? loadJson(FIXTURES.lqrMarketing) : null;
 
-  it('v2.0 combined.forgeproject.json (sections schema)', () => {
-    const vm = fromForgeProject(loadJson(FIXTURES.combined));
-    assertWellFormed(vm);
-  });
+describe('real fixtures → fromForgeProject yields a well-formed view-model', () => {
+  (HAS_LQR ? it : it.skip)(
+    'v1.0 lqr_marketing.forgeproject.json (items schema)', () => {
+      assertWellFormed(fromForgeProject(LQR_JSON));
+    });
+
+  // `output/` is gitignored, so this fixture only exists on a machine
+  // that has actually forged. Unguarded, this test failed on any fresh
+  // checkout -- including CI and a git worktree -- with an ENOENT that
+  // looks like a broken adapter rather than a missing artifact. Guarded
+  // the same way the victoriaoats fixture below already is.
+  (HAS_COMBINED ? it : it.skip)(
+    'v2.0 combined.forgeproject.json (sections schema)', () => {
+      assertWellFormed(fromForgeProject(COMBINED_JSON));
+    });
 
   // The task lists a victoriaoats fixture, but it is not present on disk in
   // this checkout. Guard so the suite stays green; assert if it ever lands.
@@ -59,9 +80,11 @@ describe('real fixtures → fromForgeProject yields a well-formed view-model', (
     });
 });
 
-describe('v2.0 combined fixture round-trips losslessly', () => {
-  const json = loadJson(FIXTURES.combined);
-  const back = toForgeProject(fromForgeProject(json));
+(HAS_COMBINED ? describe : describe.skip)('v2.0 combined fixture round-trips losslessly', () => {
+  // describe.skip still RUNS this body to collect its tests, so these
+  // must not touch the filesystem.
+  const json = COMBINED_JSON;
+  const back = HAS_COMBINED ? toForgeProject(fromForgeProject(json)) : null;
 
   it('preserves output_channels (the schema fields)', () => {
     // adapter only knows the CHANNEL_MAP fields; audio_estim is carried in
@@ -122,9 +145,11 @@ describe('v2.0 combined fixture round-trips losslessly', () => {
   });
 });
 
-describe('v1.0 lqr_marketing migration matches the Python rule', () => {
-  const json = loadJson(FIXTURES.lqrMarketing);
-  const vm = fromForgeProject(json);
+(HAS_LQR ? describe : describe.skip)('v1.0 lqr_marketing migration matches the Python rule', () => {
+  // describe.skip still RUNS this body to collect its tests, so nothing
+  // here may touch the filesystem.
+  const json = LQR_JSON;
+  const vm = HAS_LQR ? fromForgeProject(json) : null;
 
   // items: [seg-steel, fade, seg-banner(still), fade, seg-mechanical, fade, seg-closing]
   // No "none" joiners here; every fade splits → 4 sections of 1 segment each.

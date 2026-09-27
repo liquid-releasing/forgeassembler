@@ -5,6 +5,10 @@ import { FA_DATA } from './data';
 import { toMediaUrl } from './lib/mediaUrl';
 import { msToTimecode } from './lib/projectAdapter';
 import { buildCues, cueAt, sourceMsAt, opacityAt, holdBackgroundFrom } from './lib/compilationCues';
+import { mergeSceneActions, peakSpeed } from './lib/compilationFunscript';
+import { readSidecar } from './api/forge';
+import { toFunscript } from './lib/sidecars';
+import { TrackStack } from 'forgemoment';
 import { TitleCardText } from './JoinerEditor';
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
@@ -39,6 +43,40 @@ export function CompilationPreview({ project, open, onToggle }) {
   const loadedRef = useRef(null);
 
   const cue = cueAt(cues, ms);
+
+  // ── Every scene's motion track, laid end to end ──────────────────
+  // What makes this a viewer rather than a video player: the haptics are
+  // the point of the compilation, and the joins are where they go wrong.
+  const [tracks, setTracks] = useState({});
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    (async () => {
+      const found = {};
+      // One at a time: sixteen scenes is sixteen reads, and readSidecar
+      // is deduped so a reopened project costs nothing.
+      for (const c of cues) {
+        if (cancelled) return;
+        if (c.kind !== 'scene' || !c.funscriptPath) continue;
+        try {
+          const fs = toFunscript(await readSidecar(c.funscriptPath));
+          if (fs?.actions?.length) found[c.segId] = fs;
+        } catch (e) {
+          console.warn('[viewer] could not read', c.funscriptPath, e);
+        }
+      }
+      if (!cancelled) setTracks(found);
+    })();
+    return () => { cancelled = true; };
+  }, [cues, open]);
+
+  const merged = useMemo(() => mergeSceneActions(cues, tracks), [cues, tracks]);
+  const peak = useMemo(() => peakSpeed(merged.actions), [merged]);
+  // Holds drawn on the track, so a seam is visible as well as audible.
+  const holdBands = useMemo(() => cues
+    .filter(c => c.kind === 'hold')
+    .map(c => ({ id: `hold-${c.startMs}`, start: c.startMs, end: c.endMs,
+                 color: 'rgba(255,140,66,0.45)' })), [cues]);
 
   // Past the end: stop rather than run off into nothing.
   useEffect(() => {
@@ -252,12 +290,47 @@ export function CompilationPreview({ project, open, onToggle }) {
               width: 2, background: "var(--accent)", pointerEvents: "none",
             }} />
           </div>
-          <div style={{ fontSize: 10.5, color: "var(--text-dim)", marginTop: 6,
-                        lineHeight: 1.5 }}>
-            Order and timing are exact. Fades are shown as dimming rather than
-            composited, and audio is muted — this is the shape of the cut, not
-            the render.
+          {merged.actions.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <TrackStack
+                scope={{ start: 0, end: totalMs }}
+                actions={merged.actions}
+                events={holdBands}
+                laneHeights={{ funscript: 56, events: 10 }}
+                eventRows={1}
+                currentMs={ms}
+                onSeek={(at) => setMs(Math.max(0, Math.min(totalMs, at)))}
+                funscriptColorMode="velocity"
+                baton="line"
+                showRuler />
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between",
+                        gap: 12, fontSize: 10.5, color: "var(--text-dim)",
+                        marginTop: 6, lineHeight: 1.5 }}>
+            <span>
+              Order and timing are exact. Fades are shown as dimming rather than
+              composited, and audio is muted — this is the shape of the cut, not
+              the render.
+            </span>
+            {peak && (
+              // The number worth seeing before a forge: a seam reads as a
+              // spike here, at a boundary.
+              <span className="mono" style={{ whiteSpace: "nowrap",
+                                               color: peak.unitsPerS > 600
+                                                 ? "var(--warn)" : "var(--text-dim)" }}
+                     title="Fastest move in the joined motion track. A spike at a boundary is a seam.">
+                peak {Math.round(peak.unitsPerS)} u/s @ {msToTimecode(peak.atMs)}
+              </span>
+            )}
           </div>
+          {merged.scenesWithTrack > 0 && merged.dropped > 0 && (
+            <div className="mono" style={{ fontSize: 10, color: "var(--text-dim)",
+                                            marginTop: 2 }}>
+              {merged.dropped} action{merged.dropped === 1 ? "" : "s"} outside a
+              scene's window were dropped — the forge drops them too.
+            </div>
+          )}
         </div>
       </div>
     </div>

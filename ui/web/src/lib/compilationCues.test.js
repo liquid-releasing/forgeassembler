@@ -215,3 +215,21 @@ describe('holdBackgroundFrom', () => {
     expect(holdBackgroundFrom(cues, { kind: 'hold', joiner: TITLE_PREV })).toBeNull();
   });
 });
+
+describe('scene cues carry a motion track path', () => {
+  it('prefers an explicit map, falls back to a detected one', () => {
+    const { cues } = buildCues(project(
+      { id: 's1', joiner: CUT,
+        segments: [{ ...scene('a', 10000),
+                     explicitFunscripts: { main: 'x.funscript' },
+                     detectedFunscripts: { main: 'y.funscript' } }] },
+      { id: 's2', joiner: CUT,
+        segments: [{ ...scene('b', 10000),
+                     detectedFunscripts: { main: 'y.funscript' } }] },
+      { id: 's3', joiner: CUT, segments: [scene('c', 10000)] },
+    ), addedMs);
+    expect(cues[0].funscriptPath).toBe('x.funscript');
+    expect(cues[1].funscriptPath).toBe('y.funscript');
+    expect(cues[2].funscriptPath).toBeNull();
+  });
+});

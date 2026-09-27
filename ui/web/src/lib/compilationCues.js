@@ -79,6 +79,13 @@ export function buildCues(project, joinerAddedMs) {
         // something to show before anything is forged.
         thumb: seg.thumb || null,
         thumbPath: seg.thumbPath || null,
+        // The scene's motion track, so the viewer can draw the haptics
+        // across the whole compilation. `main` is the bare .funscript
+        // every station falls back to; a `.forge` import carries an
+        // explicit map, a detected folder a discovered one.
+        funscriptPath: (seg.explicitFunscripts || {}).main
+                      || (seg.detectedFunscripts || {}).main
+                      || null,
         fadeInMs: cues.length && fadeInMs ? fadeInMs : 0,
         fadeOutMs: 0,
       });
