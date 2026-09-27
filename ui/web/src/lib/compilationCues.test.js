@@ -34,12 +34,25 @@ describe('buildCues', () => {
     expect(totalMs).toBe(23000);
   });
 
-  it('never gives the first scene a leading joiner', () => {
+  it("opens on the first scene's joiner, which is the compilation's own", () => {
+    // The engine lays the first section's leading joiner down at t=0,
+    // before any footage, so a title card there is the title for the
+    // whole compilation. This used to assert the opposite and the row
+    // was hidden in the UI to match, which left an opening title
+    // unreachable even though the forge would have rendered it.
     const { cues } = buildCues(project(
       { id: 's1', title: 'A', joiner: FADE, segments: [scene('a', 10000)] },
     ), addedMs);
-    expect(cues).toHaveLength(1);
-    expect(cues[0].kind).toBe('scene');
+    expect(cues.map(c => c.kind)).toEqual(['hold', 'scene']);
+    expect(cues[0]).toMatchObject({ startMs: 0, endMs: 3000 });
+    expect(cues[1]).toMatchObject({ startMs: 3000, endMs: 13000 });
+  });
+
+  it('still opens straight on the footage when the first joiner is a cut', () => {
+    const { cues } = buildCues(project(
+      { id: 's1', title: 'A', joiner: CUT, segments: [scene('a', 10000)] },
+    ), addedMs);
+    expect(cues.map(c => c.kind)).toEqual(['scene']);
     expect(cues[0].startMs).toBe(0);
   });
 

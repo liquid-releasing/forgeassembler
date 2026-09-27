@@ -308,6 +308,11 @@ function App() {
       // Where this project was saved is where the next one starts, and
       // its folder is where the forge writes.
       if (folder) rememberFolder('output', folder);
+      // ...and it is where Open should look. Only the OUTPUT folder was
+      // remembered here, so after saving a project and never opening
+      // one, Open had no start directory and fell through to wherever
+      // Windows last was — the folder the scenes were imported from.
+      rememberFileFolder('projectOpen', path);
       setIoDialog(null);
       // If we were saving en route to opening another project, continue.
       if (pendingAfterSave) { const a = pendingAfterSave; setPendingAfterSave(null); a(); }
