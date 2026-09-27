@@ -428,7 +428,7 @@ export function joinerToReal(joiner) {
     // byte-identically.
     if (joiner.background && joiner.background !== 'color') {
       params.background = joiner.background;
-      params.background_dim = num(joiner.backgroundDim, 0.45);
+      params.background_dim = num(joiner.backgroundDim, 0.25);
     }
     return { joiner_type: 'title_card', params };
   }
@@ -477,7 +477,7 @@ export function joinerFromReal(lj) {
       textColor: p.text_color || '',
       accentColor: p.accent_color || '',
       background: p.background || 'color',
-      backgroundDim: num(p.background_dim, 0.45),
+      backgroundDim: num(p.background_dim, 0.25),
       ...(p.font_family ? { fontFamily: p.font_family } : {}),
     };
   }

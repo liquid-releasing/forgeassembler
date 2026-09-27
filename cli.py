@@ -534,6 +534,59 @@ def cmd_thumbnail(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_card_backdrop(args: argparse.Namespace) -> int:
+    """Render the backdrop a frame-backed title card will sit on.
+
+    Runs the FORGE's own frame search, so the preview and the render
+    cannot disagree about which frame that is. Prints the timestamp it
+    settled on; `found: false` means the whole span was blank and the
+    card falls back to its flat colour, which is what the forge does
+    too.
+    """
+    from forgeassembler_core.concat_video import find_card_background_frame
+    from forgeassembler_core.titles import render_card_backdrop
+
+    video = Path(args.video)
+    if not video.is_file():
+        print(f"ERROR: file not found: {video}", file=sys.stderr)
+        return 2
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    raw = out.with_name(out.stem + ".raw.png")
+    try:
+        at_s = find_card_background_frame(
+            str(video), args.direction, args.start_ms, args.end_ms, str(raw),
+        )
+    except RuntimeError as e:          # no ffmpeg on this machine
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 3
+
+    # `is not None`: the frame it settled on can be 0.0 seconds, and the
+    # first frame of a scene is a perfectly good backdrop.
+    if at_s is None:
+        print(json.dumps({"found": False}))
+        return 0
+
+    try:
+        render_card_backdrop(raw, args.width, args.height, args.dim, out)
+    except Exception as e:  # noqa: BLE001 -- a preview must not take the
+        # window with it; the UI falls back to the flat colour.
+        print(f"ERROR: could not render the backdrop: {e}", file=sys.stderr)
+        return 3
+    finally:
+        raw.unlink(missing_ok=True)
+
+    print(json.dumps({
+        "found": True,
+        "path": str(out),
+        "at_ms": int(round(at_s * 1000)),
+        "width": args.width,
+        "height": args.height,
+    }))
+    return 0
+
+
 def cmd_title_catalog(args: argparse.Namespace) -> int:
     """Print the layouts, themes and marks the title renderer supports.
 
@@ -1140,6 +1193,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="render the scrim for a card sitting on a real frame",
     )
     p_tprev.set_defaults(func=cmd_title_preview)
+
+    p_bdrop = sub.add_parser(
+        "card-backdrop",
+        help="render the frame a title card will actually sit on",
+    )
+    p_bdrop.add_argument("video", help="the neighbouring scene's video")
+    p_bdrop.add_argument(
+        "--direction", required=True,
+        choices=["previous_last_frame", "next_first_frame"],
+        help="search back from the end, or forward from the start",
+    )
+    p_bdrop.add_argument(
+        "--start-ms", type=int, default=0,
+        help="start of the scene's trimmed span",
+    )
+    p_bdrop.add_argument(
+        "--end-ms", type=int, required=True,
+        help="end of the scene's trimmed span",
+    )
+    p_bdrop.add_argument("--out", required=True, help="output PNG path")
+    p_bdrop.add_argument("--width", type=int, default=960)
+    p_bdrop.add_argument("--height", type=int, default=540)
+    p_bdrop.add_argument(
+        "--dim", type=float, default=0.45,
+        help="how far to darken the frame, 0..1",
+    )
+    p_bdrop.set_defaults(func=cmd_card_backdrop)
 
     return parser
 

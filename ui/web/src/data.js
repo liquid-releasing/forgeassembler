@@ -86,7 +86,7 @@
                     next_first_frame: "First frame after" },
           default: "color" },
         { id: "backgroundDim", label: "Darken background", kind: "range",
-          min: 0, max: 0.9, step: 0.05, default: 0.45 },
+          min: 0, max: 0.9, step: 0.05, default: 0.25 },
         // These three are OVERRIDES. Empty means "use the theme", which
         // is what almost every card should do, so they must not carry a
         // colour as their default — a default here would pin every card
@@ -104,7 +104,7 @@
                   layout: "centered", theme: "dark", glyph: "none",
                   fadeOutS: 1.0, holdS: 3.0, fadeInS: 1.0,
                   colorOverride: "", textColor: "", accentColor: "",
-                  background: "color", backgroundDim: 0.45 },
+                  background: "color", backgroundDim: 0.25 },
     },
   ];
 

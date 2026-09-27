@@ -69,7 +69,15 @@ BACKGROUND_NEXT = "next_first_frame"
 BACKGROUNDS = (BACKGROUND_COLOR, BACKGROUND_PREV, BACKGROUND_NEXT)
 
 # Text over a real frame needs the frame pushed back to stay readable.
-DEFAULT_BACKGROUND_DIM = 0.45
+#
+# 0.25 rather than the 0.45 this started at, for two reasons found in a
+# real forge: the filter was brightening rather than darkening, so no
+# value here had ever been judged on what it actually did; and the
+# layouts now lay a scrim behind their own words, which is where
+# legibility is really won. A global dim this side of subtle is enough
+# once the words defend themselves, and it leaves the user's picture
+# looking like their picture.
+DEFAULT_BACKGROUND_DIM = 0.25
 
 
 class TitleCard(FadeToBlack):
