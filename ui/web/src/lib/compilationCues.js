@@ -75,6 +75,10 @@ export function buildCues(project, joinerAddedMs) {
         // Where in the SOURCE this cue starts. Output time minus this
         // cue's start, plus the trim-in, is the source timestamp.
         sourceStartMs: seg.trimStartMs || 0,
+        // Carried so a title card backed by a neighbouring frame has
+        // something to show before anything is forged.
+        thumb: seg.thumb || null,
+        thumbPath: seg.thumbPath || null,
         fadeInMs: cues.length && fadeInMs ? fadeInMs : 0,
         fadeOutMs: 0,
       });
@@ -144,4 +148,26 @@ export function opacityAt(cue, ms) {
     return Math.max(0, Math.min(1, left / cue.fadeOutMs));
   }
   return 1;
+}
+
+/**
+ * The scene a title card borrows its background from, or null.
+ *
+ * ⚠ This is the neighbouring scene, not the exact frame the forge will
+ * use. The render searches backwards (or forwards) for the last non-blank
+ * frame, because scenes routinely end on black; the preview only has the
+ * scene's thumbnail. So it answers "which scene is behind the card",
+ * which is the part worth checking before a twenty-minute encode.
+ */
+export function holdBackgroundFrom(cues, holdCue) {
+  if (!holdCue || holdCue.kind !== 'hold') return null;
+  const bg = holdCue.joiner?.background;
+  if (bg !== 'previous_last_frame' && bg !== 'next_first_frame') return null;
+  const i = cues.indexOf(holdCue);
+  if (i < 0) return null;
+  const step = bg === 'previous_last_frame' ? -1 : 1;
+  for (let k = i + step; k >= 0 && k < cues.length; k += step) {
+    if (cues[k].kind === 'scene') return cues[k];
+  }
+  return null;
 }

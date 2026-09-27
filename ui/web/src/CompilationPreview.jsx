@@ -4,7 +4,7 @@ import { Button, Icon } from './primitives';
 import { FA_DATA } from './data';
 import { toMediaUrl } from './lib/mediaUrl';
 import { msToTimecode } from './lib/projectAdapter';
-import { buildCues, cueAt, sourceMsAt, opacityAt } from './lib/compilationCues';
+import { buildCues, cueAt, sourceMsAt, opacityAt, holdBackgroundFrom } from './lib/compilationCues';
 import { TitleCardText } from './JoinerEditor';
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
@@ -122,6 +122,11 @@ export function CompilationPreview({ project, open, onToggle }) {
 
   const pct = totalMs > 0 ? Math.max(0, Math.min(100, (ms / totalMs) * 100)) : 0;
   const holdColor = cue?.kind === 'hold' ? (cue.joiner?.color || '#000000') : null;
+  // A title card can borrow a frame from the scene either side. The
+  // thumbnail stands in for it here — see holdBackgroundFrom.
+  const holdBg = cue?.kind === 'hold' ? holdBackgroundFrom(cues, cue) : null;
+  const holdBgSrc = holdBg ? (holdBg.thumb || (holdBg.thumbPath ? toMediaUrl(holdBg.thumbPath) : null)) : null;
+  const holdBgDim = Math.max(0, Math.min(0.9, Number(cue?.joiner?.backgroundDim ?? 0.45)));
   const dim = cue ? opacityAt(cue, ms) : 1;
 
   if (!open) {
@@ -191,6 +196,16 @@ export function CompilationPreview({ project, open, onToggle }) {
           {cue?.kind === 'hold' && (
             <>
               <span style={{ position: "absolute", inset: 0, background: holdColor }} />
+              {holdBgSrc && (
+                <>
+                  <img src={holdBgSrc} alt="" style={{
+                    position: "absolute", inset: 0, width: "100%", height: "100%",
+                    objectFit: "cover", display: "block",
+                  }} />
+                  <span style={{ position: "absolute", inset: 0,
+                                  background: "#000", opacity: holdBgDim }} />
+                </>
+              )}
               {cue.joiner?.kind === 'title_card' && <TitleCardText joiner={cue.joiner} />}
             </>
           )}

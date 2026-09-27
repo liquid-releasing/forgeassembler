@@ -411,6 +411,13 @@ export function joinerToReal(joiner) {
     if (joiner.textColor) params.text_color = joiner.textColor;
     if (joiner.fontSize) params.font_size = num(joiner.fontSize, 96);
     if (joiner.fontFamily) params.font_family = String(joiner.fontFamily);
+    // Only spell out a frame background. A card on flat colour stays the
+    // shape the engine defaults to, so an existing project round-trips
+    // byte-identically.
+    if (joiner.background && joiner.background !== 'color') {
+      params.background = joiner.background;
+      params.background_dim = num(joiner.backgroundDim, 0.45);
+    }
     return { joiner_type: 'title_card', params };
   }
   if (kind === 'none') return { joiner_type: 'none', params: {} };
@@ -447,6 +454,8 @@ export function joinerFromReal(lj) {
       color: p.color || '#000000',
       textColor: p.text_color || '#ffffff',
       fontSize: num(p.font_size, 96),
+      background: p.background || 'color',
+      backgroundDim: num(p.background_dim, 0.45),
       ...(p.font_family ? { fontFamily: p.font_family } : {}),
     };
   }

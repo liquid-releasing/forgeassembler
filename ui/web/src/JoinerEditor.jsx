@@ -161,11 +161,29 @@ function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t }) {
     // hold boundaries rather than fading with it, which is exactly what
     // `enable='between(t,0,hold)'` does in the real filter graph.
     const showText = k === "title_card" && cur >= fo && cur < fo + ho;
+    // A card can sit on a frame from the scene either side instead of a
+    // flat colour. ⚠ The thumbnail stands in for it: the forge searches
+    // for the last NON-BLANK frame, which is rarely the one the
+    // thumbnail was taken at. What this previews is which scene is
+    // behind the card, and how readable the title is over it.
+    const bgKind = k === "title_card" ? (joiner.background || "color") : "color";
+    const bgSrc = bgKind === "previous_last_frame" ? prevSrc
+                : bgKind === "next_first_frame" ? nextSrc
+                : null;
+    const bgDim = Math.max(0, Math.min(0.9, Number(joiner.backgroundDim ?? 0.45)));
     return (
       <>
         {leftOp > 0 && <ClipPanel src={prevSrc} label="previous clip" tint="left" opacity={leftOp} />}
         {rightOp > 0 && <ClipPanel src={nextSrc} label="next clip" tint="right" opacity={rightOp} />}
-        <span style={{ position: "absolute", inset: 0, background: color, opacity: holdOp }} />
+        {bgKind !== "color" ? (
+          <span style={{ position: "absolute", inset: 0, opacity: holdOp }}>
+            <ClipPanel src={bgSrc} label="card background"
+                        tint={bgKind === "previous_last_frame" ? "left" : "right"} />
+            <span style={{ position: "absolute", inset: 0, background: "#000", opacity: bgDim }} />
+          </span>
+        ) : (
+          <span style={{ position: "absolute", inset: 0, background: color, opacity: holdOp }} />
+        )}
         {showText && <TitleCardText joiner={joiner} />}
       </>
     );
@@ -460,7 +478,7 @@ function ParamControl({ param, value, onChange }) {
                 fontFamily: "inherit", fontSize: 11, fontWeight: 600, cursor: "pointer",
                 fontVariantNumeric: "tabular-nums",
               }}>
-                {o}
+                {param.labels?.[o] || o}
               </button>
             );
           })}

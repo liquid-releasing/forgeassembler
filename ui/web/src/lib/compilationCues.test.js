@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCues, cueAt, sourceMsAt, opacityAt } from './compilationCues.js';
+import { buildCues, cueAt, sourceMsAt, opacityAt, holdBackgroundFrom } from './compilationCues.js';
 
 // Mirrors FA_DATA.joinerAddedMs: only the hold occupies the timeline.
 const addedMs = (j) => (j && j.kind !== 'none' ? Math.round((j.holdS || 0) * 1000) : 0);
@@ -174,5 +174,44 @@ describe('opacityAt', () => {
       { id: 's2', joiner: CUT, segments: [scene('b', 10000)] },
     ), addedMs);
     expect(opacityAt(cutOnly[0], 9990)).toBe(1);
+  });
+});
+
+describe('holdBackgroundFrom', () => {
+  const TITLE_PREV = { ...TITLE, background: 'previous_last_frame' };
+  const TITLE_NEXT = { ...TITLE, background: 'next_first_frame' };
+
+  function withCard(joiner) {
+    return buildCues(project(
+      { id: 's1', title: 'A', joiner: CUT,
+        segments: [{ ...scene('a', 10000), thumbPath: 'a.png' }] },
+      { id: 's2', title: 'B', joiner,
+        segments: [{ ...scene('b', 10000), thumbPath: 'b.png' }] },
+    ), addedMs);
+  }
+
+  it('looks back for the scene before the card', () => {
+    const { cues } = withCard(TITLE_PREV);
+    const hold = cues.find(c => c.kind === 'hold');
+    expect(holdBackgroundFrom(cues, hold).thumbPath).toBe('a.png');
+  });
+
+  it('looks forward for the scene after it', () => {
+    const { cues } = withCard(TITLE_NEXT);
+    const hold = cues.find(c => c.kind === 'hold');
+    expect(holdBackgroundFrom(cues, hold).thumbPath).toBe('b.png');
+  });
+
+  it('has nothing to show for a flat-colour card or a plain fade', () => {
+    const flat = withCard({ ...TITLE, background: 'color' });
+    expect(holdBackgroundFrom(flat.cues, flat.cues.find(c => c.kind === 'hold'))).toBeNull();
+    const fade = withCard(FADE);
+    expect(holdBackgroundFrom(fade.cues, fade.cues.find(c => c.kind === 'hold'))).toBeNull();
+  });
+
+  it('returns null for a scene cue or a stray one', () => {
+    const { cues } = withCard(TITLE_PREV);
+    expect(holdBackgroundFrom(cues, cues[0])).toBeNull();
+    expect(holdBackgroundFrom(cues, { kind: 'hold', joiner: TITLE_PREV })).toBeNull();
   });
 });

@@ -37,6 +37,14 @@ from .fade_to_black import FadeToBlack
 DEFAULT_TEXT_COLOR = "#ffffff"
 DEFAULT_FONT_SIZE = 96
 
+BACKGROUND_COLOR = "color"
+BACKGROUND_PREV = "previous_last_frame"
+BACKGROUND_NEXT = "next_first_frame"
+BACKGROUNDS = (BACKGROUND_COLOR, BACKGROUND_PREV, BACKGROUND_NEXT)
+
+# Text over a real frame needs the frame pushed back to stay readable.
+DEFAULT_BACKGROUND_DIM = 0.45
+
 
 class TitleCard(FadeToBlack):
     joiner_type = "title_card"
@@ -69,6 +77,34 @@ class TitleCard(FadeToBlack):
         # A zero or negative size makes ffmpeg refuse the whole filter
         # graph rather than clamp — see the drawtext notes in filters.py.
         return v if v > 0 else DEFAULT_FONT_SIZE
+
+    def background(self) -> str:
+        """What the card sits on: a flat colour, or a real frame.
+
+        `previous_last_frame` / `next_first_frame` take a picture from the
+        neighbouring scene instead of a solid bridge, so the card reads as
+        part of the film rather than an interruption. The frame chosen is
+        the last (or first) NON-BLANK one: scenes routinely start and end
+        on black, and a black frame is just a slower way of getting the
+        flat colour back.
+        """
+        raw = self.params.get("background", BACKGROUND_COLOR)
+        raw = raw.strip() if isinstance(raw, str) else ""
+        return raw if raw in BACKGROUNDS else BACKGROUND_COLOR
+
+    def background_dim(self) -> float:
+        """How far to darken a frame background, 0..1.
+
+        Text over a solid colour is legible by construction; text over a
+        real frame is not, and a title that cannot be read is worse than
+        no title. Defaults to a little under half.
+        """
+        raw = self.params.get("background_dim", DEFAULT_BACKGROUND_DIM)
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            return DEFAULT_BACKGROUND_DIM
+        return max(0.0, min(1.0, v))
 
     def text_color(self) -> str:
         raw = self.params.get("text_color", DEFAULT_TEXT_COLOR)
@@ -129,6 +165,24 @@ class TitleCard(FadeToBlack):
             "max": 400,
             "label": "Font size",
             "help": "Points, against the output resolution.",
+        }
+        schema["background"] = {
+            "type": "enum",
+            "default": BACKGROUND_COLOR,
+            "options": list(BACKGROUNDS),
+            "label": "Card background",
+            "help": "A flat colour, or the last non-blank frame of the "
+                    "previous scene / the first non-blank frame of the "
+                    "next one.",
+        }
+        schema["background_dim"] = {
+            "type": "float",
+            "default": DEFAULT_BACKGROUND_DIM,
+            "min": 0.0,
+            "max": 1.0,
+            "label": "Darken background",
+            "help": "How far to push a frame background back so the "
+                    "title stays readable. Ignored for a flat colour.",
         }
         schema["text_color"] = {
             "type": "color",

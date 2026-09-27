@@ -1683,3 +1683,123 @@ def test_a_cut_still_produces_no_bridge():
     g = _graph({"id": "j2", "joiner_type": "none", "params": {}})
     assert "color=c=" not in g
     assert "drawtext" not in g
+
+
+# ── Title-card frame backgrounds ──────────────────────────────────────
+# "The last frame of the previous scene" is very often the frame with
+# nothing on it, because scenes fade out. These pin the rejection rule.
+
+def _paint_png(tmp_path, name, make):
+    from PIL import Image
+
+    img = Image.new("RGB", (64, 36))
+    img.putdata([make(x, y) for y in range(36) for x in range(64)])
+    p = tmp_path / name
+    img.save(p)
+    return str(p)
+
+
+def test_a_black_frame_is_blank(tmp_path):
+    from forgeassembler_core.concat_video import _frame_is_blank
+
+    assert _frame_is_blank(_paint_png(tmp_path, "black.png", lambda x, y: (0, 0, 0)))
+
+
+def test_a_nearly_black_fade_frame_is_blank(tmp_path):
+    from forgeassembler_core.concat_video import _frame_is_blank
+
+    assert _frame_is_blank(_paint_png(tmp_path, "fade.png", lambda x, y: (4, 4, 5)))
+
+
+def test_a_white_flash_is_blank_too(tmp_path):
+    # Bright, but no more interesting than black. Brightness alone would
+    # happily pick this.
+    from forgeassembler_core.concat_video import _frame_is_blank
+
+    assert _frame_is_blank(_paint_png(tmp_path, "white.png", lambda x, y: (255, 255, 255)))
+
+
+def test_a_flat_colour_card_is_blank(tmp_path):
+    from forgeassembler_core.concat_video import _frame_is_blank
+
+    assert _frame_is_blank(_paint_png(tmp_path, "flat.png", lambda x, y: (30, 90, 160)))
+
+
+def test_a_frame_with_a_picture_on_it_is_not_blank(tmp_path):
+    from forgeassembler_core.concat_video import _frame_is_blank
+
+    path = _paint_png(tmp_path, "real.png",
+                lambda x, y: ((x * 4) % 256, (y * 7) % 256, (x + y) % 256))
+    assert not _frame_is_blank(path)
+
+
+def test_a_dark_but_readable_frame_is_not_blank(tmp_path):
+    # A night scene must survive: it is dim, but there is something there.
+    from forgeassembler_core.concat_video import _frame_is_blank
+
+    path = _paint_png(tmp_path, "night.png",
+                lambda x, y: (8 + (x % 40), 6 + (y % 30), 10 + ((x + y) % 35)))
+    assert not _frame_is_blank(path)
+
+
+def test_an_unreadable_file_counts_as_blank(tmp_path):
+    from forgeassembler_core.concat_video import _frame_is_blank
+
+    bad = tmp_path / "not-an-image.png"
+    bad.write_bytes(b"nope")
+    assert _frame_is_blank(str(bad))
+    assert _frame_is_blank(str(tmp_path / "does-not-exist.png"))
+
+
+TITLE_ON_PREV_FRAME = {
+    "id": "j2", "joiner_type": "title_card",
+    "params": {"text": "Part Two", "duration_s": 3.0, "fade_s": 1.0,
+               "background": "previous_last_frame"},
+}
+
+
+def test_a_frame_backed_card_takes_a_looped_image_input():
+    from forgeassembler_core.concat_video import build_ffmpeg_command
+    from forgeassembler_core.layout import lay_out
+
+    project = _two_scene_project(TITLE_ON_PREV_FRAME)
+    layout = lay_out(project, probe=lambda p: 10000)
+    cmd = build_ffmpeg_command(project, layout, frame_rate_override=30,
+                               joiner_frames={"j2": "prev.png"})
+    argv = cmd.to_argv("ffmpeg")
+    graph = " ".join(argv)
+    assert "prev.png" in argv
+    # Normalised to the canvas like a segment, so a 4:3 source pillarboxes
+    # rather than stretching.
+    assert "force_original_aspect_ratio=decrease" in graph
+    # Pushed back so the title stays readable.
+    assert "colorlevels=rimax=0.55" in graph
+    assert "drawtext" in graph
+    assert "color=c=0x000000" not in graph
+
+
+def test_a_card_falls_back_to_flat_colour_when_every_frame_was_blank():
+    # The honest outcome for a scene that really is black at that end.
+    from forgeassembler_core.concat_video import build_ffmpeg_command
+    from forgeassembler_core.layout import lay_out
+
+    project = _two_scene_project(TITLE_ON_PREV_FRAME)
+    layout = lay_out(project, probe=lambda p: 10000)
+    graph = " ".join(build_ffmpeg_command(
+        project, layout, frame_rate_override=30, joiner_frames={}).to_argv("ffmpeg"))
+    assert "color=c=0x000000" in graph
+    assert "colorlevels" not in graph
+
+
+def test_dim_never_blacks_the_frame_out_entirely():
+    from forgeassembler_core.concat_video import build_ffmpeg_command
+    from forgeassembler_core.layout import lay_out
+
+    j = {**TITLE_ON_PREV_FRAME}
+    j["params"] = {**j["params"], "background_dim": 1.0}
+    project = _two_scene_project(j)
+    layout = lay_out(project, probe=lambda p: 10000)
+    graph = " ".join(build_ffmpeg_command(
+        project, layout, frame_rate_override=30,
+        joiner_frames={"j2": "prev.png"}).to_argv("ffmpeg"))
+    assert "rimax=0.1" in graph, "a fully dimmed card would look broken"

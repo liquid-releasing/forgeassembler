@@ -238,6 +238,7 @@ def build_ffmpeg_command(
     chapters_path: Optional[str] = None,
     segments_with_audio: Optional[set[str]] = None,
     text_files: Optional[dict[str, str]] = None,
+    joiner_frames: Optional[dict[str, str]] = None,
     encoder: Optional[str] = None,
 ) -> FfmpegCommand:
     """Return an `FfmpegCommand` describing the video forge for this project.
@@ -357,6 +358,21 @@ def build_ffmpeg_command(
             aud_pre = ["-t", f"{dur_s:g}"]
             seg_ai[seg.id] = len(inputs)
             inputs.append(FfmpegInput(path=seg.audio.file, pre_args=aud_pre))
+
+    # Title cards backed by a real frame take a looped PNG input each,
+    # declared here so they share the input numbering every filter label
+    # is built from.
+    joiner_bgi: dict[str, int] = {}
+    for li in layout.joiners():
+        j = li.item
+        path = (joiner_frames or {}).get(getattr(j, "id", ""))
+        if not path:
+            continue
+        joiner_bgi[j.id] = len(inputs)
+        inputs.append(FfmpegInput(
+            path=path,
+            pre_args=["-loop", "1", "-t", f"{li.duration_ms / 1000.0:g}"],
+        ))
 
     # ── Stage B: per-segment normalize + audio + fades.
     filter_parts: list[str] = []
@@ -504,11 +520,37 @@ def build_ffmpeg_command(
                 v_bridge = f"v_bridge{bridge_idx}"
                 a_bridge = f"a_bridge{bridge_idx}"
                 bridge_idx += 1
-                # ffmpeg `color` source takes 0xRRGGBB hex; strip the '#'.
-                filter_parts.append(
-                    f"color=c=0x{bridge_color.lstrip('#')}:s={width}x{height}:"
-                    f"d={d_s:g}:r={fps}[{v_bridge}]",
-                )
+                bgi = joiner_bgi.get(getattr(item, "id", ""))
+                if bgi is not None:
+                    # A real frame from a neighbouring scene, normalised to
+                    # the canvas exactly as a segment would be so a 4:3
+                    # source pillarboxes instead of stretching.
+                    v_bgraw = f"v_bridgesrc{bridge_idx}"
+                    filter_parts.append(normalize_segment_filter(
+                        in_label=f"{bgi}:v", out_label=v_bgraw,
+                        width=width, height=height,
+                    ))
+                    dim = 1.0
+                    getter = getattr(joiner_inst, "background_dim", None)
+                    if callable(getter):
+                        # Never a pure-black card: at dim=1 the frame is
+                        # gone and the user is left wondering why their
+                        # background did nothing.
+                        dim = max(0.1, 1.0 - float(getter()))
+                    if dim < 1.0:
+                        filter_parts.append(
+                            f"[{v_bgraw}]colorlevels="
+                            f"rimax={dim:g}:gimax={dim:g}:bimax={dim:g}"
+                            f"[{v_bridge}]",
+                        )
+                    else:
+                        filter_parts.append(f"[{v_bgraw}]null[{v_bridge}]")
+                else:
+                    # ffmpeg `color` source takes 0xRRGGBB hex; strip the '#'.
+                    filter_parts.append(
+                        f"color=c=0x{bridge_color.lstrip('#')}:s={width}x{height}:"
+                        f"d={d_s:g}:r={fps}[{v_bridge}]",
+                    )
                 filter_parts.append(
                     f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_bridge}]",
                 )
@@ -1012,6 +1054,134 @@ def _extract_last_frame(
         )
 
 
+
+# ── Title-card frame backgrounds ──────────────────────────────────────
+# A title card can sit on a real frame from the scene either side of it,
+# so it reads as part of the film rather than an interruption. The frame
+# has to be a NON-BLANK one: scenes routinely open and close on black or
+# on a fade, and "the last frame of the previous scene" is very often
+# exactly the frame with nothing in it.
+
+# How far from the anchor to look, in seconds. Ordered nearest-first, so
+# a scene that ends on content gives up its very last frame and only a
+# scene that fades out is searched backwards any distance.
+_FRAME_SEARCH_OFFSETS_S = (0.3, 0.8, 1.5, 3.0, 5.0, 8.0, 12.0, 20.0)
+
+
+def _frame_is_blank(
+    png_path: str, dark_threshold: float = 10.0, flat_threshold: float = 3.0,
+) -> bool:
+    """Is this frame not worth showing?
+
+    Two ways to be blank, and a title card needs to reject both:
+    too dark to see (a fade-out, a black leader), or perfectly flat (a
+    solid colour card, a white flash) — which is bright but no more
+    interesting than black. Standard deviation catches the second;
+    brightness alone would happily pick a white frame.
+
+    An unreadable file counts as blank: the caller falls back to a flat
+    colour, which is the same thing the user would have got anyway.
+    """
+    try:
+        from PIL import Image, ImageStat  # noqa: PLC0415
+
+        with Image.open(png_path) as im:
+            stat = ImageStat.Stat(im.convert("L"))
+        return stat.mean[0] < dark_threshold or stat.stddev[0] < flat_threshold
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _extract_frame_at(
+    video_path: str, at_s: float, out_png: str, ffmpeg_exe: str,
+) -> bool:
+    """Grab one frame at `at_s`. False if ffmpeg could not."""
+    result = subprocess.run(
+        [
+            ffmpeg_exe, "-hide_banner", "-loglevel", "error",
+            "-ss", f"{max(0.0, at_s):.3f}", "-i", str(video_path),
+            "-frames:v", "1", "-update", "1", "-y", str(out_png),
+        ],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return result.returncode == 0 and Path(out_png).is_file()
+
+
+def _extract_non_blank_frame(
+    video_path: str, anchor_s: float, direction: int,
+    lo_s: float, hi_s: float, out_png: str, ffmpeg_exe: str,
+) -> bool:
+    """Walk away from `anchor_s` until a frame has something on it.
+
+    `direction` is -1 to search backwards from a scene's end, +1 to
+    search forwards from its start. `lo_s`/`hi_s` bound the search to the
+    scene's own trimmed span, so a card never shows footage the
+    compilation cuts out.
+
+    False when every candidate was blank — the caller then uses the flat
+    colour, which is the honest outcome for a scene that really is black
+    at that end.
+    """
+    for offset in _FRAME_SEARCH_OFFSETS_S:
+        at = anchor_s + direction * offset
+        if at < lo_s or at > hi_s:
+            continue
+        if _extract_frame_at(video_path, at, out_png, ffmpeg_exe)                 and not _frame_is_blank(out_png):
+            return True
+    return False
+
+
+def _build_joiner_frames(
+    project: Project, layout: Layout, ffmpeg_exe: str, temp_dir: Path,
+) -> dict[str, str]:
+    """Extract a background frame for every title card that wants one.
+
+    Returns joiner id -> PNG path. A card whose neighbour is missing, is
+    a still, or is blank throughout simply does not appear, and falls
+    back to its flat colour.
+    """
+    frames: dict[str, str] = {}
+    items = layout.items
+    for idx, li in enumerate(items):
+        if li.is_segment:
+            continue
+        joiner = li.item
+        if getattr(joiner, "joiner_type", "") != "title_card":
+            continue
+        inst = instantiate_joiner(joiner.joiner_type, joiner.params)
+        background = inst.background()
+        if background == "color":
+            continue
+
+        if background == "previous_last_frame":
+            rng = range(idx - 1, -1, -1)
+        else:
+            rng = range(idx + 1, len(items))
+        neighbour = next((items[k] for k in rng if items[k].is_segment), None)
+        if neighbour is None:
+            continue
+        seg = neighbour.item
+        if seg.is_still():
+            # A still IS its own frame; no search needed.
+            frames[joiner.id] = str(seg.video)
+            continue
+
+        lo_s = seg.trim_start_ms() / 1000.0
+        hi_s = lo_s + (neighbour.duration_ms / 1000.0)
+        out_png = temp_dir / f"joinerbg_{joiner.id}.png"
+        if background == "previous_last_frame":
+            found = _extract_non_blank_frame(
+                seg.video, hi_s, -1, lo_s, hi_s, str(out_png), ffmpeg_exe,
+            )
+        else:
+            found = _extract_non_blank_frame(
+                seg.video, lo_s, +1, lo_s, hi_s, str(out_png), ffmpeg_exe,
+            )
+        if found:
+            frames[joiner.id] = str(out_png)
+    return frames
+
+
 def _build_text_files(
     project: Project, temp_dir: Path,
 ) -> dict[str, str]:
@@ -1132,6 +1302,7 @@ def forge_video(
     try:
         frame_cache = _build_frame_cache(project, exe, temp_dir)
         text_files = _build_text_files(project, temp_dir)
+        joiner_frames = _build_joiner_frames(project, layout, exe, temp_dir)
 
         # Probe each non-still segment for an audio stream. Segments
         # without one (phone captures, silent loops, animation renders)
@@ -1174,6 +1345,7 @@ def forge_video(
             chapters_path=chapters_path,
             segments_with_audio=segments_with_audio,
             text_files=text_files,
+            joiner_frames=joiner_frames,
             encoder=encoder,
         )
 

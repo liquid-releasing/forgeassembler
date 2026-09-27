@@ -58,6 +58,14 @@
         { id: "fadeOutS",  label: "Fade out",    kind: "time", min: 0, max: 10, step: 0.1, default: 1.0, unit: "s" },
         { id: "holdS",     label: "Card on screen", kind: "time", min: 0.1, max: 20, step: 0.1, default: 3.0, unit: "s" },
         { id: "fadeInS",   label: "Fade in",     kind: "time", min: 0, max: 10, step: 0.1, default: 1.0, unit: "s" },
+        { id: "background", label: "Card background", kind: "enum",
+          options: ["color", "previous_last_frame", "next_first_frame"],
+          labels: { color: "Colour",
+                    previous_last_frame: "Last frame before",
+                    next_first_frame: "First frame after" },
+          default: "color" },
+        { id: "backgroundDim", label: "Darken background", kind: "range",
+          min: 0, max: 0.9, step: 0.05, default: 0.45 },
         { id: "fontSize",  label: "Font size",   kind: "range", min: 16, max: 240, step: 2, default: 96 },
         { id: "textColor", label: "Text colour", kind: "color", default: "#ffffff" },
         { id: "color",     label: "Card colour", kind: "color", default: "#000000" },
@@ -65,7 +73,8 @@
       // Same timing shape as the fade, because that is exactly what it
       // is: the card IS the hold. Only the hold adds output time.
       defaults: { text: "", fadeOutS: 1.0, holdS: 3.0, fadeInS: 1.0,
-                  color: "#000000", textColor: "#ffffff", fontSize: 96 },
+                  color: "#000000", textColor: "#ffffff", fontSize: 96,
+                  background: "color", backgroundDim: 0.45 },
     },
   ];
 
