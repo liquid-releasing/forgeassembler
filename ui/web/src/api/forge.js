@@ -160,14 +160,20 @@ export async function onForgeProgress(handler) {
 }
 
 // ── Native dialogs + shell ────────────────────────────────────────────
-export function pickFolder() {
-  return call('pick_folder', {}, () => Promise.resolve(null));
+// `startDir` opens the dialog where you were last time. The Rust side
+// ignores it when the path is no longer a directory -- a remembered
+// folder can be on a drive that is not attached -- so callers may pass a
+// stale one without checking.
+export function pickFolder({ startDir = null } = {}) {
+  return call('pick_folder', { startDir }, () => Promise.resolve(null));
 }
-export function pickFile({ title = null, filterName = null, extensions = null } = {}) {
-  return call('pick_file', { title, filterName, extensions }, () => Promise.resolve(null));
+export function pickFile({ title = null, filterName = null, extensions = null,
+                            startDir = null } = {}) {
+  return call('pick_file', { title, filterName, extensions, startDir },
+              () => Promise.resolve(null));
 }
-export function pickSavePath(defaultName) {
-  return call('pick_save_path', { defaultName }, () => Promise.resolve(null));
+export function pickSavePath(defaultName, { startDir = null } = {}) {
+  return call('pick_save_path', { defaultName, startDir }, () => Promise.resolve(null));
 }
 export function revealPath(path) {
   return call('reveal_path', { path }, () => Promise.resolve());

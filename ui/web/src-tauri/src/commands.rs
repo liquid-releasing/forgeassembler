@@ -374,9 +374,30 @@ pub async fn save_project(path: String, project: Value) -> Result<(), String> {
 // Native dialogs
 // ---------------------------------------------------------------------------
 
+/// Open a dialog at `dir`, but only when it is still a directory.
+///
+/// A remembered folder can be on a drive that is not attached -- this
+/// project's media lives across D: and E: -- and handing a dead path to
+/// the native dialog is how you get a picker that opens at nothing.
+/// Checking costs one stat and otherwise falls back to the OS default,
+/// which is exactly the behaviour these pickers had before.
+fn with_start_dir<R: tauri::Runtime>(
+    builder: tauri_plugin_dialog::FileDialogBuilder<R>,
+    dir: Option<&str>,
+) -> tauri_plugin_dialog::FileDialogBuilder<R> {
+    match dir {
+        Some(d) if !d.is_empty() && Path::new(d).is_dir() => builder.set_directory(d),
+        _ => builder,
+    }
+}
+
 #[tauri::command]
-pub async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
-    let folder = app.dialog().file().blocking_pick_folder();
+pub async fn pick_folder(
+    app: AppHandle,
+    start_dir: Option<String>,
+) -> Result<Option<String>, String> {
+    let builder = with_start_dir(app.dialog().file(), start_dir.as_deref());
+    let folder = builder.blocking_pick_folder();
     Ok(folder.map(|p| p.to_string()))
 }
 
@@ -386,8 +407,9 @@ pub async fn pick_file(
     title: Option<String>,
     filter_name: Option<String>,
     extensions: Option<Vec<String>>,
+    start_dir: Option<String>,
 ) -> Result<Option<String>, String> {
-    let mut builder = app.dialog().file();
+    let mut builder = with_start_dir(app.dialog().file(), start_dir.as_deref());
     if let Some(t) = title.as_deref() {
         builder = builder.set_title(t);
     }
@@ -403,8 +425,9 @@ pub async fn pick_file(
 pub async fn pick_save_path(
     app: AppHandle,
     default_name: Option<String>,
+    start_dir: Option<String>,
 ) -> Result<Option<String>, String> {
-    let mut builder = app.dialog().file();
+    let mut builder = with_start_dir(app.dialog().file(), start_dir.as_deref());
     if let Some(name) = default_name {
         builder = builder.set_file_name(&name);
     }

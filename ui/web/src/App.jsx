@@ -19,6 +19,7 @@ import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
 import { parseProgressLine, stageProgress } from './lib/forgeProgress';
 import { markForgedGate } from './lib/forgeGate';
 import { DragDropProvider, reorderSectionInProject } from './dragdrop';
+import { lastFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
 
 const { useState, useEffect, useMemo, useRef } = React;
 
@@ -287,6 +288,10 @@ function App() {
       setDirty(false);
       setLastSavedAtMs(Date.now());
       pushRecent(path, nextVm.name);
+      // Where this project was saved is where the next one starts, and
+      // its folder is where the forge writes.
+      rememberFileFolder('project', path);
+      if (folder) rememberFolder('output', folder);
       setIoDialog(null);
       // If we were saving en route to opening another project, continue.
       if (pendingAfterSave) { const a = pendingAfterSave; setPendingAfterSave(null); a(); }
@@ -422,6 +427,7 @@ function App() {
       setDirty(false);
       setLastSavedAtMs(Date.now());
       pushRecent(path, vm.name || name);
+      rememberFileFolder('project', path);
       setTab('build');
       // Not awaited: the canvas should appear at once and fill in its
       // durations a moment later, exactly as it does after an import.
@@ -442,8 +448,9 @@ function App() {
   // takes: loose videos and scattered funscripts are a later release.
   async function handleAddForgeFolder() {
     setIoError(null);
-    const folder = await pickFolder();
+    const folder = await pickFolder({ startDir: lastFolder('scenes') });
     if (!folder) return;
+    rememberFolder('scenes', folder);
     let payload;
     try {
       payload = await detectForgeFolder(folder);
@@ -504,6 +511,7 @@ function App() {
       const video = await pickFile({
         title: `Select the source VIDEO for “${payload.stem || 'this scene'}”`,
         filterName: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'],
+        startDir: lastFolder('scenes'),
       });
       if (!video) {
         setIoError(`Import canceled — “${payload.stem || 'scene'}” needs a source video to relink.`);
@@ -612,8 +620,10 @@ function App() {
     const bundle = await pickFile({
       title: 'Select a .forge scene to import',
       filterName: 'FunscriptForge bundle', extensions: ['forge'],
+      startDir: lastFolder('scenes'),
     });
     if (!bundle) return;
+    rememberFileFolder('scenes', bundle);
     await importForgeScene(bundle);
   }
 

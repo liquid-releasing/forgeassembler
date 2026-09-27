@@ -3,6 +3,7 @@ import React from 'react';
 import { FASectionLabel } from './AppShell';
 import { Button, Field, Icon, TextInput } from './primitives';
 import { pickFile, pickFolder } from './api/forge';
+import { lastFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
 
 // ProjectIO — Save / Open / Unsaved-changes dialogs.
 //
@@ -52,8 +53,10 @@ function SaveAsDialog({ project, defaultFolder, onCancel, onSave }) {
             <TextInput value={folder} onChange={setFolder} mono style={{ flex: 1 }} />
             <Button kind="secondary" size="sm" icon="folder-open"
                     onClick={async () => {
-                      const picked = await pickFolder();
-                      if (picked) setFolder(picked);
+                      // Start where the last output went, and record
+                      // wherever this one is headed.
+                      const picked = await pickFolder({ startDir: folder || lastFolder('output') });
+                      if (picked) { setFolder(picked); rememberFolder('output', picked); }
                     }}>Browse…</Button>
           </div>
         </Field>
@@ -108,8 +111,8 @@ function OpenProjectDialog({ onCancel, onOpen }) {
           </div>
           <Button kind="primary" size="sm" icon="folder-open"
                    onClick={async () => {
-                     const path = await pickFile();
-                     if (path) onOpen({ path });
+                     const path = await pickFile({ startDir: lastFolder('project') });
+                     if (path) { rememberFileFolder('project', path); onOpen({ path }); }
                    }}>
             Browse…
           </Button>
