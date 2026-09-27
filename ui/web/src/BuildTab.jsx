@@ -562,10 +562,18 @@ function EmptyCanvas({ onAddForgeScene }) {
 // Only affects scenes added from here on; existing boundaries are left
 // alone, because silently rewriting joiners someone already set is worse
 // than the fifteen clicks.
-function NewSceneJoinerPicker({ value, onChange }) {
+// What every scene added from here on will join with — the kind AND its
+// settings. Picking a kind that has settings opens its editor, because
+// "fade through black" is a family of transitions, not one: a 5s hold
+// and a 0.5s dip are both fades and look nothing alike. Setting that up
+// once before importing sixteen scenes is the whole point; the
+// alternative is editing sixteen boundaries afterwards.
+function NewSceneJoinerPicker({ value, template, onPick, onOpenEditor }) {
   const opts = FA_DATA.JOINER_KINDS.map(k => ({
     kind: k.kind, label: k.label, icon: k.icon, hint: k.pickerHint,
+    hasParams: (k.params || []).length > 0,
   }));
+  const activeOpt = opts.find(o => o.kind === value);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
@@ -578,10 +586,11 @@ function NewSceneJoinerPicker({ value, onChange }) {
         {opts.map(o => {
           const active = o.kind === value;
           return (
-            <button key={o.kind} onClick={() => onChange?.(o.kind)}
-                    title={o.hint || (o.kind === "none"
-                      ? "New scenes cut straight in"
-                      : "New scenes fade out, hold on black, and fade in")}
+            <button key={o.kind}
+                    onClick={(e) => onPick?.(o.kind, e.currentTarget.getBoundingClientRect())}
+                    title={o.hasParams
+                      ? `${o.hint || o.label} — click to set it up`
+                      : (o.hint || "New scenes cut straight in")}
                     style={{
               display: "inline-flex", alignItems: "center", gap: 5,
               padding: "4px 9px", borderRadius: 5, cursor: "pointer",
@@ -595,6 +604,22 @@ function NewSceneJoinerPicker({ value, onChange }) {
           );
         })}
       </div>
+      {/* What it is set to, and the way back into the editor. Without
+          this the settings are invisible until a scene is imported. */}
+      {activeOpt?.hasParams && template && (
+        <button onClick={(e) => onOpenEditor?.(e.currentTarget.getBoundingClientRect())}
+                 title="Change the settings every new scene will use"
+                 style={{
+                   display: "inline-flex", alignItems: "center", gap: 5,
+                   padding: "4px 8px", borderRadius: 5, cursor: "pointer",
+                   fontFamily: "inherit", fontSize: 11, fontWeight: 600,
+                   background: "transparent", color: "var(--text-muted)",
+                   border: "1px solid var(--border)",
+                 }}>
+          <Icon name="sliders-horizontal" size={11} />
+          <span className="mono">{FA_DATA.joinerShortLabel(template)}</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -602,8 +627,9 @@ function NewSceneJoinerPicker({ value, onChange }) {
 // ── Build tab ─────────────────────────────────────────────────────
 function BuildTab({ project, selectedIds, onSelect,
                     onEditJoiner, onRenameSection, onAddForgeFolder, onAddForgeScene,
+                    newSceneJoiner, onPickNewSceneJoiner, onEditNewSceneJoiner,
                     onRemoveSection, onEditClip,
-                    newSceneJoinerKind, onSetNewSceneJoinerKind }) {
+                    newSceneJoinerKind }) {
 
   const scenes = project.sections.filter(s => s.segments.length);
   const totalMs = projectDurationMs(project, FA_DATA.joinerAddedMs);
@@ -617,7 +643,9 @@ function BuildTab({ project, selectedIds, onSelect,
         right={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <NewSceneJoinerPicker value={newSceneJoinerKind}
-                                   onChange={onSetNewSceneJoinerKind} />
+                                   template={newSceneJoiner}
+                                   onPick={onPickNewSceneJoiner}
+                                   onOpenEditor={onEditNewSceneJoiner} />
             <span style={{ width: 1, alignSelf: "stretch", background: "var(--border)",
                             margin: "0 2px" }} />
             <Button kind="secondary" size="sm" icon="folder-plus"

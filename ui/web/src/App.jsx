@@ -67,6 +67,45 @@ function App() {
   // Shown on the Build header rather than inferred, so the rule is
   // visible before the import rather than discovered after it.
   const [newSceneJoinerKind, setNewSceneJoinerKind] = useState('fade_through_black');
+  // The settings each kind will be created with, kept PER KIND so
+  // switching Fade → Title → Fade does not throw away the fade you set
+  // up. A joiner kind is a family, not a single transition: a 5s hold
+  // and a half-second dip are both "fade through black" and look
+  // nothing alike, so the defaults are the user's to choose.
+  const [joinerTemplates, setJoinerTemplates] = useState(() => {
+    const t = {};
+    for (const k of FA_DATA.JOINER_KINDS) t[k.kind] = makeJoinerFromKind(k.kind);
+    return t;
+  });
+  // { anchorRect } while the template editor is open.
+  const [editingNewJoiner, setEditingNewJoiner] = useState(null);
+  const newSceneJoiner = joinerTemplates[newSceneJoinerKind]
+    || makeJoinerFromKind(newSceneJoinerKind);
+
+  // Picking a kind selects it, and opens its editor when it has anything
+  // to set up — which is what makes this a template rather than a
+  // fixed default.
+  function pickNewSceneJoiner(kind, anchorRect) {
+    setNewSceneJoinerKind(kind);
+    const spec = FA_DATA.JOINER_KINDS.find(k => k.kind === kind);
+    if ((spec?.params || []).length) setEditingNewJoiner({ anchorRect });
+  }
+
+  // The editor can change the KIND from inside itself, so store what
+  // comes back under its own kind and follow it.
+  function updateNewSceneJoiner(j) {
+    if (!j?.kind) return;
+    if (j.kind !== newSceneJoinerKind && joinerTemplates[j.kind]) {
+      // The editor's own kind switcher hands back catalogue defaults.
+      // Switching Fade → Title → Fade inside it would otherwise throw
+      // away the fade the user just set up, while switching with the
+      // header buttons kept it — the same gesture, two answers.
+      setNewSceneJoinerKind(j.kind);
+      return;
+    }
+    setJoinerTemplates(t => ({ ...t, [j.kind]: j }));
+    setNewSceneJoinerKind(j.kind);
+  }
   // Collapsed by default: it loads video, and most passes over the
   // canvas are about order and naming, not watching.
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -484,7 +523,10 @@ function App() {
   // born naming the scene it introduces — which is also the chapter
   // name. Renaming it afterwards is a normal edit.
   function makeSceneJoiner(kind, sceneTitle) {
-    const j = makeJoinerFromKind(kind);
+    const j = { ...(joinerTemplates[kind] || makeJoinerFromKind(kind)) };
+    // A title left blank in the template means "name each scene". Typing
+    // one there instead makes every card say the same thing, which is a
+    // reasonable thing to want and has to stay possible.
     if (j.kind === 'title_card' && !j.text) j.text = sceneTitle || '';
     return j;
   }
@@ -804,7 +846,9 @@ function App() {
                 onRenameSection={renameSection}
                 onAddForgeFolder={handleAddForgeFolder}
                 newSceneJoinerKind={newSceneJoinerKind}
-                onSetNewSceneJoinerKind={setNewSceneJoinerKind}
+                newSceneJoiner={newSceneJoiner}
+                onPickNewSceneJoiner={pickNewSceneJoiner}
+                onEditNewSceneJoiner={(anchorRect) => setEditingNewJoiner({ anchorRect })}
                 onAddForgeScene={handleAddForgeScene}
                 onRemoveSection={handleRemoveSection}
                 onEditClip={(seg) => setEditingClip(seg)} />
@@ -882,6 +926,25 @@ function App() {
             onClose={() => setEditingJoiner(null)} />
         );
       })()}
+      {/* ── New-scene joiner template ── */}
+      {editingNewJoiner && (() => {
+        // Show it against the last two scenes so the preview is of the
+        // user's own footage rather than placeholder panels.
+        const scenes = project.sections.filter(s => s.segments.length);
+        const lastSeg = scenes.length
+          ? scenes[scenes.length - 1].segments[scenes[scenes.length - 1].segments.length - 1]
+          : null;
+        return (
+          <JoinerEditor
+            joiner={newSceneJoiner}
+            prevClip={lastSeg}
+            nextClip={null}
+            anchorRect={editingNewJoiner.anchorRect}
+            onChange={updateNewSceneJoiner}
+            onClose={() => setEditingNewJoiner(null)} />
+        );
+      })()}
+
       {/* ── Project I/O dialogs ── */}
       {ioDialog === "save" && (
         <SaveAsDialog project={project}
