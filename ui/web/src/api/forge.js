@@ -103,6 +103,45 @@ export async function thumbnailPathFor(video, atMs) {
   return join(await appCacheDir(), 'thumbs', name);
 }
 
+// The title layouts, themes and marks this build can render.
+//
+// Fetched rather than hardcoded for the reason `listJoiners` is: the
+// ENGINE decides what it can draw, and a picker offering a layout the
+// engine has never heard of is a bug waiting for a user to find it.
+export function titleCatalog() {
+  return dedupedCall('title_catalog', () =>
+    call('title_catalog', {}, () => Promise.resolve(null)));
+}
+
+// Render one title card and return where it landed.
+//
+// `specJson` is the joiner's params as JSON — the same dict the project
+// file holds and the forge reads, so the preview cannot interpret the
+// settings differently from the render.
+//
+// The filename is a hash of the CONTENT, which does two jobs: the
+// webview can never serve a stale card from its cache after an edit,
+// and going back to a card you already looked at costs nothing.
+//
+// Returns null outside Tauri; the browser mock has no renderer.
+export async function titleCardPreview(specJson, overFrame,
+                                       width = 960, height = 540) {
+  if (!isTauri()) return null;
+  const { appCacheDir, join } = await import('@tauri-apps/api/path');
+  const key = `${specJson}|${width}x${height}|${overFrame ? 'frame' : 'flat'}`;
+  // FNV-1a, same as thumbnailPathFor.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i += 1) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  const out = await join(await appCacheDir(), 'titlecards', `${h.toString(16)}.png`);
+  const res = await dedupedCall(`title_preview::${h.toString(16)}`, () =>
+    call('title_preview', { spec: specJson, out, width, height, overFrame },
+         () => Promise.resolve(null)));
+  return res ? { ...res, path: out } : null;
+}
+
 export function extractThumbnail(video, atMs, out) {
   return dedupedCall(`extract_thumbnail::${video}::${atMs}`, () =>
     call('extract_thumbnail', { video, atMs, out }, () => Promise.resolve(out)));

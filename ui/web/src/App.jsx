@@ -571,7 +571,7 @@ function App() {
     // A title left blank in the template means "name each scene". Typing
     // one there instead makes every card say the same thing, which is a
     // reasonable thing to want and has to stay possible.
-    if (j.kind === 'title_card' && !j.text) j.text = sceneTitle || '';
+    if (j.kind === 'title_card' && !j.title) j.title = sceneTitle || '';
     return j;
   }
 

@@ -116,8 +116,16 @@ def test_title_card_duration_is_the_hold_only():
 
 def test_title_card_needs_words():
     errors = _instantiate("title_card", {"duration_s": 3.0}).validate()
-    assert any("text" in e for e in errors)
+    assert any("title" in e for e in errors)
     assert _title().validate() == []
+
+
+def test_a_subtitle_alone_is_enough_to_be_a_card():
+    # "INTERMISSION" in the eyebrow slot is a legitimate card; only a
+    # card with nothing at all in it is a fade wearing a costume.
+    assert _instantiate(
+        "title_card", {"duration_s": 3.0, "eyebrow": "intermission"},
+    ).validate() == []
 
 
 def test_title_card_needs_a_frame_to_draw_on():
@@ -132,20 +140,46 @@ def test_title_card_errors_name_the_thing_the_user_picked():
         assert "FadeToBlack" not in e
 
 
-def test_title_card_rejects_a_font_size_ffmpeg_would_refuse():
-    # An out-of-range drawtext option kills the whole filter graph at
-    # setup rather than clamping, so a zero must never reach ffmpeg.
-    assert _title(font_size=0).font_size() > 0
-    assert _title(font_size=-10).font_size() > 0
-    assert _title(font_size="nonsense").font_size() > 0
+def test_a_cards_words_survive_the_old_param_name():
+    # `text` was the only field the first title card had. A project
+    # saved by that build has to keep saying the same thing.
+    assert _instantiate("title_card", {"text": "Part Two"}).text() == "Part Two"
+    assert _instantiate(
+        "title_card", {"text": "old", "title": "new"},
+    ).text() == "new"
 
 
-def test_title_card_defaults_to_white_on_black():
-    t = _title()
-    assert t.text_color() == "#ffffff"
-    assert t.color() == "#000000"
-    assert _title(text_color="ffcc00").text_color() == "#ffcc00"
-    assert _title(text_color="not-a-colour").text_color() == "#ffffff"
+def test_a_card_ignores_a_layout_it_has_never_heard_of():
+    # Forward compatibility: a project written by a later build must
+    # still forge here, as the plainest card rather than not at all.
+    spec = _title(layout="hologram", theme="chartreuse", glyph="unicorn").title_spec()
+    assert spec.layout == "centered"
+    assert spec.theme == "dark"
+    assert spec.glyph == "none"
+
+
+def test_the_bridge_colour_follows_the_theme():
+    # The card is composited ONTO the bridge and the fades either side
+    # land on it, so a bridge that disagreed with the theme would open
+    # and close every title card with a flash of the wrong colour.
+    assert _title().color() == "#0e1117"          # the dark theme
+    assert _title(theme="light").color() == "#fafafa"
+    assert _title(theme="void").color() == "#000000"
+
+
+def test_an_explicit_colour_still_beats_the_theme():
+    # Someone deliberately putting a dark card in a light project is
+    # making a choice, not a mistake -- and every project saved before
+    # themes existed carries an explicit colour.
+    assert _title(theme="light", color="#123456").color() == "#123456"
+    assert _title(color="not-a-colour").color() == "#000000"
+
+
+def test_theme_colours_reach_the_renderer():
+    spec = _title(theme="light").title_spec()
+    assert spec.foreground_color() == "#0e1117"
+    assert _title(text_color="ffcc00").title_spec().foreground_color() == "#ffcc00"
+    assert _title(accent_color="00ff00").title_spec().accent() == "#00ff00"
 
 
 def test_title_card_is_registered():

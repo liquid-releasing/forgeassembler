@@ -267,6 +267,45 @@ pub async fn probe_duration(path: String) -> Result<i64, String> {
         .map_err(|e| format!("probe parse failed for {}: {}", path, e))
 }
 
+/// The title layouts, themes and marks this build can render
+/// (`cli.py title-catalog`).
+#[tauri::command]
+pub async fn title_catalog() -> Result<Value, String> {
+    run_cli_json(&["title-catalog"]).await
+}
+
+/// Render one title card to a PNG (`cli.py title-preview`). `spec` is the
+/// joiner's params as a JSON string -- the same dict the project file
+/// holds, so the preview cannot read the settings differently from the
+/// forge. Returns the CLI's JSON: the path written, the size, and the
+/// colour the bridge behind the card will be painted.
+#[tauri::command]
+pub async fn title_preview(
+    spec: String,
+    out: String,
+    width: i64,
+    height: i64,
+    over_frame: bool,
+) -> Result<Value, String> {
+    let w = width.to_string();
+    let h = height.to_string();
+    let mut args = vec![
+        "title-preview",
+        "--spec",
+        &spec,
+        "--out",
+        &out,
+        "--width",
+        &w,
+        "--height",
+        &h,
+    ];
+    if over_frame {
+        args.push("--over-frame");
+    }
+    run_cli_json(&args).await
+}
+
 /// Extract a thumbnail PNG from a video at a timestamp
 /// (`cli.py thumbnail <video> --at <ms> --out <png>`). Returns the PNG path.
 #[tauri::command]

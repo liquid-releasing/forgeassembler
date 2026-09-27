@@ -53,27 +53,57 @@
     { kind: "title_card", label: "Title", icon: "type",
       desc: "The scene fades out, a title card holds while its name is on screen, and the next scene fades in.",
       pickerHint: "New scenes fade into a title card naming the scene",
+      // ⚠ The ENGINE owns what a card can look like. `cli.py
+      // title-catalog` is the source of truth for the layout, theme and
+      // mark lists; the editor fetches it and replaces these options
+      // when it arrives. They are here so the form still draws before
+      // the fetch lands, and outside Tauri where there is no engine.
       params: [
-        { id: "text",      label: "Title",       kind: "text", default: "" },
+        { id: "title",     label: "Title",       kind: "text", default: "" },
+        { id: "subtitle",  label: "Subtitle",    kind: "text", default: "" },
+        { id: "eyebrow",   label: "Eyebrow",     kind: "text", default: "" },
+        { id: "layout",    label: "Layout",      kind: "enum",
+          options: ["centered", "chapter", "lower", "fullquote"],
+          labels: { centered: "Centered hero", chapter: "Chapter plate",
+                    lower: "Lower third", fullquote: "Full quote" },
+          default: "centered" },
+        { id: "theme",     label: "Theme",       kind: "enum",
+          options: ["dark", "void", "brand", "light"],
+          labels: { dark: "Dark", void: "Void", brand: "Brand", light: "Light" },
+          default: "dark" },
+        { id: "glyph",     label: "Mark",        kind: "enum",
+          options: ["none", "anvil", "hammer", "tongs", "oven", "spark", "circle"],
+          labels: { none: "None", anvil: "Anvil", hammer: "Hammer",
+                    tongs: "Tongs", oven: "Oven", spark: "Spark", circle: "Dot" },
+          default: "none" },
         { id: "fadeOutS",  label: "Fade out",    kind: "time", min: 0, max: 10, step: 0.1, default: 1.0, unit: "s" },
         { id: "holdS",     label: "Card on screen", kind: "time", min: 0.1, max: 20, step: 0.1, default: 3.0, unit: "s" },
         { id: "fadeInS",   label: "Fade in",     kind: "time", min: 0, max: 10, step: 0.1, default: 1.0, unit: "s" },
         { id: "background", label: "Card background", kind: "enum",
           options: ["color", "previous_last_frame", "next_first_frame"],
-          labels: { color: "Colour",
+          labels: { color: "Theme colour",
                     previous_last_frame: "Last frame before",
                     next_first_frame: "First frame after" },
           default: "color" },
         { id: "backgroundDim", label: "Darken background", kind: "range",
           min: 0, max: 0.9, step: 0.05, default: 0.45 },
-        { id: "fontSize",  label: "Font size",   kind: "range", min: 16, max: 240, step: 2, default: 96 },
-        { id: "textColor", label: "Text colour", kind: "color", default: "#ffffff" },
-        { id: "color",     label: "Card colour", kind: "color", default: "#000000" },
+        // These three are OVERRIDES. Empty means "use the theme", which
+        // is what almost every card should do, so they must not carry a
+        // colour as their default — a default here would pin every card
+        // to it and make the theme picker look broken.
+        { id: "textColor",   label: "Text colour",  kind: "colorAuto", default: "",
+          autoLabel: "From theme" },
+        { id: "accentColor", label: "Accent colour", kind: "colorAuto", default: "",
+          autoLabel: "From theme" },
+        { id: "colorOverride", label: "Card colour", kind: "colorAuto", default: "",
+          autoLabel: "From theme" },
       ],
       // Same timing shape as the fade, because that is exactly what it
       // is: the card IS the hold. Only the hold adds output time.
-      defaults: { text: "", fadeOutS: 1.0, holdS: 3.0, fadeInS: 1.0,
-                  color: "#000000", textColor: "#ffffff", fontSize: 96,
+      defaults: { title: "", subtitle: "", eyebrow: "",
+                  layout: "centered", theme: "dark", glyph: "none",
+                  fadeOutS: 1.0, holdS: 3.0, fadeInS: 1.0,
+                  colorOverride: "", textColor: "", accentColor: "",
                   background: "color", backgroundDim: 0.45 },
     },
   ];
