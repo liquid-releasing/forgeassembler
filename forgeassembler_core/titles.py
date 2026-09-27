@@ -553,14 +553,39 @@ def _scrim(img, y0: float, y1: float, max_alpha: float) -> None:
     img.alpha_composite(band, (0, top))
 
 
+def _scrim_h(img, x0: float, x1: float, max_alpha: float) -> None:
+    """A black gradient from `max_alpha` at `x0` to transparent at `x1`."""
+    from PIL import Image  # noqa: PLC0415
+
+    left = max(0, int(round(x0)))
+    width = min(img.width, int(round(x1))) - left
+    if width <= 0 or max_alpha <= 0:
+        return
+    ramp = Image.new("L", (width, 1))
+    span = max(1, width - 1)
+    ramp.putdata([
+        int(round(255 * max_alpha * (1.0 - i / span))) for i in range(width)
+    ])
+    band = Image.new("RGBA", (width, img.height), (0, 0, 0, 255))
+    band.putalpha(ramp.resize((width, img.height)))
+    img.alpha_composite(band, (left, 0))
+
+
 # ── The layouts ───────────────────────────────────────────────────────
 # Every number here is a fraction of the frame, and `k` scales type with
 # the frame height, so one spec renders the same card at any resolution.
 
-def _render_centered(draw, spec, W, H, k, over_frame) -> None:
+def _render_centered(img, draw, spec, W, H, k, over_frame) -> None:
     fam = spec.font_family
-    fg = spec.foreground_color()
     accent = spec.accent()
+    if over_frame:
+        # The title can land anywhere in the middle of the frame, so the
+        # whole picture goes back -- the same treatment `fullquote` uses,
+        # and for the same reason: there is no one place to protect.
+        img.alpha_composite(_flat(W, H, (0, 0, 0, int(round(255 * 0.45)))))
+    # Light type, because it is now on a darkened picture rather than on
+    # the theme's own background.
+    fg = "#fafafa" if over_frame else spec.foreground_color()
 
     glyph_bottom = H * 0.30
     if spec.glyph != GLYPH_NONE:
@@ -613,10 +638,16 @@ def _render_centered(draw, spec, W, H, k, over_frame) -> None:
         )
 
 
-def _render_chapter(draw, spec, W, H, k, over_frame) -> None:
+def _render_chapter(img, draw, spec, W, H, k, over_frame) -> None:
     fam = spec.font_family
-    fg = spec.foreground_color()
     accent = spec.accent()
+    if over_frame:
+        # This layout is anchored left, so the scrim is too: dark behind
+        # the words, fading out before it reaches the other side of the
+        # frame. A full wash would hide more of the picture than the
+        # words need.
+        _scrim_h(img, 0, W * 0.78, 0.72)
+    fg = "#fafafa" if over_frame else spec.foreground_color()
 
     x = W * 0.13
     eyebrow = _fit((spec.eyebrow or "CHAPTER").upper(), fam, 700, k * 28,
@@ -719,11 +750,11 @@ def _flat(w: int, h: int, rgba: tuple[int, int, int, int]):
     return Image.new("RGBA", (w, h), rgba)
 
 
+# Every layout takes the same arguments: the four of them all need the
+# image itself now, to composite a scrim behind their words.
 _RENDERERS = {
-    LAYOUT_CENTERED: lambda img, draw, s, W, H, k, of: _render_centered(
-        draw, s, W, H, k, of),
-    LAYOUT_CHAPTER: lambda img, draw, s, W, H, k, of: _render_chapter(
-        draw, s, W, H, k, of),
+    LAYOUT_CENTERED: _render_centered,
+    LAYOUT_CHAPTER: _render_chapter,
     LAYOUT_LOWER: _render_lower,
     LAYOUT_FULLQUOTE: _render_fullquote,
 }
@@ -759,6 +790,54 @@ def render_title_png(
 
     out = str(out_path)
     img.save(out, format="PNG")
+    return out
+
+
+def render_card_backdrop(
+    frame_path, width: int, height: int, dim: float, out_path,
+) -> str:
+    """Normalise a real frame to the output canvas and darken it.
+
+    This is the bridge a frame-backed card sits on, rendered as a
+    picture so the UI can show the card on the backdrop it will
+    actually have. It mirrors what the filtergraph does to the same
+    frame, and has to keep mirroring it:
+
+      * fit inside the canvas and pad, never stretch — the same as
+        `normalize_segment_filter`, so a 4:3 source pillarboxes here
+        exactly as it does in the render;
+      * multiply the pixels by `1 - dim`, which is what
+        `colorlevels=romax` does.
+
+    ⚠ `romax`, the OUTPUT white point. The filter used to say `rimax`,
+    the INPUT white point, which stretches the range upward: measured,
+    mid-grey 128 came out 233. The control is called "Darken
+    background" and it brightened.
+    """
+    from PIL import Image  # noqa: PLC0415
+
+    W = max(2, int(width))
+    H = max(2, int(height))
+    src = Image.open(str(frame_path)).convert("RGB")
+
+    # Fit inside, then centre on a black canvas. Bars, not distortion.
+    scale = min(W / src.width, H / src.height)
+    fitted = src.resize(
+        (max(1, int(round(src.width * scale))),
+         max(1, int(round(src.height * scale)))),
+        Image.LANCZOS,
+    )
+    canvas = Image.new("RGB", (W, H), (0, 0, 0))
+    canvas.paste(fitted, ((W - fitted.width) // 2, (H - fitted.height) // 2))
+
+    level = max(0.1, 1.0 - max(0.0, min(1.0, float(dim))))
+    if level < 1.0:
+        from PIL import ImageEnhance  # noqa: PLC0415
+
+        canvas = ImageEnhance.Brightness(canvas).enhance(level)
+
+    out = str(out_path)
+    canvas.save(out, format="PNG")
     return out
 
 

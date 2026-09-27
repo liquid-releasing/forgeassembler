@@ -1808,7 +1808,14 @@ def test_a_frame_backed_card_takes_a_looped_image_input():
     # rather than stretching.
     assert "force_original_aspect_ratio=decrease" in graph
     # Pushed back so the title stays readable.
-    assert "colorlevels=rimax=0.55" in graph
+    #
+    # ⚠ romax, the OUTPUT white point. This asserted `rimax` — the INPUT
+    # white point — which stretches the range UPWARD: measured with
+    # ffmpeg, rimax=0.55 took mid-grey 128 to 233. The control called
+    # "Darken background" was brightening the frame under white text.
+    # romax=0.55 takes the same 128 to 70.
+    assert "colorlevels=romax=0.75" in graph   # the 0.25 default dim
+    assert "rimax" not in graph
     assert "color=c=0x0e1117" not in graph, "a frame-backed card has no bridge colour"
 
 
@@ -1836,4 +1843,4 @@ def test_dim_never_blacks_the_frame_out_entirely():
     graph = " ".join(build_ffmpeg_command(
         project, layout, frame_rate_override=30,
         joiner_frames={"j2": "prev.png"}).to_argv("ffmpeg"))
-    assert "rimax=0.1" in graph, "a fully dimmed card would look broken"
+    assert "romax=0.1" in graph, "a fully dimmed card would look broken"

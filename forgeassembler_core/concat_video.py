@@ -594,9 +594,16 @@ def build_ffmpeg_command(
                         # background did nothing.
                         dim = max(0.1, 1.0 - float(getter()))
                     if dim < 1.0:
+                        # ⚠ `romax`, the OUTPUT white point, not `rimax`.
+                        # rimax is the INPUT white point: rimax=0.55
+                        # stretches [0,0.55] up to [0,1], so the control
+                        # called "Darken background" brightened the frame
+                        # instead — measured, mid-grey 128 came out 233,
+                        # under white text that needed it to go the other
+                        # way. romax=0.55 takes the same 128 to 70.
                         filter_parts.append(
                             f"[{v_bgraw}]colorlevels="
-                            f"rimax={dim:g}:gimax={dim:g}:bimax={dim:g}"
+                            f"romax={dim:g}:gomax={dim:g}:bomax={dim:g}"
                             f"[{v_bridge}]",
                         )
                     else:
@@ -1154,7 +1161,7 @@ def _extract_frame_at(
 def _extract_non_blank_frame(
     video_path: str, anchor_s: float, direction: int,
     lo_s: float, hi_s: float, out_png: str, ffmpeg_exe: str,
-) -> bool:
+) -> float | None:
     """Walk away from `anchor_s` until a frame has something on it.
 
     `direction` is -1 to search backwards from a scene's end, +1 to
@@ -1162,17 +1169,54 @@ def _extract_non_blank_frame(
     scene's own trimmed span, so a card never shows footage the
     compilation cuts out.
 
-    False when every candidate was blank — the caller then uses the flat
-    colour, which is the honest outcome for a scene that really is black
-    at that end.
+    Returns the timestamp it settled on, in seconds, or None when every
+    candidate was blank — the caller then uses the flat colour, which is
+    the honest outcome for a scene that really is black at that end.
+
+    ⚠ Returns a float that can legitimately be 0.0, so callers must test
+    `is not None` rather than truthiness.
     """
     for offset in _FRAME_SEARCH_OFFSETS_S:
         at = anchor_s + direction * offset
         if at < lo_s or at > hi_s:
             continue
-        if _extract_frame_at(video_path, at, out_png, ffmpeg_exe)                 and not _frame_is_blank(out_png):
-            return True
-    return False
+        if not _extract_frame_at(video_path, at, out_png, ffmpeg_exe):
+            continue
+        if not _frame_is_blank(out_png):
+            return at
+    return None
+
+
+def find_card_background_frame(
+    video_path: str, direction: str, lo_ms: int, hi_ms: int,
+    out_png: str, ffmpeg_exe: str | None = None,
+) -> float | None:
+    """The frame a title card would sit on, extracted to `out_png`.
+
+    Public because the UI needs it: the joiner editor used to preview a
+    frame-backed card over the scene's THUMBNAIL, which is almost never
+    the frame the forge picks — scenes routinely fade out, so the forge
+    walks backwards from the end until it finds one with something on
+    it. A preview showing a different frame from the render is worse
+    than no preview, because it invites you to approve a title over a
+    picture that will not be there.
+
+    `direction` is "previous_last_frame" (search back from `hi_ms`) or
+    "next_first_frame" (search forward from `lo_ms`). Returns the
+    timestamp it settled on in seconds, or None when the whole span was
+    blank — the same answer the forge gets, and the same fallback to the
+    flat colour follows from it.
+    """
+    exe = ffmpeg_exe or _resolve_ffmpeg_exe()
+    lo_s = max(0.0, lo_ms / 1000.0)
+    hi_s = max(lo_s, hi_ms / 1000.0)
+    if direction == "previous_last_frame":
+        return _extract_non_blank_frame(
+            video_path, hi_s, -1, lo_s, hi_s, out_png, exe,
+        )
+    return _extract_non_blank_frame(
+        video_path, lo_s, +1, lo_s, hi_s, out_png, exe,
+    )
 
 
 def _build_joiner_frames(
@@ -1221,7 +1265,9 @@ def _build_joiner_frames(
             found = _extract_non_blank_frame(
                 seg.video, lo_s, +1, lo_s, hi_s, str(out_png), ffmpeg_exe,
             )
-        if found:
+        # `is not None`: the frame it settled on can be 0.0 seconds, and
+        # the first frame of a scene is a perfectly good backdrop.
+        if found is not None:
             frames[joiner.id] = str(out_png)
     return frames
 
