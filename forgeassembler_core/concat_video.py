@@ -43,6 +43,7 @@ from .filters import (
     text_overlay_filter,
 )
 from .joiners import instantiate as instantiate_joiner
+from .titles import render_title_png
 from .layout import Layout
 from .project import (
     RESOLUTION_PIXELS,
@@ -201,16 +202,49 @@ def _section_time_windows(project: Project, layout: Layout) -> list[tuple]:
     return out
 
 
+def _fade_color(joiner: Optional[ProjectJoiner]) -> str:
+    """The colour a neighbouring segment should fade to, or from.
+
+    A joiner that holds on a colour has to be faded to THAT colour, or
+    the scene dips to black and then cuts to the hold. Joiners with no
+    colour of their own (and the absent joiner at the ends of the
+    compilation) fade to black, which is also ffmpeg's own default.
+    """
+    if joiner is None or joiner.joiner_type == "none":
+        return "#000000"
+    inst = instantiate_joiner(joiner.joiner_type, joiner.params)
+    getter = getattr(inst, "color", None)
+    return getter() if callable(getter) else "#000000"
+
+
+def _fade_color_arg(color: str) -> str:
+    """`:color=0xRRGGBB` for the fade filter, or '' for black.
+
+    Black is left unsaid so that every project that was forging before
+    this existed produces a byte-identical filtergraph.
+    """
+    c = (color or "#000000").strip().lstrip("#").lower()
+    if c in ("", "000000"):
+        return ""
+    return f":color=0x{c}"
+
+
 def _fade_filter_chain(
     head_fade_s: float, tail_fade_s: float, duration_s: float,
+    head_color: str = "#000000", tail_color: str = "#000000",
 ) -> list[str]:
     """Build the comma-separated `fade=...` chain for a video segment."""
     chain: list[str] = []
     if head_fade_s > 0:
-        chain.append(f"fade=t=in:st=0:d={head_fade_s:g}")
+        chain.append(
+            f"fade=t=in:st=0:d={head_fade_s:g}{_fade_color_arg(head_color)}",
+        )
     if tail_fade_s > 0:
         start = max(0.0, duration_s - tail_fade_s)
-        chain.append(f"fade=t=out:st={start:g}:d={tail_fade_s:g}")
+        chain.append(
+            f"fade=t=out:st={start:g}:d={tail_fade_s:g}"
+            f"{_fade_color_arg(tail_color)}",
+        )
     return chain
 
 
@@ -239,6 +273,7 @@ def build_ffmpeg_command(
     segments_with_audio: Optional[set[str]] = None,
     text_files: Optional[dict[str, str]] = None,
     joiner_frames: Optional[dict[str, str]] = None,
+    title_cards: Optional[dict[str, str]] = None,
     encoder: Optional[str] = None,
 ) -> FfmpegCommand:
     """Return an `FfmpegCommand` describing the video forge for this project.
@@ -283,8 +318,9 @@ def build_ffmpeg_command(
 
     items = project.items
 
-    # Per-segment head/tail fade durations based on adjacent joiners.
-    seg_fades: dict[str, tuple[float, float]] = {}
+    # Per-segment head/tail fades -- how long, and to what colour --
+    # taken from the joiners either side.
+    seg_fades: dict[str, tuple[float, float, str, str]] = {}
     for idx, item in enumerate(items):
         if not isinstance(item, Segment):
             continue
@@ -292,7 +328,9 @@ def build_ffmpeg_command(
         # `before` fades this segment IN; `after` fades it OUT.
         head = _fade_duration_s(before, "in") if before else 0.0
         tail = _fade_duration_s(after, "out") if after else 0.0
-        seg_fades[item.id] = (head, tail)
+        seg_fades[item.id] = (
+            head, tail, _fade_color(before), _fade_color(after),
+        )
 
     # ── Stage A: declare inputs (segment video + optional replacement audio).
     inputs: list[FfmpegInput] = []
@@ -374,6 +412,22 @@ def build_ffmpeg_command(
             pre_args=["-loop", "1", "-t", f"{li.duration_ms / 1000.0:g}"],
         ))
 
+    # The card itself: a transparent PNG rendered at the output size by
+    # `titles`, composited onto whatever the bridge turned out to be.
+    # Declared here for the same reason as the frame backgrounds above —
+    # every filter label is built from this input numbering.
+    joiner_cardi: dict[str, int] = {}
+    for li in layout.joiners():
+        j = li.item
+        path = (title_cards or {}).get(getattr(j, "id", ""))
+        if not path:
+            continue
+        joiner_cardi[j.id] = len(inputs)
+        inputs.append(FfmpegInput(
+            path=path,
+            pre_args=["-loop", "1", "-t", f"{li.duration_ms / 1000.0:g}"],
+        ))
+
     # ── Stage B: per-segment normalize + audio + fades.
     filter_parts: list[str] = []
     seg_pair: dict[str, tuple[str, str]] = {}
@@ -382,7 +436,7 @@ def build_ffmpeg_command(
         assert isinstance(seg, Segment)
         dur_s = li.duration_ms / 1000.0
         vidx = seg_vi[seg.id]
-        head_s, tail_s = seg_fades[seg.id]
+        head_s, tail_s, head_color, tail_color = seg_fades[seg.id]
 
         # Video: either single-input normalize, or two-input composite
         # (previous_last_frame: background + foreground PNG).
@@ -446,7 +500,9 @@ def build_ffmpeg_command(
             v_after_overlays = v_after
 
         v_label = v_after_overlays
-        v_fade_chain = _fade_filter_chain(head_s, tail_s, dur_s)
+        v_fade_chain = _fade_filter_chain(
+            head_s, tail_s, dur_s, head_color, tail_color,
+        )
         if v_fade_chain:
             v_label = f"v_seg{i}"
             filter_parts.append(
@@ -555,40 +611,28 @@ def build_ffmpeg_command(
                     f"anullsrc=d={d_s:g}:r=48000:cl=stereo[{a_bridge}]",
                 )
 
-                # A joiner that has words draws them on its own bridge.
-                # Timing is relative to the bridge, which starts at 0 and
-                # runs for d_s — unlike section overlays, which are
-                # placed on the concatenated timeline in absolute time.
-                title = getattr(joiner_inst, "text", None)
-                title_text = title() if callable(title) else ""
-                if title_text:
-                    from .fonts import list_fonts, resolve_font_path
-                    stem = ""
-                    fam = getattr(joiner_inst, "font_family", None)
-                    if callable(fam):
-                        stem = fam()
-                    fontfile = resolve_font_path(stem) if stem else None
-                    if fontfile is None:
-                        installed = list_fonts()
-                        # No fonts at all: emit the bare bridge rather
-                        # than a broken filter. The card still holds,
-                        # it just has nothing written on it.
-                        fontfile = installed[0][1] if installed else None
-                    if fontfile is not None:
-                        v_titled = f"v_title{bridge_idx - 1}"
-                        filter_parts.append(text_overlay_filter(
-                            in_video_label=v_bridge,
-                            out_label=v_titled,
-                            text=title_text,
-                            textfile=(text_files or {}).get(item.id),
-                            fontfile=fontfile,
-                            font_size=joiner_inst.font_size(),
-                            font_color=joiner_inst.text_color(),
-                            position="center",
-                            start_s=0.0,
-                            end_s=d_s,
-                        ))
-                        v_bridge = v_titled
+                # A title card is composited, not drawn. Timing is
+                # relative to the bridge, which starts at 0 and runs for
+                # d_s — unlike section overlays, which are placed on the
+                # concatenated timeline in absolute time.
+                #
+                # This used to be a drawtext call. drawtext draws the
+                # words it is given at the size it is given and has no
+                # idea how wide the frame is, so a long title ran off
+                # both edges and the only way to find out was to forge
+                # the video and look at it. `titles` measures instead.
+                cardi = joiner_cardi.get(getattr(item, "id", ""))
+                if cardi is not None:
+                    v_titled = f"v_title{bridge_idx - 1}"
+                    filter_parts.append(image_overlay_filter(
+                        in_video_label=v_bridge,
+                        in_image_label=f"{cardi}:v",
+                        out_label=v_titled,
+                        position="center",
+                        start_s=0.0,
+                        end_s=d_s,
+                    ))
+                    v_bridge = v_titled
 
                 concat_pairs.append((v_bridge, a_bridge))
         # "none" joiner: no bridge, concat handles it naturally.
@@ -1195,19 +1239,10 @@ def _build_text_files(
     """
     files: dict[str, str] = {}
     for sec in project.sections:
-        # A title card's words go through the same textfile path as a
-        # section overlay, and for the same reason: a title like
-        # "Katie's Scene: part 2" is full of characters that are
-        # filter_complex syntax. Keyed by joiner id, which cannot
-        # collide with an overlay id.
-        j = sec.leading_joiner
-        if j is not None and j.joiner_type == "title_card":
-            text = (j.params or {}).get("text") or ""
-            if isinstance(text, str) and text.strip():
-                path = temp_dir / f"text_{j.id}.txt"
-                normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-                path.write_bytes(normalized.encode("utf-8"))
-                files[j.id] = str(path)
+        # NOTE: title cards used to write a textfile here too, to
+        # keep apostrophes and colons out of filter_complex syntax.
+        # They are pictures now, so the escaping problem goes away with
+        # the drawtext call — see `_build_title_cards`.
         for ov in sec.overlays:
             if ov.kind != "text":
                 continue
@@ -1222,6 +1257,38 @@ def _build_text_files(
             path.write_bytes(normalized.encode("utf-8"))
             files[ov.id] = str(path)
     return files
+
+
+def _build_title_cards(
+    project: Project, layout: Layout, width: int, height: int,
+    temp_dir: Path, joiner_frames: Optional[dict[str, str]] = None,
+) -> dict[str, str]:
+    """Render every title card to a transparent PNG at the output size.
+
+    Returns joiner id -> PNG path. A card with nothing to say does not
+    appear, and its joiner renders as the plain fade to colour that it
+    is; `validate` has already told the user, and refusing here would
+    throw away the whole encode over a card.
+    """
+    cards: dict[str, str] = {}
+    for li in layout.joiners():
+        joiner = li.item
+        if getattr(joiner, "joiner_type", "") != "title_card":
+            continue
+        inst = instantiate_joiner(joiner.joiner_type, joiner.params)
+        spec = inst.title_spec()
+        if not spec.has_words():
+            continue
+        # Whether the card IS over a picture, which is not the same as
+        # whether it asked to be: a card whose neighbour turned out to
+        # be blank throughout falls back to the flat colour, and the
+        # scrim behind the words has to fall back with it.
+        over_frame = inst.over_frame() and joiner.id in (joiner_frames or {})
+        cards[joiner.id] = render_title_png(
+            spec, width, height, temp_dir / f"titlecard_{joiner.id}.png",
+            over_frame=over_frame,
+        )
+    return cards
 
 
 def _build_frame_cache(
@@ -1303,6 +1370,14 @@ def forge_video(
         frame_cache = _build_frame_cache(project, exe, temp_dir)
         text_files = _build_text_files(project, temp_dir)
         joiner_frames = _build_joiner_frames(project, layout, exe, temp_dir)
+        # The cards are rendered at the OUTPUT size, so this has to
+        # resolve the resolution the same way the command builder
+        # does — a card rendered at 1080p and stretched to 4K is a
+        # blurry card.
+        card_w, card_h = _resolve_resolution(project, resolution_override)
+        title_cards = _build_title_cards(
+            project, layout, card_w, card_h, temp_dir, joiner_frames,
+        )
 
         # Probe each non-still segment for an audio stream. Segments
         # without one (phone captures, silent loops, animation renders)
@@ -1346,6 +1421,7 @@ def forge_video(
             segments_with_audio=segments_with_audio,
             text_files=text_files,
             joiner_frames=joiner_frames,
+            title_cards=title_cards,
             encoder=encoder,
         )
 

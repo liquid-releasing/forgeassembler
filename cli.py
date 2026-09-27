@@ -534,6 +534,61 @@ def cmd_thumbnail(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_title_catalog(args: argparse.Namespace) -> int:
+    """Print the layouts, themes and marks the title renderer supports.
+
+    Served from the engine for the reason `list-joiners` is: the engine
+    decides what it can render, and a picker offering a layout the
+    engine has never heard of is a bug waiting for a user to find it.
+    """
+    from forgeassembler_core.titles import title_catalog
+
+    print(json.dumps(title_catalog()))
+    return 0
+
+
+def cmd_title_preview(args: argparse.Namespace) -> int:
+    """Render one title card to `--out <png>`.
+
+    `--spec` is the joiner's params as JSON -- the same dict the project
+    file holds, so the preview cannot drift from the forge by reading
+    the settings differently.
+    """
+    from forgeassembler_core.titles import TitleSpec, render_title_png
+
+    try:
+        params = json.loads(args.spec) if args.spec else {}
+    except json.JSONDecodeError as e:
+        print(f"ERROR: --spec is not valid JSON: {e}", file=sys.stderr)
+        return 2
+    if not isinstance(params, dict):
+        print("ERROR: --spec must be a JSON object of joiner params",
+              file=sys.stderr)
+        return 2
+
+    spec = TitleSpec.from_params(params)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        render_title_png(spec, args.width, args.height, out,
+                         over_frame=args.over_frame)
+    except Exception as e:  # noqa: BLE001 -- a broken preview must not
+        # take the window with it; the UI shows the card's absence.
+        print(f"ERROR: could not render the title card: {e}", file=sys.stderr)
+        return 3
+
+    print(json.dumps({
+        "path": str(out),
+        "width": args.width,
+        "height": args.height,
+        # What the bridge behind the card will be painted, so the UI can
+        # show the card on its real backdrop rather than on grey.
+        "background": spec.background_color(),
+        "has_words": spec.has_words(),
+    }))
+    return 0
+
+
 def _natural_key(path: Path) -> tuple:
     """Sort `0, 1, 2, ..., 10, 11, ...` instead of lexicographic
     `0, 1, 10, 11, ..., 2, 3, ...`.
@@ -1063,6 +1118,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_thumb.add_argument("--at", type=int, default=0, help="timestamp in ms (default 0)")
     p_thumb.add_argument("--out", required=True, help="output PNG path")
     p_thumb.set_defaults(func=cmd_thumbnail)
+
+    p_tcat = sub.add_parser(
+        "title-catalog",
+        help="list the title layouts, themes and marks this build can render",
+    )
+    p_tcat.set_defaults(func=cmd_title_catalog)
+
+    p_tprev = sub.add_parser(
+        "title-preview", help="render one title card to a PNG",
+    )
+    p_tprev.add_argument(
+        "--spec", required=True,
+        help="the title card's params as a JSON object",
+    )
+    p_tprev.add_argument("--out", required=True, help="output PNG path")
+    p_tprev.add_argument("--width", type=int, default=960)
+    p_tprev.add_argument("--height", type=int, default=540)
+    p_tprev.add_argument(
+        "--over-frame", action="store_true",
+        help="render the scrim for a card sitting on a real frame",
+    )
+    p_tprev.set_defaults(func=cmd_title_preview)
 
     return parser
 

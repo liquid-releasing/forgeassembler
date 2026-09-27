@@ -9,7 +9,7 @@ import { mergeSceneActions, peakSpeed } from './lib/compilationFunscript';
 import { readSidecar } from './api/forge';
 import { toFunscript } from './lib/sidecars';
 import { TrackStack } from 'forgemoment';
-import { TitleCardText } from './JoinerEditor';
+import { TitleCardImage, useTitleCard } from './JoinerEditor';
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
@@ -244,7 +244,7 @@ export function CompilationPreview({ project, open, onToggle }) {
                                   background: "#000", opacity: holdBgDim }} />
                 </>
               )}
-              {cue.joiner?.kind === 'title_card' && <TitleCardText joiner={cue.joiner} />}
+              {cue.joiner?.kind === 'title_card' && <TitleCardCue joiner={cue.joiner} />}
             </>
           )}
           {!cue && (
@@ -335,6 +335,17 @@ export function CompilationPreview({ project, open, onToggle }) {
       </div>
     </div>
   );
+}
+
+// One card in the compilation player.
+//
+// A component of its own because the render is asynchronous and each
+// hold has its own card: the hook cannot be called from inside the
+// frame-drawing branch above without breaking the rules of hooks — and
+// this app has already had one hook-order crash reach the window.
+function TitleCardCue({ joiner }) {
+  const card = useTitleCard(joiner);
+  return <TitleCardImage card={card} />;
 }
 
 export default CompilationPreview;

@@ -1,10 +1,10 @@
 # Copyright (c) 2026 Liquid Releasing. Licensed under the MIT License.
 
-"""TitleCard: a solid-colour bridge with text drawn on it.
+"""TitleCard: a bridge between two sections with a title on it.
 
 A title card IS a fade-to-colour joiner that happens to carry words, so
-it inherits the whole of `FadeToBlack` — the hold, the per-side fades,
-the bridge colour — and adds the text. That inheritance is the point:
+it inherits the whole of `FadeToBlack` -- the hold, the per-side fades,
+the bridge colour -- and adds the card. That inheritance is the point:
 the timing semantics of a title are exactly the timing semantics of a
 fade, and there is no reason for them to be able to drift apart.
 
@@ -12,30 +12,56 @@ In particular `duration_ms()` is still the HOLD alone. The fades are
 applied inside the neighbouring scenes and add nothing to the output,
 so a 1s/3s/1s title card lengthens the compilation by three seconds.
 
+What the card LOOKS like is not decided here. This class owns the
+timing and the backdrop; `forgeassembler_core.titles` owns the design,
+and the params that describe it (`layout`, `theme`, `title`, `subtitle`,
+`eyebrow`, `glyph`, the colour overrides) are read straight into a
+`TitleSpec`. Keeping the two apart means the renderer can grow a layout
+without this file knowing, and the UI asks the renderer what it can do
+rather than this file.
+
 Params (in addition to everything FadeToBlack takes)
 ----------------------------------------------------
-- `text`         — the words on the card. Required; a title card with
-                   nothing to say is a plain fade, and the validator
-                   says so rather than silently rendering an empty
-                   frame the user paid three seconds for.
-- `font_family`  — font stem, resolved via `fonts.resolve_font_path`.
-                   Falls back to the first installed font, matching
-                   what section text overlays already do, so a project
-                   authored on another machine still renders.
-- `font_size`    — points. Default 96, which is legible at 1080p and
-                   still reasonable when the output is 4K.
-- `text_color`   — hex. Default white, since the default bridge is
-                   black.
+- `title`       -- the words on the card. `text` is still accepted, and
+                   means the same thing: that was the only field the
+                   first version of this joiner had.
+- `subtitle`,
+  `eyebrow`     -- the smaller lines. Which of them a layout actually
+                   draws is the layout's business.
+- `layout`      -- one of `titles.TITLE_LAYOUTS`.
+- `theme`       -- one of `titles.THEMES`. The theme also decides the
+                   bridge colour, so the fades either side land on the
+                   same colour as the card and there is no flash.
+- `glyph`       -- a mark drawn above the title, where the layout has
+                   a place for one.
+- `font_family` -- font stem, resolved via `fonts.resolve_font_path`.
+                   Falls back to Inter, then to whatever is installed,
+                   so a project authored on another machine still
+                   renders.
+- `text_color`,
+  `accent_color`-- override the theme. Empty means "use the theme",
+                   which is what almost every card should do.
+- `background`  -- a flat colour, or a real frame from the scene either
+                   side of the card.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from ..titles import (
+    GLYPH_LABELS,
+    GLYPHS,
+    LAYOUT_LABELS,
+    THEME_LABELS,
+    THEMES,
+    TITLE_LAYOUTS,
+    DEFAULT_LAYOUT,
+    DEFAULT_THEME,
+    GLYPH_NONE,
+    TitleSpec,
+)
 from .fade_to_black import FadeToBlack
-
-DEFAULT_TEXT_COLOR = "#ffffff"
-DEFAULT_FONT_SIZE = 96
 
 BACKGROUND_COLOR = "color"
 BACKGROUND_PREV = "previous_last_frame"
@@ -50,47 +76,77 @@ class TitleCard(FadeToBlack):
     joiner_type = "title_card"
     display_name = "Title card"
     description = (
-        "A solid-colour bridge with a title drawn on it. The previous "
-        "scene fades out, the card holds for `duration_s` seconds "
-        "while the text is on screen, then the next scene fades in. "
-        "Audio is silent across the card."
+        "A title card between two sections. The previous scene fades "
+        "out, the card holds for `duration_s` seconds while the title "
+        "is on screen, then the next scene fades in. Audio is silent "
+        "across the card."
     )
 
-    # A title wants long enough to read. The bare fade defaults to 5s
-    # of hold; a card carrying a few words reads comfortably in three.
+    # A title wants long enough to read. The bare fade defaults to 5s of
+    # hold; a card carrying a few words reads comfortably in three.
     DEFAULT_DURATION_S: float = 3.0
 
+    # ── The design ────────────────────────────────────────────────
+    def title_spec(self) -> TitleSpec:
+        """This card's design, as the renderer wants it.
+
+        NOT called `spec`: `Joiner.spec()` is a classmethod describing
+        the joiner TYPE to the catalog, and an instance method of the
+        same name would shadow it -- `all_specs()` calls `cls.spec()`
+        with no arguments and would have raised on this class alone.
+        """
+        return TitleSpec.from_params(self.params)
+
     def text(self) -> str:
-        """The words on the card, or '' when there are none."""
-        raw = self.params.get("text", "")
-        return raw.strip() if isinstance(raw, str) else ""
+        """The card's main words.
+
+        Kept because `concat_video` and the validator both ask "does
+        this card say anything", and because the first version of this
+        joiner had nothing else.
+        """
+        return self.title_spec().title
 
     def font_family(self) -> str:
-        raw = self.params.get("font_family", "")
-        return raw.strip() if isinstance(raw, str) else ""
+        return self.title_spec().font_family
 
-    def font_size(self) -> int:
-        try:
-            v = int(float(self.params.get("font_size", DEFAULT_FONT_SIZE)))
-        except (TypeError, ValueError):
-            return DEFAULT_FONT_SIZE
-        # A zero or negative size makes ffmpeg refuse the whole filter
-        # graph rather than clamp — see the drawtext notes in filters.py.
-        return v if v > 0 else DEFAULT_FONT_SIZE
+    def color(self) -> str:
+        """The bridge colour.
 
+        Overridden to follow the THEME. The card is composited onto this
+        colour and the fades either side land on it, so if it disagreed
+        with the theme's background every title card would open and
+        close with a flash of the wrong colour.
+
+        An explicit `color` param still wins -- someone deliberately
+        putting a dark card between two scenes on a light theme is
+        making a choice, not a mistake.
+        """
+        if isinstance(self.params.get("color"), str) and self.params["color"].strip():
+            return super().color()
+        return self.title_spec().background_color()
+
+    # ── The backdrop ──────────────────────────────────────────────
     def background(self) -> str:
         """What the card sits on: a flat colour, or a real frame.
 
-        `previous_last_frame` / `next_first_frame` take a picture from the
-        neighbouring scene instead of a solid bridge, so the card reads as
-        part of the film rather than an interruption. The frame chosen is
-        the last (or first) NON-BLANK one: scenes routinely start and end
-        on black, and a black frame is just a slower way of getting the
-        flat colour back.
+        `previous_last_frame` / `next_first_frame` take a picture from
+        the neighbouring scene instead of a solid bridge, so the card
+        reads as part of the film rather than an interruption. The frame
+        chosen is the last (or first) NON-BLANK one: scenes routinely
+        start and end on black, and a black frame is just a slower way
+        of getting the flat colour back.
         """
         raw = self.params.get("background", BACKGROUND_COLOR)
         raw = raw.strip() if isinstance(raw, str) else ""
         return raw if raw in BACKGROUNDS else BACKGROUND_COLOR
+
+    def over_frame(self) -> bool:
+        """Whether the card is composited over a picture.
+
+        The renderer needs this: it decides how hard the scrim behind
+        the words has to work, not what is behind them.
+        """
+        return self.background() != BACKGROUND_COLOR
 
     def background_dim(self) -> float:
         """How far to darken a frame background, 0..1.
@@ -106,17 +162,7 @@ class TitleCard(FadeToBlack):
             return DEFAULT_BACKGROUND_DIM
         return max(0.0, min(1.0, v))
 
-    def text_color(self) -> str:
-        raw = self.params.get("text_color", DEFAULT_TEXT_COLOR)
-        if not isinstance(raw, str) or not raw:
-            return DEFAULT_TEXT_COLOR
-        raw = raw.strip()
-        if not raw.startswith("#"):
-            raw = "#" + raw
-        if len(raw) != 7 or not all(c in "0123456789abcdefABCDEF" for c in raw[1:]):
-            return DEFAULT_TEXT_COLOR
-        return raw.lower()
-
+    # ── Validation ────────────────────────────────────────────────
     def validate(self) -> list[str]:
         errors = [
             # The parent's messages name FadeToBlack; say what the user
@@ -124,15 +170,16 @@ class TitleCard(FadeToBlack):
             e.replace("FadeToBlack", "Title card")
             for e in super().validate()
         ]
-        if not self.text():
+        if not self.title_spec().has_words():
             errors.append(
-                "A title card needs `text` — without it, it is just a "
-                "fade to colour.",
+                "A title card needs something to say -- a title, a "
+                "subtitle or an eyebrow. Without any of them it is just "
+                "a fade to colour.",
             )
         if self._duration_s() <= 0:
             errors.append(
                 "A title card needs duration_s > 0, or there is no "
-                "frame for the text to appear on.",
+                "frame for the title to appear on.",
             )
         return errors
 
@@ -142,29 +189,62 @@ class TitleCard(FadeToBlack):
         schema["duration_s"] = {
             **schema["duration_s"],
             "default": cls.DEFAULT_DURATION_S,
-            "help": "How long the card holds on screen. The text is "
+            "help": "How long the card holds on screen. The title is "
                     "visible for this whole time.",
         }
-        schema["text"] = {
+        schema["title"] = {
             "type": "str",
             "default": "",
             "label": "Title",
-            "help": "The words on the card. Line breaks are kept.",
+            "help": "The words on the card. Line breaks are kept, and "
+                    "a title too long for the frame is shrunk and "
+                    "wrapped rather than cropped.",
+        }
+        schema["subtitle"] = {
+            "type": "str",
+            "default": "",
+            "label": "Subtitle",
+            "help": "The smaller line under the title.",
+        }
+        schema["eyebrow"] = {
+            "type": "str",
+            "default": "",
+            "label": "Eyebrow",
+            "help": "A short label above the title, drawn in the accent "
+                    "colour. Used by the chapter layout.",
+        }
+        schema["layout"] = {
+            "type": "enum",
+            "default": DEFAULT_LAYOUT,
+            "options": list(TITLE_LAYOUTS),
+            "labels": dict(LAYOUT_LABELS),
+            "label": "Layout",
+            "help": "How the card is arranged.",
+        }
+        schema["theme"] = {
+            "type": "enum",
+            "default": DEFAULT_THEME,
+            "options": list(THEMES),
+            "labels": dict(THEME_LABELS),
+            "label": "Theme",
+            "help": "The card's colours. Also sets the bridge colour, "
+                    "so the fades either side match the card.",
+        }
+        schema["glyph"] = {
+            "type": "enum",
+            "default": GLYPH_NONE,
+            "options": list(GLYPHS),
+            "labels": dict(GLYPH_LABELS),
+            "label": "Mark",
+            "help": "A small mark above the title, where the layout "
+                    "has a place for one.",
         }
         schema["font_family"] = {
             "type": "font",
             "default": "",
             "label": "Font",
-            "help": "Font stem. Falls back to the first installed font "
-                    "when unset or missing on this machine.",
-        }
-        schema["font_size"] = {
-            "type": "int",
-            "default": DEFAULT_FONT_SIZE,
-            "min": 8,
-            "max": 400,
-            "label": "Font size",
-            "help": "Points, against the output resolution.",
+            "help": "Font stem. Falls back to Inter, then to the first "
+                    "installed font, when unset or missing here.",
         }
         schema["background"] = {
             "type": "enum",
@@ -186,8 +266,17 @@ class TitleCard(FadeToBlack):
         }
         schema["text_color"] = {
             "type": "color",
-            "default": DEFAULT_TEXT_COLOR,
+            "default": "",
             "label": "Text colour",
-            "help": "Hex colour of the words (e.g. '#ffffff').",
+            "help": "Overrides the theme's text colour. Leave empty to "
+                    "use the theme.",
+        }
+        schema["accent_color"] = {
+            "type": "color",
+            "default": "",
+            "label": "Accent colour",
+            "help": "Overrides the theme's accent, used for the mark, "
+                    "the rule and the eyebrow. Leave empty to use the "
+                    "theme.",
         }
         return schema

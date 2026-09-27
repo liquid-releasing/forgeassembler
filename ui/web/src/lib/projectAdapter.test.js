@@ -894,47 +894,91 @@ describe('title_card joiner', () => {
     expect(ENGINE_JOINER_TYPES).toContain('title_card');
   });
 
-  it('round-trips view -> real -> view without losing the words', () => {
+  it('round-trips the whole design view -> real -> view', () => {
     const view = {
-      kind: 'title_card', text: "Katie's Scene: part 2",
+      kind: 'title_card', title: "Katie's Scene: part 2",
+      subtitle: 'slow build', eyebrow: 'Act II',
+      layout: 'chapter', theme: 'brand', glyph: 'anvil',
       fadeOutS: 1, holdS: 3, fadeInS: 1,
-      color: '#000000', textColor: '#ffcc00', fontSize: 120,
+      textColor: '#ffcc00', accentColor: '#00ff00',
     };
     const real = joinerToReal(view);
     expect(real.joiner_type).toBe('title_card');
-    expect(real.params.text).toBe("Katie's Scene: part 2");
+    expect(real.params.title).toBe("Katie's Scene: part 2");
+    expect(real.params.subtitle).toBe('slow build');
+    expect(real.params.eyebrow).toBe('Act II');
+    expect(real.params.layout).toBe('chapter');
+    expect(real.params.theme).toBe('brand');
+    expect(real.params.glyph).toBe('anvil');
     expect(real.params.duration_s).toBe(3);
     expect(real.params.fade_s).toBe(1);
 
     const back = joinerFromReal(real);
-    expect(back.kind).toBe('title_card');
-    expect(back.text).toBe("Katie's Scene: part 2");
-    expect(back.holdS).toBe(3);
-    expect(back.textColor).toBe('#ffcc00');
-    expect(back.fontSize).toBe(120);
+    expect(back).toMatchObject({
+      kind: 'title_card', title: "Katie's Scene: part 2",
+      subtitle: 'slow build', eyebrow: 'Act II',
+      layout: 'chapter', theme: 'brand', glyph: 'anvil',
+      holdS: 3, textColor: '#ffcc00', accentColor: '#00ff00',
+    });
+  });
+
+  it('leaves the card colour to the theme unless it was overridden', () => {
+    // ⚠ The bug this guards: `color` used to be written on every save
+    // from a UI default of #000000, which pinned every card to black and
+    // made the theme picker look like it did nothing.
+    const plain = joinerToReal({ kind: 'title_card', title: 'x', theme: 'light', holdS: 3 });
+    expect(plain.params.color).toBeUndefined();
+
+    const overridden = joinerToReal({
+      kind: 'title_card', title: 'x', theme: 'light', colorOverride: '#123456', holdS: 3,
+    });
+    expect(overridden.params.color).toBe('#123456');
+    expect(joinerFromReal(overridden).colorOverride).toBe('#123456');
+    expect(joinerFromReal(plain).colorOverride).toBe('');
+  });
+
+  it('says nothing about a design that is already the default', () => {
+    // A plain card has to produce the same params an older build wrote,
+    // or every project would rewrite itself on first open.
+    const real = joinerToReal({
+      kind: 'title_card', title: 'x', layout: 'centered', theme: 'dark',
+      glyph: 'none', subtitle: '', eyebrow: '', holdS: 3, fadeOutS: 1, fadeInS: 1,
+    });
+    expect(Object.keys(real.params).sort()).toEqual(['duration_s', 'fade_s', 'title']);
   });
 
   it('spells out both sides only when the fades differ', () => {
-    const sym = joinerToReal({ kind: 'title_card', text: 'x', fadeOutS: 1, fadeInS: 1, holdS: 3 });
+    const sym = joinerToReal({ kind: 'title_card', title: 'x', fadeOutS: 1, fadeInS: 1, holdS: 3 });
     expect(sym.params.fade_out_s).toBeUndefined();
-    const asym = joinerToReal({ kind: 'title_card', text: 'x', fadeOutS: 0.5, fadeInS: 2, holdS: 3 });
+    const asym = joinerToReal({ kind: 'title_card', title: 'x', fadeOutS: 0.5, fadeInS: 2, holdS: 3 });
     expect(asym.params.fade_out_s).toBe(0.5);
     expect(asym.params.fade_in_s).toBe(2);
   });
 
-  it('survives a project with no text set yet', () => {
+  it('survives a project with no title set yet', () => {
     const real = joinerToReal({ kind: 'title_card', holdS: 3 });
-    expect(real.params.text).toBe('');
-    expect(joinerFromReal(real).text).toBe('');
+    expect(real.params.title).toBe('');
+    expect(joinerFromReal(real).title).toBe('');
   });
 
   it('reads a hand-written engine title card', () => {
     const back = joinerFromReal({
       joiner_type: 'title_card',
-      params: { text: 'Intro', duration_s: 4, fade_s: 0.5 },
+      params: { title: 'Intro', duration_s: 4, fade_s: 0.5 },
     });
     expect(back).toMatchObject({
-      kind: 'title_card', text: 'Intro', holdS: 4, fadeOutS: 0.5, fadeInS: 0.5,
+      kind: 'title_card', title: 'Intro', holdS: 4, fadeOutS: 0.5, fadeInS: 0.5,
     });
+  });
+
+  it('opens a card saved before the title had a name of its own', () => {
+    // `text` was the only field the first version of this joiner had.
+    const back = joinerFromReal({
+      joiner_type: 'title_card',
+      params: { text: 'Intro', duration_s: 4, fade_s: 0.5 },
+    });
+    expect(back.title).toBe('Intro');
+    expect(back.layout).toBe('centered');
+    expect(back.theme).toBe('dark');
   });
 });

@@ -1639,35 +1639,48 @@ def _two_scene_project(joiner):
         ]})
 
 
-def _graph(joiner):
+def _graph(joiner, **kwargs):
     from forgeassembler_core.concat_video import build_ffmpeg_command
     from forgeassembler_core.layout import lay_out
 
     project = _two_scene_project(joiner)
     layout = lay_out(project, probe=lambda p: 10000)
-    cmd = build_ffmpeg_command(project, layout, frame_rate_override=30)
+    cmd = build_ffmpeg_command(project, layout, frame_rate_override=30,
+                               **kwargs)
     return " ".join(cmd.to_argv("ffmpeg"))
 
 
 TITLE_JOINER = {
     "id": "j2", "joiner_type": "title_card",
-    "params": {"text": "Part Two", "duration_s": 3.0, "fade_s": 1.0,
-               "font_size": 96, "text_color": "#ffcc00"},
+    "params": {"title": "Part Two", "duration_s": 3.0, "fade_s": 1.0},
 }
 
 
-def test_title_card_draws_its_text_on_its_own_bridge():
+def test_title_card_composites_its_card_on_its_own_bridge():
+    # The bridge is the theme's background -- #0e1117 for the default
+    # dark theme, not black -- because the fades either side land on it
+    # and a card that disagreed with its own bridge would flash.
+    g = _graph(TITLE_JOINER, title_cards={"j2": "card.png"})
+    assert "color=c=0x0e1117:s=1920x1080:d=3" in g
+    assert "card.png" in g
+    assert "overlay=" in g
+    # The card is a picture now. Nothing draws words into the graph.
+    assert "drawtext" not in g
+
+
+def test_a_card_that_did_not_render_still_forges_as_a_fade():
+    # A card with nothing to say does not get a PNG, and losing the
+    # whole encode over it would be a poor trade.
     g = _graph(TITLE_JOINER)
-    assert "color=c=0x000000:s=1920x1080:d=3" in g
-    assert "drawtext" in g
-    assert "fontsize=96" in g
-    assert "fontcolor=#ffcc00" in g
+    assert "color=c=0x0e1117:s=1920x1080:d=3" in g
+    assert "overlay=" not in g
 
 
-def test_title_card_text_is_visible_for_the_whole_card():
+def test_title_card_is_visible_for_the_whole_card():
     # Relative to the bridge, which starts at 0 -- not absolute time on
     # the concatenated timeline, the way section overlays are placed.
-    assert "enable='between(t,0,3)'" in _graph(TITLE_JOINER)
+    assert "enable='between(t,0,3)'" in _graph(
+        TITLE_JOINER, title_cards={"j2": "card.png"})
 
 
 def test_title_card_fades_its_neighbours_like_a_fade_does():
@@ -1679,10 +1692,32 @@ def test_title_card_fades_its_neighbours_like_a_fade_does():
     assert "fade=t=in:st=0:d=1" in g, "next scene must fade in"
 
 
+def test_a_scene_fades_to_the_colour_it_is_fading_INTO():
+    # ffmpeg's `fade` goes to BLACK unless told otherwise, so a card on
+    # any other colour dipped the scene to black and then cut to the
+    # hold. Measured on a real encode before the fix: a #1a0e1e card
+    # with a 0.5s fade read (0, 0, 0) at the corner mid-fade.
+    j = {**TITLE_JOINER}
+    j["params"] = {**j["params"], "theme": "brand"}
+    g = _graph(j, title_cards={"j2": "card.png"})
+    assert "color=0x1a0e1e" in g, "the fade must land on the card's colour"
+
+
+def test_a_black_fade_is_still_spelled_the_old_way():
+    # Saying `color=0x000000` would change the filtergraph of every
+    # project that was already forging, for no visible difference.
+    g = _graph({
+        "id": "j2", "joiner_type": "fade_to_black",
+        "params": {"duration_s": 3.0, "fade_s": 1.0},
+    })
+    assert "fade=t=out:st=9:d=1" in g
+    assert "color=0x" not in g
+
+
 def test_a_cut_still_produces_no_bridge():
     g = _graph({"id": "j2", "joiner_type": "none", "params": {}})
     assert "color=c=" not in g
-    assert "drawtext" not in g
+    assert "overlay=" not in g
 
 
 # ── Title-card frame backgrounds ──────────────────────────────────────
@@ -1774,8 +1809,7 @@ def test_a_frame_backed_card_takes_a_looped_image_input():
     assert "force_original_aspect_ratio=decrease" in graph
     # Pushed back so the title stays readable.
     assert "colorlevels=rimax=0.55" in graph
-    assert "drawtext" in graph
-    assert "color=c=0x000000" not in graph
+    assert "color=c=0x0e1117" not in graph, "a frame-backed card has no bridge colour"
 
 
 def test_a_card_falls_back_to_flat_colour_when_every_frame_was_blank():
@@ -1787,7 +1821,7 @@ def test_a_card_falls_back_to_flat_colour_when_every_frame_was_blank():
     layout = lay_out(project, probe=lambda p: 10000)
     graph = " ".join(build_ffmpeg_command(
         project, layout, frame_rate_override=30, joiner_frames={}).to_argv("ffmpeg"))
-    assert "color=c=0x000000" in graph
+    assert "color=c=0x0e1117" in graph
     assert "colorlevels" not in graph
 
 

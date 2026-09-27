@@ -402,15 +402,27 @@ export function joinerToReal(joiner) {
     const out = num(joiner.fadeOutS, 1);
     const inn = num(joiner.fadeInS, 1);
     const params = {
-      text: String(joiner.text || ''),
+      title: String(joiner.title || ''),
       duration_s: num(joiner.holdS, 3),
       fade_s: Math.max(out, inn),
     };
     if (out !== inn) { params.fade_out_s = out; params.fade_in_s = inn; }
-    if (joiner.color) params.color = joiner.color;
-    if (joiner.textColor) params.text_color = joiner.textColor;
-    if (joiner.fontSize) params.font_size = num(joiner.fontSize, 96);
+    // The card's design. Each field is spelled out only when it differs
+    // from the engine's own default, so a plain card round-trips to the
+    // same params an older build wrote.
+    if (joiner.subtitle) params.subtitle = String(joiner.subtitle);
+    if (joiner.eyebrow) params.eyebrow = String(joiner.eyebrow);
+    if (joiner.layout && joiner.layout !== 'centered') params.layout = joiner.layout;
+    if (joiner.theme && joiner.theme !== 'dark') params.theme = joiner.theme;
+    if (joiner.glyph && joiner.glyph !== 'none') params.glyph = joiner.glyph;
     if (joiner.fontFamily) params.font_family = String(joiner.fontFamily);
+    if (joiner.textColor) params.text_color = joiner.textColor;
+    if (joiner.accentColor) params.accent_color = joiner.accentColor;
+    // ⚠ ONLY when the user overrode it. The bridge colour otherwise comes
+    // from the theme, and writing it unconditionally — which is what this
+    // did while `color` had a UI default of #000000 — pins every card to
+    // black and makes the theme picker look broken.
+    if (joiner.colorOverride) params.color = joiner.colorOverride;
     // Only spell out a frame background. A card on flat colour stays the
     // shape the engine defaults to, so an existing project round-trips
     // byte-identically.
@@ -447,13 +459,23 @@ export function joinerFromReal(lj) {
     const sym = num(p.fade_s, 1);
     return {
       kind: 'title_card',
-      text: p.text || '',
+      // `text` is what the first version of this joiner called the
+      // title, so a project saved by that build still opens with its
+      // words on the card.
+      title: p.title || p.text || '',
+      subtitle: p.subtitle || '',
+      eyebrow: p.eyebrow || '',
+      layout: p.layout || 'centered',
+      theme: p.theme || 'dark',
+      glyph: p.glyph || 'none',
       fadeOutS: num(p.fade_out_s, sym),
       holdS: num(p.duration_s, 3),
       fadeInS: num(p.fade_in_s, sym),
-      color: p.color || '#000000',
-      textColor: p.text_color || '#ffffff',
-      fontSize: num(p.font_size, 96),
+      // Empty means "follow the theme", which is what almost every card
+      // should do — see the override note in joinerToReal.
+      colorOverride: p.color || '',
+      textColor: p.text_color || '',
+      accentColor: p.accent_color || '',
       background: p.background || 'color',
       backgroundDim: num(p.background_dim, 0.45),
       ...(p.font_family ? { fontFamily: p.font_family } : {}),

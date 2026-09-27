@@ -2,6 +2,9 @@
 import React from 'react';
 import { VideoPoster } from './MediaViewer';
 import { FA_DATA } from './data';
+import { titleCatalog, titleCardPreview } from './api/forge';
+import { joinerToReal } from './lib/projectAdapter';
+import { toMediaUrl } from './lib/mediaUrl';
 import { Button, Field, Icon, Pill, Slider, TextInput } from './primitives';
 
 // JoinerEditor — popover anchored to a joiner row click.
@@ -17,13 +20,70 @@ function makeJoinerFromKind(kind) {
   return { kind, ...(k?.defaults || {}) };
 }
 
+// The colour behind a title card BEFORE the engine has told us.
+//
+// The theme decides it, and the engine is the one that knows — every
+// render reports the colour it used, and that answer replaces this. This
+// table exists only so the first frame of the preview is not the wrong
+// colour for the ~200ms before the first render lands.
+const THEME_BG_FALLBACK = {
+  dark: "#0e1117", void: "#000000", brand: "#1a0e1e", light: "#fafafa",
+};
+
+function fallbackBridgeColor(joiner) {
+  if (joiner.kind !== "title_card") return joiner.color || "#000000";
+  return joiner.colorOverride
+      || THEME_BG_FALLBACK[joiner.theme]
+      || THEME_BG_FALLBACK.dark;
+}
+
+// Render this card with the ENGINE and hand back the picture.
+//
+// This is the whole reason the card stopped being drawn here: what the
+// forge writes and what this shows are now the same function, so a
+// title that shrank to fit, or wrapped, or picked up the theme's
+// colours, looks the same in both places.
+//
+// ⚠ Debounced: every keystroke would otherwise be a process launch. The
+// previous card stays on screen while the next one renders rather than
+// flashing empty, because a preview that blinks on every character is
+// harder to judge than one that lags slightly.
+function useTitleCard(joiner) {
+  const [card, setCard] = jeState(null);
+  const isCard = joiner?.kind === "title_card";
+  const overFrame = isCard && (joiner.background || "color") !== "color";
+  // Serialise through the SAME translator the save path uses, so the
+  // preview cannot be rendered from settings the project would not have.
+  const specJson = isCard
+    ? JSON.stringify(joinerToReal(joiner).params)
+    : null;
+
+  jeUseEffect(() => {
+    if (!specJson) { setCard(null); return undefined; }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      titleCardPreview(specJson, overFrame).then((res) => {
+        if (!cancelled) setCard(res);
+      }).catch(() => {
+        // A card that will not render must not take the editor with
+        // it. The preview shows the backdrop and no words, which is
+        // also what the forge will do.
+        if (!cancelled) setCard(null);
+      });
+    }, 180);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [specJson, overFrame]);
+
+  return card;
+}
+
 
 // ── Animated joiner preview ──────────────────────────────────────
 // Plays the transition on loop. Two stand-in "clips" — left and right
 // — come from the segments adjacent to this joiner (prevClip ends a
 // section, nextClip starts this section). Falls back to colored panels
 // if no thumbs are provided.
-function AnimatedJoinerPreview({ joiner, prevClip, nextClip }) {
+function AnimatedJoinerPreview({ joiner, prevClip, nextClip, card }) {
   const [playing, setPlaying] = jeState(true);
   const [tNorm, setTNorm] = jeState(0); // 0..1 progress through the transition
   const rafRef = jeRef();
@@ -90,7 +150,7 @@ function AnimatedJoinerPreview({ joiner, prevClip, nextClip }) {
         background: "#000", borderRadius: 6, overflow: "hidden",
         border: "1px solid var(--border)",
       }}>
-        {renderJoinerFrame({ joiner, prevClip, nextClip, phase, t })}
+        {renderJoinerFrame({ joiner, prevClip, nextClip, phase, t, card })}
       </div>
 
       {/* Transition timeline scrub */}
@@ -119,7 +179,7 @@ function AnimatedJoinerPreview({ joiner, prevClip, nextClip }) {
 
 // Render one frame of the transition at progress t inside the given phase.
 // Returns JSX nodes layered absolutely inside the preview frame.
-function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t }) {
+function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t, card }) {
   const prevSrc = prevClip?.thumb;
   const nextSrc = nextClip?.thumb;
 
@@ -143,7 +203,9 @@ function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t }) {
     const fi = joiner.fadeInS  || 0;
     const tot = Math.max(0.01, fo + ho + fi);
     const cur = t * tot; // seconds into transition
-    const color = joiner.color || "#000000";
+    // The engine reports the colour it actually painted the bridge;
+    // the fallback only covers the moment before the first render.
+    const color = card?.background || fallbackBridgeColor(joiner);
     // Phase opacities
     let leftOp = 0, rightOp = 0, holdOp = 0;
     if (cur < fo) {
@@ -184,7 +246,7 @@ function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t }) {
         ) : (
           <span style={{ position: "absolute", inset: 0, background: color, opacity: holdOp }} />
         )}
-        {showText && <TitleCardText joiner={joiner} />}
+        {showText && <TitleCardImage card={card} />}
       </>
     );
   }
@@ -223,33 +285,26 @@ function renderJoinerFrame({ joiner, prevClip, nextClip, phase, t }) {
   return <ClipPanel src={prevSrc} label="previous clip" tint="left" />;
 }
 
-// The words on a title card, drawn at the size they will actually be.
+// The card itself, as the engine rendered it.
 //
-// An SVG with a 1920x1080 viewBox scales to whatever the preview box is,
-// so `font_size` renders at exactly its output proportion — which is the
-// only way the size control can tell the truth. Drawing it with a CSS
-// font-size would have meant picking a number that looks right in the
-// preview and says nothing about the render.
-function TitleCardText({ joiner }) {
-  const text = String(joiner.text || "");
-  if (!text.trim()) return null;
-  const size = Number(joiner.fontSize) > 0 ? Number(joiner.fontSize) : 96;
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  // Centre the block vertically: shift up by half the extra lines.
-  const lead = size * 1.2;
-  const top = 540 - ((lines.length - 1) * lead) / 2;
+// This used to be an SVG drawn here, which could show the words and
+// nothing else — no layout, no theme, no mark, no subtitle — and had no
+// way of knowing whether a long title would fit the frame. It is a
+// picture now, from `cli.py title-preview`, which is the same renderer
+// the forge uses.
+//
+// The PNG is transparent: the backdrop behind it is the bridge, drawn
+// by whatever is underneath this in the preview stack, exactly as the
+// filtergraph composites it.
+function TitleCardImage({ card }) {
+  if (!card?.path || card.has_words === false) return null;
+  const src = toMediaUrl(card.path);
+  if (!src) return null;
   return (
-    <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet"
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
-      {lines.map((line, i) => (
-        <text key={i} x="960" y={top + i * lead}
-              fill={joiner.textColor || "#ffffff"}
-              fontSize={size} textAnchor="middle" dominantBaseline="middle"
-              style={{ fontFamily: "var(--font-sans)" }}>
-          {line}
-        </text>
-      ))}
-    </svg>
+    <img src={src} alt="" style={{
+      position: "absolute", inset: 0, width: "100%", height: "100%",
+      objectFit: "contain", display: "block", pointerEvents: "none",
+    }} />
   );
 }
 
@@ -299,6 +354,31 @@ function JoinerEditor({ joiner, prevClip, nextClip, anchorRect, onChange, onClos
 
   function setParam(id, v) { onChange({ ...joiner, [id]: v }); }
   function setKind(newKind) { onChange(makeJoinerFromKind(newKind)); }
+
+  const card = useTitleCard(joiner);
+
+  // What the ENGINE says it can draw. Until it answers (or outside
+  // Tauri, where it never will) the static lists in data.js stand in —
+  // so the form always draws, and never offers a layout this build
+  // cannot render.
+  const [catalog, setCatalog] = jeState(null);
+  jeUseEffect(() => {
+    let cancelled = false;
+    titleCatalog().then((c) => { if (!cancelled) setCatalog(c); })
+                  .catch(() => { /* the static lists stand in */ });
+    return () => { cancelled = true; };
+  }, []);
+  const CATALOG_PARAMS = { layout: "layouts", theme: "themes", glyph: "glyphs" };
+  function withCatalog(param) {
+    const key = CATALOG_PARAMS[param.id];
+    const entries = key && catalog?.[key];
+    if (!Array.isArray(entries) || !entries.length) return param;
+    return {
+      ...param,
+      options: entries.map(e => e.id),
+      labels: Object.fromEntries(entries.map(e => [e.id, e.label || e.id])),
+    };
+  }
 
   return (
     <div ref={ref} style={{
@@ -363,14 +443,14 @@ function JoinerEditor({ joiner, prevClip, nextClip, anchorRect, onChange, onClos
           ) : (
             <div style={{ padding: 14 }}>
               <div style={{ maxWidth: 320, margin: "0 auto 12px" }}>
-                <AnimatedJoinerPreview joiner={joiner}
+                <AnimatedJoinerPreview joiner={joiner} card={card}
                                         prevClip={prevClip} nextClip={nextClip} />
               </div>
               {(joiner.kind === "fade_through_black" || joiner.kind === "dip_to_color") && (
                 <TimingVisual joiner={joiner} kind={kind} />
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 4 }}>
-                {kind.params.map(p => (
+                {kind.params.map(withCatalog).map(p => (
                   <ParamControl key={p.id} param={p}
                                  value={joiner[p.id] ?? p.default}
                                  onChange={(v) => setParam(p.id, v)} />
@@ -497,6 +577,32 @@ function ParamControl({ param, value, onChange }) {
       </Field>
     );
   }
+  if (param.kind === "colorAuto") {
+    // An override, not a setting. Empty means the theme decides, and
+    // that has to be the resting state — a colour picker with a value
+    // in it always looks like a choice the user made.
+    const on = !!value;
+    return (
+      <Field label={param.label}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Button kind={on ? "ghost" : "secondary"} size="sm"
+                   onClick={() => onChange(on ? "" : "#ffffff")}>
+            {on ? "Override" : (param.autoLabel || "Automatic")}
+          </Button>
+          {on && (
+            <>
+              <input type="color" value={value || "#ffffff"}
+                      onChange={(e) => onChange(e.target.value)}
+                      style={{ width: 32, height: 28, border: "1px solid var(--border)",
+                                background: "var(--surface-2)", borderRadius: 4,
+                                padding: 2, cursor: "pointer" }} />
+              <TextInput value={value} mono onChange={onChange} style={{ flex: 1 }} />
+            </>
+          )}
+        </div>
+      </Field>
+    );
+  }
   if (param.kind === "color") {
     return (
       <Field label={param.label}>
@@ -524,4 +630,5 @@ Object.assign(window, { JoinerEditor, makeJoinerFromKind });
 
 
 export { AnimatedJoinerPreview, ClipPanel, JoinerEditor, ParamControl, TimingVisual,
-         TitleCardText, computePos, makeJoinerFromKind, renderJoinerFrame };
+         TitleCardImage, computePos, fallbackBridgeColor, makeJoinerFromKind,
+         renderJoinerFrame, useTitleCard };
