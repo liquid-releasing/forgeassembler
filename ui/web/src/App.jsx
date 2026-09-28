@@ -5,6 +5,7 @@ import { BuildTab, ClipEditor } from './BuildTab';
 import { Inspector } from './Inspector';
 import { JoinerEditor, makeJoinerFromKind } from './JoinerEditor';
 import { ForgeTab, OutputTab } from './OtherTabs';
+import { ViewerTab } from './ViewerTab';
 import { HomeScreen } from './HomeScreen';
 import { PreviewBand } from './PreviewBand';
 import { CompilationPreview } from './CompilationPreview';
@@ -19,7 +20,8 @@ import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
 import { parseProgressLine, stageProgress, makeStageTracker } from './lib/forgeProgress';
 import { markForgedGate } from './lib/forgeGate';
 import { DragDropProvider, reorderSectionInProject } from './dragdrop';
-import { lastFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
+import { baseName, lastFolder, parentFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
+import { titleForClip, titleForFolder } from './lib/titleDefaults';
 
 const { useState, useEffect, useMemo, useRef } = React;
 
@@ -54,6 +56,10 @@ function App() {
   // if nothing has been. Compared against the live project to tell a
   // finished render from a stale one — see lib/forgeGate.js.
   const [forgedSig, setForgedSig] = useState(null);
+  // Where the last forge actually landed, straight from the summary, so
+  // the Viewer opens on THAT file rather than on a path reassembled from
+  // the project's name and folder.
+  const [forgedPath, setForgedPath] = useState(null);
 
   // Editable project state. Starts empty; Home's New / Open / recents
   // fill it with the user's own work.
@@ -263,6 +269,11 @@ function App() {
   // it was: an unchanged project returned silently, and even a real save
   // only nudged a pill and a "saved just now" that already said that. Say
   // something every time, including when there was nothing to do.
+  // The file being written right now, or null. Writing a project is not
+  // instant on a big compilation, and until this existed the only feedback
+  // was the Save As dialog sitting there looking like it had not taken the
+  // click.
+  const [saving, setSaving] = useState(null);
   const [saveFlash, setSaveFlash] = useState(null);
   const saveFlashTimer = useRef(null);
   function flashSaved(text) {
@@ -281,6 +292,7 @@ function App() {
   }
   async function saveInPlace() {
     if (!savedPath) { setIoDialog("save"); return; }
+    setSaving(baseName(savedPath));
     try {
       await saveProject(savedPath, toForgeProject(project, { folder: project.output?.folder }));
       setDirty(false);
@@ -289,10 +301,12 @@ function App() {
       // so a project that fell off the end of the list (or whose entry was
       // lost) never came back no matter how often you saved it.
       pushRecent(savedPath, project.name);
-      flashSaved(`Saved ${savedPath.split(/[\/]/).pop()}`);
+      flashSaved(`Saved ${baseName(savedPath)}`);
     } catch (e) {
       console.error('[save] failed', e);
       setIoError(`Couldn't save ${savedPath}: ${e?.message || e}`);
+    } finally {
+      setSaving(null);
     }
   }
   async function handleSaveAsCommit({ path, basename, folder }) {
@@ -304,6 +318,12 @@ function App() {
       name: basename || project.name,
       output: { ...project.output, folder: folder ?? project.output?.folder },
     };
+    // Close the dialog on the way IN, not on the way out. It used to close
+    // only after a successful write, so the whole wait happened behind a
+    // dialog that gave no sign it had accepted the click -- and the obvious
+    // move is to press Save again.
+    setIoDialog(null);
+    setSaving(baseName(path));
     try {
       await saveProject(path, toForgeProject(nextVm, { folder }));
       setProject(nextVm);
@@ -311,7 +331,7 @@ function App() {
       setDirty(false);
       setLastSavedAtMs(Date.now());
       pushRecent(path, nextVm.name);
-      flashSaved(`Saved ${path.split(/[\/]/).pop()}`);
+      flashSaved(`Saved ${baseName(path)}`);
       // Where this project was saved is where the next one starts, and
       // its folder is where the forge writes.
       if (folder) rememberFolder('output', folder);
@@ -320,12 +340,13 @@ function App() {
       // one, Open had no start directory and fell through to wherever
       // Windows last was — the folder the scenes were imported from.
       rememberFileFolder('projectOpen', path);
-      setIoDialog(null);
       // If we were saving en route to opening another project, continue.
       if (pendingAfterSave) { const a = pendingAfterSave; setPendingAfterSave(null); a(); }
     } catch (e) {
       console.error('[save] failed', e);
       setIoError(`Couldn't save ${path}: ${e?.message || e}`);
+    } finally {
+      setSaving(null);
     }
   }
   // Open flow:
@@ -578,12 +599,17 @@ function App() {
   // picker on Title must not produce sixteen of those, so the card is
   // born naming the scene it introduces — which is also the chapter
   // name. Renaming it afterwards is a normal edit.
-  function makeSceneJoiner(kind, sceneTitle) {
+  function makeSceneJoiner(kind, seg) {
     const j = { ...(joinerTemplates[kind] || makeJoinerFromKind(kind)) };
     // A title left blank in the template means "name each scene". Typing
     // one there instead makes every card say the same thing, which is a
     // reasonable thing to want and has to stay possible.
-    if (j.kind === 'title_card' && !j.title) j.title = sceneTitle || '';
+    //
+    // `titleForClip` rather than the section title: the section is labelled
+    // with the raw stem, which is right for a row in a list and wrong on a
+    // card -- `-madmartigan----its-just-ai-sex` is not a title. A bookmark
+    // comes through untouched, because that is a name a person chose.
+    if (j.kind === 'title_card' && !j.title) j.title = titleForClip(seg) || '';
     return j;
   }
 
@@ -609,7 +635,7 @@ function App() {
                 // Reusing the empty boot section: it only needs a joiner
                 // if something already plays before it.
                 joiner: isFirst(idx) ? { kind: 'none' }
-                                     : makeSceneJoiner(newSceneJoinerKind, title),
+                                     : makeSceneJoiner(newSceneJoinerKind, seg),
               }
             : s),
         };
@@ -618,7 +644,7 @@ function App() {
         ...p,
         sections: [...p.sections, {
           id: `sec-${Date.now()}`, title, color: '#ff8c42',
-          joiner: makeSceneJoiner(newSceneJoinerKind, title),
+          joiner: makeSceneJoiner(newSceneJoinerKind, seg),
           segments: [seg], overlays: [],
         }],
       };
@@ -885,6 +911,7 @@ function App() {
       // Record WHAT was rendered, not merely that a render happened.
       setForgedSig(renderedSig);
       accept('forge');
+      if (summary?.video) setForgedPath(summary.video);
       const reveal = summary?.video || project.output?.folder;
       if (reveal) revealPath(reveal).catch(() => {});
     } catch (e) {
@@ -955,6 +982,9 @@ function App() {
                        onSetChannels={setChannels} />;
     acceptKey = "output";
     acceptSummary = `Resolution ${project.output.resolution} · loudness ${project.output.normalizeAudio ? "−16 LUFS" : "off"}.`;
+  } else if (tab === "viewer") {
+    // No accept bar: the Viewer changes nothing, so there is nothing to chain.
+    body = <ViewerTab project={project} forgedPath={forgedPath} />;
   } else if (tab === "forge") {
     body = <ForgeTab project={project} totalMs={totalMs} onForge={startForge} forging={forging} progress={progress} forgeStage={forgeStage} />;
     acceptKey = "forge";
@@ -992,7 +1022,9 @@ function App() {
           onAccept={() => accept(acceptKey)}
           onReset={() => reset(acceptKey)} />
       )}
-      <FAStatusBar activeTab={tab} chainFile={acceptKey ? pipeline[acceptKey].chainFile : null} />
+      <FAStatusBar activeTab={tab}
+                    chainFile={acceptKey ? pipeline[acceptKey].chainFile : null}
+                    saving={saving} dirty={dirty} savedPath={savedPath} />
 
       {/* ── Joiner editor overlay ── */}
       {/* The compilation's own title page — the same editor, with no
@@ -1003,6 +1035,11 @@ function App() {
           prevClip={null}
           nextClip={project.sections?.[0]?.segments?.[0] || null}
           anchorRect={editingTitlePage.anchorRect}
+          /* The compilation is named after the folder it lives in, which is
+             usually the release name — a far better title than any one
+             scene's filename. */
+          defaultTitle={titleForFolder(
+            project.output?.folder || parentFolder(savedPath) || '')}
           onChange={updateTitlePage}
           onClose={() => setEditingTitlePage(null)} />
       )}
@@ -1020,6 +1057,9 @@ function App() {
             prevClip={prevClip}
             nextClip={nextClip}
             anchorRect={editingJoiner.anchorRect}
+            /* The card introduces what comes NEXT, so it is named after the
+               following scene, not the one fading out behind it. */
+            defaultTitle={titleForClip(nextClip)}
             onChange={(newJ) => updateSectionJoiner(sec.id, newJ)}
             onClose={() => setEditingJoiner(null)} />
         );

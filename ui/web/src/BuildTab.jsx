@@ -4,6 +4,7 @@ import { FASectionLabel, FATabHeader, fmtClipDur, fmtTotal } from './AppShell';
 import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
 import { Button, Field, Icon, Pill, TextInput } from './primitives';
+import { revealPath } from './api/forge';
 import { toMediaUrl } from './lib/mediaUrl';
 import { channelGapsFor, channelName, effectiveDurMs,
          projectDurationMs } from './lib/projectAdapter';
@@ -264,7 +265,7 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
               To find a cut point by eye, select the clip and use the
               Inspector's Source tab — it previews the video against these
               same in / out points.
-            </div>
+          </div>
           </div>
 
           {/* Audio */}
@@ -339,7 +340,7 @@ function SceneRow({ section, seg, idx, chapterStartMs, selected,
         onClick={() => onSelect(seg.id)}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
         style={{
-          display: "flex", alignItems: "center", gap: ROW.gap + 6,
+          display: "flex", flexDirection: "column", gap: 6,
           padding: ROW.pad,
           background: selected ? "rgba(255,75,75,0.06)" : (hover ? "var(--surface)" : "transparent"),
           border: `1px solid ${selected ? "rgba(255,75,75,0.35)" : "var(--border)"}`,
@@ -347,119 +348,139 @@ function SceneRow({ section, seg, idx, chapterStartMs, selected,
           transition: "background 120ms, border-color 120ms",
           opacity: drag["data-dragging"] === "true" ? 0.4 : 1,
         }}>
-        {/* drag handle + scene colour bar */}
-        <div {...drag}
-              onClick={(e) => e.stopPropagation()}
-              style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, cursor: "grab" }}
-              title="Drag to reorder the scenes">
-          <Icon name="grip-vertical" size={14} style={{ color: "var(--text-dim)" }} />
-          <span style={{ width: 3, alignSelf: "stretch", borderRadius: 2,
-                         background: section.color, opacity: 0.55, minHeight: ROW.thumb * 0.55 }} />
-        </div>
-
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)", fontWeight: 700,
-                                        letterSpacing: "0.08em", flexShrink: 0 }}>
-          {String(idx + 1).padStart(2, "0")}
-        </span>
-
-        <ClipThumb seg={seg} w={ROW.thumb} />
-
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {editing ? (
-              <input
-                ref={inputRef} value={draftTitle}
+        <div style={{ display: "flex", alignItems: "center", gap: ROW.gap + 6 }}>
+          {/* drag handle + scene colour bar */}
+          <div {...drag}
                 onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setDraftTitle(e.target.value)}
-                onBlur={commit}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commit();
-                  if (e.key === "Escape") { setDraftTitle(section.title); setEditing(false); }
-                }}
-                style={{
-                  fontFamily: "inherit", fontSize: ROW.font, fontWeight: 600,
-                  color: "var(--text)", background: "var(--surface-2)",
-                  border: "1px solid var(--accent)", borderRadius: 4,
-                  padding: "1px 6px", outline: "none", minWidth: 160,
-                }} />
-            ) : (
-              <span
-                onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-                title="Click to rename — this is the chapter name in the output"
-                style={{
-                  fontSize: ROW.font, fontWeight: 600, color: "var(--text)",
-                  cursor: "text", padding: "1px 6px", marginLeft: -6, borderRadius: 4,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                {section.title || seg.title}
-              </span>
-            )}
-            {/* This scene becomes chapter N in the output. */}
-            <span title={`Becomes chapter marker ${String(idx + 1).padStart(2, "0")} in the output MP4 + funscript`}
-                   style={{
-                     display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0,
-                     padding: "1px 7px", borderRadius: 4,
-                     background: "rgba(255,140,66,0.10)",
-                     border: "1px solid rgba(255,140,66,0.28)",
-                     color: "var(--accent-warm)",
-                     fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 600,
-                     letterSpacing: "0.04em",
-                   }}>
-              <Icon name="bookmark" size={11} />
-              ch.{String(idx + 1).padStart(2, "0")}
-              {chapterStartMs != null && (
-                <span style={{ opacity: 0.7, marginLeft: 2 }}>@ {fmtTotal(chapterStartMs)}</span>
-              )}
-            </span>
-            {seg.temp !== 0 && (
-              <Pill tone={seg.temp > 0 ? "warn" : "info"} style={{ padding: "1px 6px", fontSize: 10 }}>
-                {seg.temp > 0 ? "+" : ""}{seg.temp}K
-              </Pill>
-            )}
+                style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, cursor: "grab" }}
+                title="Drag to reorder the scenes">
+            <Icon name="grip-vertical" size={14} style={{ color: "var(--text-dim)" }} />
+            <span style={{ width: 3, alignSelf: "stretch", borderRadius: 2,
+                           background: section.color, opacity: 0.55, minHeight: ROW.thumb * 0.55 }} />
           </div>
-          <div className="mono" style={{
-            fontSize: ROW.sub, color: "var(--text-dim)", display: "flex", gap: 10,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            <span>{seg.file}</span>
-          </div>
-        </div>
 
-        {/* Trim state, on the row — a scene contributing less than its
-            source is worth seeing without opening anything. */}
-        {trimmed && (
-          <span title={`Trimmed: uses ${_fmtSecs(seg.trimStartMs ?? 0)} to ${_fmtSecs(seg.trimEndMs ?? sourceMs)} of ${_fmtSecs(sourceMs)}`}
-                 style={{
-            display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0,
-            padding: "1px 8px", borderRadius: 4, fontSize: 10.5, fontWeight: 600,
-            fontFamily: "var(--font-mono)",
-            background: "rgba(77,171,247,0.13)", color: "#4dabf7",
-            border: "1px solid rgba(77,171,247,0.30)",
-          }}>
-            <Icon name="scissors" size={10} /> trimmed
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)", fontWeight: 700,
+                                          letterSpacing: "0.08em", flexShrink: 0 }}>
+            {String(idx + 1).padStart(2, "0")}
           </span>
-        )}
 
-        <AudioModeBadge mode={seg.audio} />
+          <ClipThumb seg={seg} w={ROW.thumb} />
 
-        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-          <DevicePills channels={seg.channels} />
-          <GapPill gaps={gaps} />
-          {seg.bundleLean && <LeanPill />}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {editing ? (
+                <input
+                  ref={inputRef} value={draftTitle}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                  onBlur={commit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commit();
+                    if (e.key === "Escape") { setDraftTitle(section.title); setEditing(false); }
+                  }}
+                  style={{
+                    fontFamily: "inherit", fontSize: ROW.font, fontWeight: 600,
+                    color: "var(--text)", background: "var(--surface-2)",
+                    border: "1px solid var(--accent)", borderRadius: 4,
+                    padding: "1px 6px", outline: "none", minWidth: 160,
+                  }} />
+              ) : (
+                <span
+                  onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+                  title="Click to rename — this is the chapter name in the output"
+                  style={{
+                    fontSize: ROW.font, fontWeight: 600, color: "var(--text)",
+                    cursor: "text", padding: "1px 6px", marginLeft: -6, borderRadius: 4,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                  {section.title || seg.title}
+                </span>
+              )}
+              {/* This scene becomes chapter N in the output. */}
+              <span title={`Becomes chapter marker ${String(idx + 1).padStart(2, "0")} in the output MP4 + funscript`}
+                     style={{
+                       display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0,
+                       padding: "1px 7px", borderRadius: 4,
+                       background: "rgba(255,140,66,0.10)",
+                       border: "1px solid rgba(255,140,66,0.28)",
+                       color: "var(--accent-warm)",
+                       fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 600,
+                       letterSpacing: "0.04em",
+                     }}>
+                <Icon name="bookmark" size={11} />
+                ch.{String(idx + 1).padStart(2, "0")}
+                {chapterStartMs != null && (
+                  <span style={{ opacity: 0.7, marginLeft: 2 }}>@ {fmtTotal(chapterStartMs)}</span>
+                )}
+              </span>
+              {seg.temp !== 0 && (
+                <Pill tone={seg.temp > 0 ? "warn" : "info"} style={{ padding: "1px 6px", fontSize: 10 }}>
+                  {seg.temp > 0 ? "+" : ""}{seg.temp}K
+                </Pill>
+              )}
+            </div>
+          </div>
+
+          {/* Trim state, on the row — a scene contributing less than its
+              source is worth seeing without opening anything. */}
+          {trimmed && (
+            <span title={`Trimmed: uses ${_fmtSecs(seg.trimStartMs ?? 0)} to ${_fmtSecs(seg.trimEndMs ?? sourceMs)} of ${_fmtSecs(sourceMs)}`}
+                   style={{
+              display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0,
+              padding: "1px 8px", borderRadius: 4, fontSize: 10.5, fontWeight: 600,
+              fontFamily: "var(--font-mono)",
+              background: "rgba(77,171,247,0.13)", color: "#4dabf7",
+              border: "1px solid rgba(77,171,247,0.30)",
+            }}>
+              <Icon name="scissors" size={10} /> trimmed
+            </span>
+          )}
+
+          <AudioModeBadge mode={seg.audio} />
+
+          <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+            <DevicePills channels={seg.channels} />
+            <GapPill gaps={gaps} />
+            {seg.bundleLean && <LeanPill />}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <Button kind="ghost" size="icon" title="Trim the start or end, set audio, remove"
+                    onClick={(e) => { e.stopPropagation(); onEditClip?.(seg); }}><Icon name="pencil" size={13} /></Button>
+            <Button kind="ghost" size="icon" title="Remove this scene"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Confirmation belongs to the app, not to the browser:
+                      // Tauri turns window.confirm into an async call, so the
+                      // old `if (!confirm(...)) return` tested a Promise,
+                      // never fired, and removed the scene unasked.
+                      onRemove?.(section.id);
+                    }}><Icon name="trash-2" size={13} /></Button>
+          </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Button kind="ghost" size="icon" title="Trim the start or end, set audio, remove"
-                  onClick={(e) => { e.stopPropagation(); onEditClip?.(seg); }}><Icon name="pencil" size={13} /></Button>
-          <Button kind="ghost" size="icon" title="Remove this scene"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Confirmation belongs to the app, not to the browser:
-                    // Tauri turns window.confirm into an async call, so the
-                    // old `if (!confirm(...)) return` tested a Promise,
-                    // never fired, and removed the scene unasked.
-                    onRemove?.(section.id);
-                  }}><Icon name="trash-2" size={13} /></Button>
+        {/* The path, along the bottom and given the whole width.
+            It used to share the title column with the scene name, where a
+            real path was cut off partway through the FOLDER name -- which
+            is the part that says which scene this is, and the part you
+            need before going to Explorer to change it. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          <span className="mono" title={seg.file} style={{
+            flex: 1, minWidth: 0, fontSize: ROW.sub, color: "var(--text-dim)",
+            // Wraps rather than truncates: the whole point is seeing all of it.
+            overflowWrap: "anywhere", lineHeight: 1.45,
+          }}>
+            {seg.file}
+          </span>
+          <Button kind="ghost" size="icon"
+                   title="Show this scene in Explorer — to regenerate it, or add a station to it"
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     revealPath(seg.file).catch((err) =>
+                       console.warn('[reveal] failed', err));
+                   }}>
+            <Icon name="external-link" size={12} />
+          </Button>
         </div>
       </div>
       <DropLine on={drop.hoverPosition === "after"} />

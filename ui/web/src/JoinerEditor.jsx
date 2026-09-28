@@ -335,7 +335,8 @@ function ClipPanel({ src, label, tint, opacity = 1 }) {
   );
 }
 
-function JoinerEditor({ joiner, prevClip, nextClip, anchorRect, onChange, onClose }) {
+function JoinerEditor({ joiner, prevClip, nextClip, anchorRect, defaultTitle = '',
+                        onChange, onClose }) {
   const ref = jeRef();
   const kind = FA_DATA.joinerKind(joiner);
 
@@ -353,7 +354,20 @@ function JoinerEditor({ joiner, prevClip, nextClip, anchorRect, onChange, onClos
   jeUseEffect(() => { window.lucide?.createIcons?.(); });
 
   function setParam(id, v) { onChange({ ...joiner, [id]: v }); }
-  function setKind(newKind) { onChange(makeJoinerFromKind(newKind)); }
+  function setKind(newKind) {
+    const next = makeJoinerFromKind(newKind);
+    // Pre-fill the words from whatever this card is introducing -- the scene's
+    // file name, or the compilation's folder. Typing those again for every
+    // joiner is the slow part of building a compilation.
+    //
+    // Only on the SWITCH to a title card, never on opening one that already
+    // exists: re-seeding there would undo a deliberate clear, and the user
+    // would have to empty the field twice.
+    if (newKind === "title_card" && !next.title && defaultTitle) {
+      next.title = defaultTitle;
+    }
+    onChange(next);
+  }
 
   const card = useTitleCard(joiner);
 

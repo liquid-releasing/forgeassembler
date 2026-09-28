@@ -27,6 +27,18 @@ export function parentFolder(path) {
   return /^[A-Za-z]:$/.test(parent) ? `${parent}\\` : parent;
 }
 
+/** The file's own name, off either separator. */
+export function baseName(path) {
+  if (typeof path !== 'string' || !path) return '';
+  // `lastIndexOf` rather than a regex, for the reason `parentFolder` uses
+  // it: a character class is one escaping slip away from matching only the
+  // forward slash, and the App's save message shipped exactly that -- so
+  // "Saved ..." printed the whole of a Windows path instead of the name.
+  const trimmed = path.replace(/[\\/]+$/, '');
+  const cut = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'));
+  return cut < 0 ? trimmed : trimmed.slice(cut + 1);
+}
+
 function readAll() {
   try {
     const raw = localStorage.getItem(KEY);

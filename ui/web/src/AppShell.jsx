@@ -135,6 +135,19 @@ const FA_TABS = [
   { id: "build",    label: "Build",    icon: "layout-grid",   pipeline: "build"    },
   { id: "output",   label: "Output",   icon: "sliders",       pipeline: "output"   },
   { id: "forge",    label: "Forge",    icon: "hammer",        pipeline: "forge"    },
+  // The review stage: what did the forge ACTUALLY produce. Every other
+  // surface in the app is derived from the project, so they all agree with
+  // each other by construction and none of them can catch a station that
+  // went missing or a title card that came out wrong. This reads the files.
+  //
+  // It sits in the chain rather than off to one side: reviewing the forge is
+  // the last step of making a compilation, not a side trip. Opening some
+  // other output stays possible from inside the tab, but that is the escape
+  // hatch, not what the tab is for.
+  // No `pipeline` key of its own: it is gated on Forge being accepted
+  // (that is `upstream`, below), but it never earns the accepted dot
+  // itself. Looking at something asserts nothing about it.
+  { id: "viewer",   label: "Viewer",   icon: "monitor-play"                       },
 ];
 
 
@@ -159,7 +172,7 @@ function FATabButton({ t, i, list, active, pipeline, onChange }) {
       <span className="mono" style={{
         fontSize: 10, color: "var(--text-dim)", fontWeight: 500,
         marginLeft: 2, opacity: 0.7,
-      }}>{i < FA_TABS.length ? String(i + 1).padStart(2, "0") : ""}</span>
+      }}>{String(i + 1).padStart(2, "0")}</span>
       {accepted && <span style={{
         width: 6, height: 6, borderRadius: "50%", background: "var(--success)",
         boxShadow: "0 0 6px rgba(62,213,152,0.6)", marginLeft: 2,
@@ -175,21 +188,69 @@ function FATabStrip({ active, onChange, pipeline }) {
       background: "var(--surface)", borderBottom: "1px solid var(--border)",
       padding: "0 18px", gap: 2, flexShrink: 0, overflowX: "auto",
     }}>
-      {FA_TABS.map((t, i) => <FATabButton key={t.id} t={t} i={i} list={FA_TABS} active={active} pipeline={pipeline} onChange={onChange} />)}
+      {FA_TABS.map((t, i) => (
+        <FATabButton key={t.id} t={t} i={i} list={FA_TABS}
+                      active={active} pipeline={pipeline} onChange={onChange} />
+      ))}
       <div style={{ flex: 1 }} />
     </nav>
   );
 }
 
 // ── StatusBar ─────────────────────────────────────────────────────
-function FAStatusBar({ activeTab, chainFile, ffmpeg = "imageio-ffmpeg 5.1" }) {
+// The save slot used to be the literal string "Saved" with a green tick,
+// shown no matter what the app was doing -- true only by luck. A project
+// with unsaved edits said "Saved", and a write that takes a real second or
+// two (a big compilation, a slow disk) said "Saved" the whole time it had
+// not happened yet. It is the one place a user looks to answer "did that
+// land?", so it now reports the actual state.
+function SaveState({ saving, dirty, savedPath }) {
+  if (saving) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span aria-hidden style={{
+          width: 44, height: 3, borderRadius: 2, overflow: "hidden",
+          background: "rgba(255,255,255,0.10)",
+        }}>
+          {/* Indeterminate: the write reports no percentage, so a bar that
+              claimed one would be inventing it. */}
+          <span style={{
+            display: "block", width: "45%", height: "100%", borderRadius: 2,
+            background: "var(--accent-warm, #ffb547)",
+            animation: "fa-indeterminate 1.05s ease-in-out infinite",
+          }} />
+        </span>
+        <span>Writing {saving}…</span>
+      </span>
+    );
+  }
+  if (dirty) {
+    return (
+      <span style={{ color: "var(--accent-warm, #ffb547)" }}>
+        <Icon name="circle-dot" size={11}
+               style={{ verticalAlign: "-1px", marginRight: 4 }} />
+        Unsaved changes
+      </span>
+    );
+  }
+  return (
+    <span>
+      <Icon name="circle-check" size={11}
+             style={{ verticalAlign: "-1px", color: "var(--success)", marginRight: 4 }} />
+      {savedPath ? "Saved" : "Not saved yet"}
+    </span>
+  );
+}
+
+function FAStatusBar({ activeTab, chainFile, saving = null, dirty = false,
+                       savedPath = null, ffmpeg = "imageio-ffmpeg 5.1" }) {
   return (
     <footer style={{
       height: "var(--status-h)", padding: "0 14px", flexShrink: 0,
       background: "var(--surface)", borderTop: "1px solid var(--border)",
       display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: "var(--text-dim)",
     }}>
-      <span><Icon name="circle-check" size={11} style={{ verticalAlign: "-1px", color: "var(--success)", marginRight: 4 }} />Saved</span>
+      <SaveState saving={saving} dirty={dirty} savedPath={savedPath} />
       <span className="mono">tab: {activeTab}</span>
       {chainFile && <span className="mono">→ {chainFile}</span>}
       <div style={{ flex: 1 }} />

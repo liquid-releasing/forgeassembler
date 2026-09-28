@@ -37,3 +37,11 @@ input[type="range"] { accent-color: var(--accent); }
 *::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 6px; border: 2px solid var(--bg); }
 *::-webkit-scrollbar-thumb:hover { background: #3a3f5c; }
 *::-webkit-scrollbar-track { background: transparent; }
+
+/* The status bar's write indicator. Indeterminate on purpose: writing a
+   project file reports no percentage, and a bar that claimed one would be
+   making it up. */
+@keyframes fa-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(240%); }
+}

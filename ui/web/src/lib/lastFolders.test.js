@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  parentFolder, lastFolder, rememberFolder, rememberFileFolder, forgetFolders,
+  baseName, parentFolder, lastFolder, rememberFolder, rememberFileFolder, forgetFolders,
 } from './lastFolders.js';
 
 describe('parentFolder', () => {
@@ -105,5 +105,31 @@ describe('with localStorage', () => {
     rememberFolder('scenes', 'E:\\a');
     forgetFolders();
     expect(lastFolder('scenes')).toBeNull();
+  });
+});
+
+describe('baseName', () => {
+  it('takes the name off a Windows path', () => {
+    // The bug it replaces: a regex class that matched only the forward
+    // slash, so this whole string came back and the footer read
+    // "Saved D:\\\\__lqr_releases\\\\...".
+    expect(baseName("D:\\__lqr_releases\\-Madmartigan- - It's Just AI Sex\\its-just-ai-sex.forgeproject")).toBe('its-just-ai-sex.forgeproject');
+  });
+
+  it('takes the name off a POSIX path', () => {
+    expect(baseName('/d/rel/name.forgeproject')).toBe('name.forgeproject');
+  });
+
+  it('ignores a trailing separator', () => {
+    expect(baseName('D:\\rel\\folder\\')).toBe('folder');
+  });
+
+  it('passes through a bare name', () => {
+    expect(baseName('name.forgeproject')).toBe('name.forgeproject');
+  });
+
+  it('survives nothing', () => {
+    expect(baseName('')).toBe('');
+    expect(baseName(null)).toBe('');
   });
 });
