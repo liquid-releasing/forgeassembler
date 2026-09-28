@@ -60,3 +60,67 @@
   FunscriptForge" accordingly — never a hopeful "Fixme".
 - [ ] **Show which bundle version a scene is on** — filename, date, channel
   count, and a note when a newer sibling sits beside it.
+
+## Branding — decided 2026-09-28, partly built
+
+An optional `.forge` scene at each end of a compilation. It is a scene like
+any other, so it brings its own audio AND funscripts — which is the point of
+the intro: it plays before any content, so it doubles as a calibration run.
+
+**Built:** the engine half. `Output.branding_intro` / `branding_outro` are
+resolved Segments threaded through `Project.items`, so the layout, the
+filtergraph, the chapter offsets and the title-card background frame all
+follow. Plus the Output tab's Branding card. 11 tests in `test_branding.py`.
+
+Decisions, so none of these get re-litigated:
+
+- **Both ends**, each independently optional.
+- **Branding, then the title page.** Cinema order, it puts the calibration
+  funscripts at absolute zero, and it gives the compilation's title card a
+  clip to sit over — `previous_last_frame` walks BACK through `items` for the
+  nearest segment, and before branding there was nothing behind the first
+  card to find. The user asked for exactly that: "the title page should be
+  able to grab the last image from branding for its background."
+- **No chapter marker.** Chapter 01 stays the first real scene, so a viewer
+  skipping to it lands on content. Branding still pushes chapter 01 later by
+  its own length, which falls out of the layout for free.
+- **Stored in the project, not in a studio profile.** Considered and
+  rejected (2026-09-28): a profile would let one logo change reach every
+  project, at the cost of the project file no longer determining its own
+  output. The user chose the project. ⚠ The consequence is that changing your
+  branding means re-picking it per project.
+- **`segments()` stays content-only; `timeline_segments()` includes
+  branding.** The loudest caller of `segments()` asks "what resolution is the
+  source?", and that must follow the footage rather than a bumper authored at
+  some other size.
+
+### Still to build
+
+- [ ] **A branding FOLDER setting.** Adding a folder of scenes will never
+  contain the branding, so the app needs a known place to look. One
+  remembered folder (`D:\brand\` — `intro.forge`, `outro.forge`, `logo.png`)
+  that the Branding pickers open into, instead of wherever Windows last was.
+  Per-machine, like the existing folder memory. The per-project storage is
+  unchanged; the folder only replaces the picker's starting point.
+- [ ] **Logo on the branding.** ENGINE ALREADY DOES THIS — segments carry
+  image overlays ("logo, lower-third, etc."), each becoming a looped PNG
+  input with position, timing and fades. UI only: attach an image overlay at
+  `br` to the branding segment. Scoped to the branding by construction,
+  because it lives on that segment.
+- [ ] **Segment-level TEXT overlays.** The one real engine gap:
+  `concat_video` has `if ov.type != "image": continue  # text overlays
+  deferred to a later phase`. Section-level text is fully implemented and
+  proven (`text_overlay_filter`, the 9-position grid, `text_align`,
+  `_build_text_files`), and it applies drawtext to the CONCATENATED video at
+  absolute times — so the segment version computes the segment's absolute
+  window from the layout and does the same. ⚠ Segment `Overlay` has no `id`
+  (section overlays do) and `_build_text_files` keys on it — key segment ones
+  by (segment id, index). ⚠ The two models name fields differently:
+  `content`/`size`/`color`/`end_s` vs `text`/`font_size`/`text_color`/
+  `duration_s`. Map between them; do not retype either, both are persisted.
+- [ ] **Credits.** NOT a card — a static multi-line white text overlay on the
+  OUTRO bumper's own footage, lower part of frame, no scrolling. Defaults:
+  starts 5s into the outro, holds 10s, fades out. The user's outro is 20s,
+  which leaves a 5s tail. Everything the model needs already exists:
+  `color` already defaults to `#ffffff`, `position: "bc"` is in the grid, and
+  drawtext renders newlines from a `textfile=`.
