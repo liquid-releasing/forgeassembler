@@ -46,7 +46,7 @@ from forgeassembler_core import (
     validate,
 )
 from forgeassembler_core.project import Joiner as ProjectJoiner
-from forgeassembler_core.project import Output
+from forgeassembler_core.project import FRAME_RATE_KEYS, Output, RESOLUTION_KEYS
 from forgeassembler_core.concat_video import _resolve_ffmpeg_exe
 from forgeassembler_core.layout import lay_out
 from forgeassembler_core.concat_funscript import forge_funscripts_map
@@ -793,6 +793,16 @@ def cmd_forge(args: argparse.Namespace) -> int:
         project.output.folder = args.output
     if args.basename:
         project.output.basename = args.basename
+    # Render at a different size WITHOUT editing the project. A compilation
+    # wants more than one video out of it -- 4K to keep, 1080p to send -- and
+    # the size a render came out at rides in the filename, so the two do not
+    # collide. Overriding the SETTING here rather than a pixel tuple further
+    # down means `validate` checks the value and the filename tag follows for
+    # free.
+    if getattr(args, "resolution", None):
+        project.output.resolution = args.resolution
+    if getattr(args, "frame_rate", None):
+        project.output.frame_rate = args.frame_rate
     if args.no_video:
         project.output.produce_video = False
     if args.no_funscripts:
@@ -1083,6 +1093,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_forge.add_argument("project", help="path to project JSON")
     p_forge.add_argument("--output", help="override output folder")
     p_forge.add_argument("--basename", help="override output basename")
+    p_forge.add_argument(
+        "--resolution", choices=list(RESOLUTION_KEYS), default=None,
+        help="render at this size for THIS RUN only; the project file is not "
+             "changed. The size rides in the output filename, so a second "
+             "render lands beside the first instead of over it",
+    )
+    p_forge.add_argument(
+        "--frame-rate", choices=list(FRAME_RATE_KEYS), default=None,
+        help="render at this frame rate for this run only",
+    )
     p_forge.add_argument("--no-video", action="store_true",
                          help="skip the video pipeline (funscripts only)")
     p_forge.add_argument("--no-funscripts", action="store_true",

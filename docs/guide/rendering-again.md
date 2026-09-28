@@ -77,6 +77,57 @@ A rough guide:
 - **Share** 1080p. It plays everywhere, it uploads in a reasonable time, and
   on most screens the difference is invisible.
 
+## Rendering several sizes from a script
+
+ForgeAssembler does not queue renders. If you always want the same pair, a
+three-line script is a better tool than a feature: it runs unattended, you
+can schedule it, and it never forgets to turn the Produce switches back on.
+
+`--resolution` and `--frame-rate` apply **to that run only** — your
+`.forgeproject` is not modified, so the settings you see in the app stay
+exactly as you left them.
+
+=== "Windows (PowerShell)"
+
+    ```powershell
+    $p = "D:\releases\Best Of\best-of.forgeproject"
+
+    # Everything: video, funscripts, estim audio, .forge scene.
+    python cli.py forge $p --resolution 4k
+
+    # Just the second video. The rest is resolution-independent,
+    # so it is already correct from the run above.
+    python cli.py forge $p --resolution 1080p `
+        --no-funscripts --no-audio-estim --no-forge-bundle
+    ```
+
+=== "macOS / Linux"
+
+    ```bash
+    P="/media/releases/Best Of/best-of.forgeproject"
+
+    python cli.py forge "$P" --resolution 4k
+
+    python cli.py forge "$P" --resolution 1080p \
+        --no-funscripts --no-audio-estim --no-forge-bundle
+    ```
+
+You end up with:
+
+```
+Best Of.4k25.mp4
+Best Of.1080p25.mp4
+Best Of.funscript          + the per-device folders
+Best Of.forge
+```
+
+!!! note "Run the full pass first"
+    Order matters only in that the funscripts, estim audio and `.forge` scene
+    have to be written once. Do the full render first and the video-only
+    passes after, in whatever order you like.
+
+Every option is listed in [the CLI reference](cli.md).
+
 ## Checking the second render
 
 Open the **Viewer** tab and use **Open output…** to point at the new file. The

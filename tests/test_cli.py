@@ -448,3 +448,45 @@ def test_stage_plan_with_nothing_enabled_does_not_divide_by_zero():
     count, weights = _plan(video=False, funscripts=False, estim=False, bundle=False)
     assert count == 0
     assert weights == ""
+
+
+# ── render overrides: a second render without editing the project ────
+def _render_project(tmp_path: Path) -> Path:
+    vid = tmp_path / "a.mp4"
+    vid.write_bytes(b"")
+    p = tmp_path / "r.forgeproject.json"
+    p.write_text(
+        json.dumps({
+            "version": "1.0",
+            "items": [{"id": "s1", "type": "segment", "video": str(vid)}],
+            "output": {"folder": str(tmp_path / "out"),
+                       "basename": "Comp",
+                       "resolution": "1080p", "frame_rate": "30"},
+        }),
+        encoding="utf-8",
+    )
+    return p
+
+
+def test_forge_rejects_a_size_the_engine_cannot_render(tmp_path: Path):
+    """argparse owns the vocabulary, so a typo fails before anything is
+    decoded rather than after twenty minutes of encoding."""
+    p = _render_project(tmp_path)
+    r = run("forge", str(p), "--resolution", "8k")
+    assert r.returncode != 0
+    assert "invalid choice" in r.stderr.lower()
+
+
+def test_forge_overrides_do_not_touch_the_project_file(tmp_path: Path):
+    """The whole point: rendering a second size is not an edit. If the
+    override were written back, a re-render would quietly become the project's
+    new resolution and the NEXT forge would come out at the wrong size."""
+    p = _render_project(tmp_path)
+    before = p.read_text(encoding="utf-8")
+    # Fails at the encode (the .mp4 is empty), which is fine -- the question
+    # is only whether the project file survived unchanged.
+    run("forge", str(p), "--resolution", "4k", "--frame-rate", "60")
+    assert p.read_text(encoding="utf-8") == before
+    saved = json.loads(before)["output"]
+    assert saved["resolution"] == "1080p"
+    assert saved["frame_rate"] == "30"
