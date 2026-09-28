@@ -68,6 +68,7 @@ nav:
     - Joiners: guide/joiners.md
     - Output Channels: guide/channels.md
     - Resolution & Scaling: guide/resolution.md
+    - Rendering Again: guide/rendering-again.md
     - GPU Acceleration: guide/gpu-acceleration.md
     - CLI: guide/cli.md
   - Title Cards:
