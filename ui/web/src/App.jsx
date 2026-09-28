@@ -133,6 +133,12 @@ function App() {
   const [ioDialog,      setIoDialog]      = useState(null);
   const [pendingAfterSave, setPendingAfterSave] = useState(null);
   const [ioError,       setIoError]       = useState(null);
+  // Something worth saying that is NOT a failure -- cancelling a forge is
+  // the first of them. Kept separate from `ioError` rather than given a
+  // tone flag beside it: a flag has to be reset by every one of the dozen
+  // `setIoError` call sites, and the one that forgets leaves a real error
+  // wearing a reassuring colour.
+  const [ioNotice,      setIoNotice]      = useState(null);
   // Batch .forge import progress: { done, total, name } | null. Importing
   // a folder of scenes extracts each bundle, which is not instant.
   const [batchImport,   setBatchImport]   = useState(null);
@@ -926,6 +932,8 @@ function App() {
     };
 
     setIoError(null);
+    // Clear last run's "cancelled" so it cannot hang over this one.
+    setIoNotice(null);
     // The project as the engine is about to see it, captured before the
     // render starts. Editing the canvas while ffmpeg runs must not leave a
     // finished file looking current.
@@ -973,9 +981,10 @@ function App() {
         setProgress(null);
         // Said plainly, because the reassuring half is not obvious: the
         // encode went to a temp file, so the render it would have replaced
-        // is still there.
-        setIoError('Forge cancelled. Nothing was written — any earlier '
-                   + 'render in the output folder is untouched.');
+        // is still there. A NOTICE, not an error -- it would be a strange
+        // thing to say inside a red box.
+        setIoNotice('Forge cancelled. Nothing was written — any earlier '
+                    + 'render in the output folder is untouched.');
       } else {
         console.error('[forge] failed', e);
         setIoError(`Forge failed: ${e?.message || e}`);
@@ -1256,19 +1265,30 @@ function App() {
         </div>
       )}
 
-      {ioError && !batchImport && (
+      {/* One banner, two tones. A red border on "Forge cancelled" reads as
+          "something went wrong" and flatly contradicts the words inside it. */}
+      {(ioError || ioNotice) && !batchImport && (
         <div style={{
           position: "fixed", bottom: 56, left: "50%", transform: "translateX(-50%)",
           zIndex: 60, maxWidth: 560,
           display: "flex", alignItems: "center", gap: 10,
           padding: "10px 14px", borderRadius: 8,
-          background: "var(--surface)", border: "1px solid var(--danger)",
+          background: "var(--surface)",
+          border: `1px solid ${ioError ? "var(--danger)" : "var(--border)"}`,
           boxShadow: "var(--elev-3)", color: "var(--text)", fontSize: 12.5,
         }}>
-          <span style={{ flex: 1 }}>{ioError}</span>
-          <button onClick={() => setIoError(null)}
-                  style={{ background: "transparent", border: "none", color: "var(--text-dim)",
-                           cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>Dismiss</button>
+          <span style={{ flex: 1 }}>{ioError || ioNotice}</span>
+          {/* Was `--text-dim` on transparent with no border, which is this
+              app's disabled look — it read as greyed out while being fully
+              clickable. A control that works must look like one. */}
+          <button onClick={() => { setIoError(null); setIoNotice(null); }}
+                  style={{ background: "transparent",
+                           border: "1px solid var(--border)", borderRadius: 6,
+                           padding: "4px 10px", color: "var(--text)",
+                           cursor: "pointer", fontFamily: "inherit",
+                           fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+            Dismiss
+          </button>
         </div>
       )}
 
