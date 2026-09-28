@@ -28,18 +28,23 @@ The app will say so:
 One partial file, in your output folder, named like this:
 
 ```
-Best Of.4k30.tmp.9164.mp4
+Best Of.4k30.tmp.9164.mp4.part
 ```
 
-The `tmp` and the number in the middle mark it as unfinished — the number is
-just the ID of the process that was writing it. **It is safe to delete, and
-you should.** It is not a usable video: it stops wherever the encode had got
-to, and depending on how far in you were it may not play at all.
+Three things mark it as unfinished: `tmp`, the number of the process that was
+writing it, and the `.part` on the end. **It is safe to delete, and you
+should.** It is not a usable video — it stops wherever the encode had got to.
 
-!!! warning "Do not ship a `tmp` file"
-    It sits in the output folder next to your real renders and it ends in
-    `.mp4`, so a batch upload or a folder-wide copy will pick it up if you
-    are not looking. Check the folder after cancelling.
+The `.part` ending is deliberate. It is the same convention web browsers use
+for a download in progress, and it means the file is not a video as far as
+your computer is concerned: it gets no video icon, nothing offers to play it,
+and a batch upload or a "copy all the MP4s" step will skip it. An earlier
+version of ForgeAssembler left these ending in `.mp4`, which put something
+that looked exactly like a finished render right next to the real ones.
+
+ForgeAssembler deletes any it finds — in either spelling — the next time you
+forge, so an old one left over from before this change will be cleared for
+you.
 
 ForgeAssembler clears it for you the next time you forge **to the same size**
 — a new 4K render sweeps old 4K leftovers. It does not sweep leftovers from a
@@ -117,7 +122,7 @@ Afterwards, delete any `tmp` file left in the output folder, as above.
 | ---- | -------------- |
 | A previous render of the same name | Untouched and complete |
 | The render you cancelled | Never created under its real name |
-| `…tmp….mp4` | Left behind; delete it |
+| `…tmp….mp4.part` | Left behind; delete it |
 | Funscripts, haptic audio, `.forge` scene | Whatever had already been written stays |
 
 The last row is worth knowing. A forge runs its stages in a fixed order —

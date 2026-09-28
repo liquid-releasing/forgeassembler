@@ -59,6 +59,13 @@ from .project import (
 # the FadeToBlack joiner's params_schema.
 _LEGACY_FADE_S: float = 0.5
 
+# What an in-progress encode is called. Deliberately NOT a media extension:
+# a cancelled render leaves this behind, and it must not look like a video.
+PART_SUFFIX = ".part"
+
+# Which muxer to force when the temp's extension no longer names it.
+MUXER_FOR_SUFFIX = {".mp4": "mp4", ".m4v": "mp4", ".mov": "mov", ".mkv": "matroska"}
+
 
 # ── Declarative command description ───────────────────────────────────
 @dataclass
@@ -75,6 +82,11 @@ class FfmpegCommand:
     map_audio: Optional[str]
     output_args: list[str]
     output_path: str
+    # Muxer to force, when the output path's extension cannot say it.
+    # ffmpeg picks the muxer from the extension, so writing the encode to a
+    # `.part` file -- which is the point of a temp nobody can mistake for a
+    # finished video -- needs the format stated outright.
+    output_format: Optional[str] = None
 
     def to_argv(self, ffmpeg_exe: str = "ffmpeg") -> list[str]:
         argv: list[str] = [ffmpeg_exe]
@@ -87,6 +99,8 @@ class FfmpegCommand:
         if self.map_audio:
             argv.extend(["-map", self.map_audio])
         argv.extend(self.output_args)
+        if self.output_format:
+            argv.extend(["-f", self.output_format])
         argv.extend(["-y", self.output_path])
         return argv
 
@@ -1490,28 +1504,38 @@ def forge_video(
         # frame. A killed encode now costs only the temp; whatever was
         # there before survives untouched.
         #
-        # ffmpeg picks its muxer from the extension, so the temp keeps
-        # it: `<stem>.tmp.<pid>.mp4`.
+        # The temp ends `.mp4.part`, not `.mp4`. A cancelled 4K run leaves
+        # gigabytes behind -- a hard kill never gets to run our own cleanup
+        # -- and while it ended in `.mp4` Windows gave it a video icon and
+        # offered to play it, which made it indistinguishable at a glance
+        # from a finished render sitting in the same folder. `.part` is what
+        # browsers and download managers use, so it reads as incomplete to a
+        # person AND is skipped by anything globbing for videos to ship.
+        #
+        # ffmpeg picks its muxer from the extension, so the format has to be
+        # stated outright once the extension stops saying it.
         out_path = Path(cmd.output_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Sweep temps abandoned by an earlier cancelled run. A hard kill
-        # never gets to run our own cleanup, and a 4K feature's worth of
-        # orphaned bytes is worth reclaiming. Safe unconditionally: the
-        # app admits one forge at a time, and two forges sharing an
-        # output path is itself the bug the click latch exists to stop.
-        for stale in out_path.parent.glob(
-            out_path.stem + ".tmp.*" + out_path.suffix,
-        ):
-            try:
-                stale.unlink()
-            except OSError:
-                pass  # still held open, or not ours to remove
+        # Sweep temps abandoned by an earlier cancelled run. Safe
+        # unconditionally: the app admits one forge at a time, and two forges
+        # sharing an output path is itself the bug the click latch exists to
+        # stop. Both spellings, because the first temps shipped as `.mp4` and
+        # a user may still have one sitting in an output folder.
+        stem = out_path.stem
+        for pattern in (stem + ".tmp.*" + out_path.suffix + PART_SUFFIX,
+                        stem + ".tmp.*" + out_path.suffix):
+            for stale in out_path.parent.glob(pattern):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass  # still held open, or not ours to remove
 
         tmp_path = out_path.with_name(
-            out_path.stem + ".tmp." + str(os.getpid()) + out_path.suffix,
+            stem + ".tmp." + str(os.getpid()) + out_path.suffix + PART_SUFFIX,
         )
         cmd.output_path = str(tmp_path)
+        cmd.output_format = MUXER_FOR_SUFFIX.get(out_path.suffix.lower(), "mp4")
 
         argv = cmd.to_argv(exe)
         proc = subprocess.Popen(

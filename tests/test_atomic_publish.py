@@ -81,15 +81,31 @@ def test_ffmpeg_writes_a_temp_never_the_final_name(tmp_path, spy):
 
     target = Path(spy["argv"][-1])
     assert target != out
-    assert target.name == f"{out.stem}.tmp.{os.getpid()}{out.suffix}"
+    assert target.name == f"{out.stem}.tmp.{os.getpid()}{out.suffix}.part"
     assert target.parent == out.parent, "temp must be a SIBLING -- os.replace is only atomic within one volume"
 
 
-def test_the_temp_keeps_the_extension(tmp_path, spy):
-    """ffmpeg chooses its muxer from the extension. A temp called `.tmp`
-    would make it guess, or refuse."""
+def test_the_temp_is_not_a_video_file(tmp_path, spy):
+    """A cancelled 4K run leaves gigabytes behind. While the temp ended
+    `.mp4`, Windows gave it a video icon and offered to play it -- reported
+    from a real cancel -- so it was indistinguishable at a glance from a
+    finished render in the same folder, and any glob for videos to ship
+    would have picked it up."""
     _forge(_project(tmp_path))
-    assert Path(spy["argv"][-1]).suffix == ".mp4"
+    assert Path(spy["argv"][-1]).suffix == ".part"
+
+
+def test_the_muxer_is_named_since_the_extension_no_longer_does(tmp_path, spy):
+    """ffmpeg chooses its muxer from the extension. Take that away without
+    saying `-f mp4` and it refuses to write anything at all."""
+    _forge(_project(tmp_path))
+    argv = spy["argv"]
+    # `-f` appears more than once -- the chapters sidecar goes in as
+    # `-f ffmetadata`. The one that sets the OUTPUT muxer is the last, and
+    # it has to sit immediately before `-y <path>`; anywhere earlier and
+    # ffmpeg reads it as the format of the next INPUT.
+    y = argv.index("-y")
+    assert argv[y - 2:y] == ["-f", "mp4"], argv[-8:]
 
 
 # ── success ──────────────────────────────────────────────────────────
@@ -144,12 +160,26 @@ def test_a_temp_from_a_killed_run_is_swept(tmp_path, spy):
     p = _project(tmp_path)
     folder = Path(p.output.folder)
     folder.mkdir(parents=True, exist_ok=True)
-    orphan = folder / "Comp.1080p30.tmp.999999.mp4"
+    orphan = folder / "Comp.1080p30.tmp.999999.mp4.part"
     orphan.write_bytes(b"half an encode")
 
     _forge(p)
 
     assert not orphan.exists()
+
+
+def test_a_temp_in_the_OLD_spelling_is_swept_too(tmp_path, spy):
+    """The first temps shipped as plain `.mp4`, and a user may still have
+    one sitting in an output folder from a cancel made before the rename."""
+    p = _project(tmp_path)
+    folder = Path(p.output.folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    legacy = folder / "Comp.1080p30.tmp.50328.mp4"
+    legacy.write_bytes(b"776MB, once")
+
+    _forge(p)
+
+    assert not legacy.exists()
 
 
 def test_the_sweep_spares_the_finished_renders_beside_it(tmp_path, spy):
