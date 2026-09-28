@@ -267,6 +267,36 @@ pub async fn probe_duration(path: String) -> Result<i64, String> {
         .map_err(|e| format!("probe parse failed for {}: {}", path, e))
 }
 
+/// Read back what a forge WROTE, for the Viewer tab (`cli.py viewer-load`).
+/// `input` is whatever the user opened: the forged video, its `.forge`
+/// bundle, the `.forgeproject`, or the output folder. With `channel` set to
+/// `"<device>/<channel>"` it returns that one channel at full resolution
+/// instead -- the monitor windows to a few seconds, where the timeline's
+/// peak-preserving envelope is the wrong shape.
+#[tauri::command]
+pub async fn viewer_load(
+    input: String,
+    max_points: Option<i64>,
+    audio_points: Option<i64>,
+    channel: Option<String>,
+) -> Result<Value, String> {
+    let mp = max_points.unwrap_or(2000).to_string();
+    let ap = audio_points.unwrap_or(16000).to_string();
+    let mut args: Vec<&str> = vec![
+        "viewer-load",
+        &input,
+        "--max-points",
+        &mp,
+        "--audio-points",
+        &ap,
+    ];
+    if let Some(c) = channel.as_deref() {
+        args.push("--channel");
+        args.push(c);
+    }
+    run_cli_json(&args).await
+}
+
 /// The title layouts, themes and marks this build can render
 /// (`cli.py title-catalog`).
 #[tauri::command]

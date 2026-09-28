@@ -32,6 +32,7 @@ pub fn run() {
             commands::preview_project,
             commands::probe_duration,
             commands::extract_thumbnail,
+            commands::viewer_load,
             commands::title_catalog,
             commands::title_preview,
             commands::pick_folder,

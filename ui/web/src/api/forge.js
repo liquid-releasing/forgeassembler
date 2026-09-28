@@ -142,6 +142,28 @@ export async function titleCardPreview(specJson, overFrame,
   return res ? { ...res, path: out } : null;
 }
 
+// Read back what a forge WROTE, for the Viewer tab.
+//
+// `input` is whatever the user opened — the forged video, its `.forge`
+// bundle, the `.forgeproject`, or the output folder. The engine works out
+// which, because making the user pick the right one of four files that all
+// describe the same output is a worse experience than trying each.
+//
+// With `channel` (`"<device>/<channel>"`) it returns that ONE channel at
+// full resolution for the monitor, which windows down to a few seconds —
+// where the timeline's peak-preserving envelope reads as a zigzag rather
+// than as strokes.
+export function viewerLoad(input, { maxPoints = 2000, audioPoints = 16000,
+                                    channel = null } = {}) {
+  return call(
+    'viewer_load',
+    { input, maxPoints, audioPoints, channel },
+    () => Promise.resolve(channel
+      ? { available: false, name: channel, actions: [], rawCount: 0 }
+      : { available: false, devices: [], durationMs: 0 }),
+  );
+}
+
 export function extractThumbnail(video, atMs, out) {
   return dedupedCall(`extract_thumbnail::${video}::${atMs}`, () =>
     call('extract_thumbnail', { video, atMs, out }, () => Promise.resolve(out)));
