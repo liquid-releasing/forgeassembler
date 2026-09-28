@@ -75,6 +75,29 @@ export function parseProgressLine(line) {
  * Capped below 1 because only the final summary may claim completion; a
  * bar that reaches 100% while work continues is a lie the user acts on.
  */
+/**
+ * Which stage a run is in, from the stage lines it has seen.
+ *
+ * Keyed on the stage's TEXT rather than a counter, because the counter
+ * could be driven by someone else's run: every forge emits into one
+ * `fa:progress` channel, so two of them at once had the bar at the end
+ * of the stage list within a second. Ticking on identity instead means a
+ * duplicate stream re-reports a stage already seen and moves nothing.
+ *
+ * Monotonic on purpose — a bar that walks backwards reads as a fault.
+ */
+export function makeStageTracker() {
+  const seen = new Set();
+  return {
+    /** @returns {number} the 1-based stage index after this line */
+    saw(text) {
+      seen.add(String(text || ''));
+      return seen.size;
+    },
+    get stage() { return seen.size; },
+  };
+}
+
 export function stageProgress({ stage, stageCount, weights, frac, cap = 0.95 }) {
   const n = Math.max(1, stageCount || 1);
   const i = Math.max(0, (stage || 0) - 1);

@@ -246,3 +246,25 @@ describe('scene cues carry a motion track path', () => {
     expect(cues[2].funscriptPath).toBeNull();
   });
 });
+
+
+describe("the compilation's title page", () => {
+  it('opens the player before any section', () => {
+    const p = project({ id: 's1', joiner: CUT, segments: [scene('a', 10000)] });
+    p.output = { openingJoiner: { kind: 'title_card', title: 'MY COMPILATION', holdS: 4 } };
+    const { cues, totalMs } = buildCues(p, addedMs);
+    expect(cues.map(c => c.kind)).toEqual(['hold', 'scene']);
+    expect(cues[0]).toMatchObject({ startMs: 0, endMs: 4000, sectionId: null });
+    expect(cues[1]).toMatchObject({ startMs: 4000, endMs: 14000 });
+    expect(totalMs).toBe(14000);
+  });
+
+  it("sits in front of the first chapter's own card", () => {
+    const p = project({ id: 's1', joiner: FADE, segments: [scene('a', 10000)] });
+    p.output = { openingJoiner: { kind: 'title_card', title: 'T', holdS: 4 } };
+    const { cues } = buildCues(p, addedMs);
+    expect(cues.map(c => c.kind)).toEqual(['hold', 'hold', 'scene']);
+    expect(cues[0].endMs).toBe(4000);
+    expect(cues[1]).toMatchObject({ startMs: 4000, endMs: 7000 });
+  });
+});

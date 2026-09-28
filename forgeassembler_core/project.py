@@ -364,6 +364,18 @@ class Output:
     closing_joiner: "Joiner" = field(default_factory=lambda: Joiner(
         id="join-close", joiner_type="none",
     ))
+    # The compilation's OWN title page, before any footage.
+    #
+    # Not the same thing as the first section's leading joiner, which is
+    # also rendered at t=0: that one is the first CHAPTER's title, and a
+    # compilation wants a page of its own in front of it. With both set
+    # you get the production's title, then the first chapter's.
+    #
+    # Any joiner type works — a plain `fade_to_black` here is a fade up
+    # from black to open on — but a `title_card` is the point of it.
+    opening_joiner: "Joiner" = field(default_factory=lambda: Joiner(
+        id="join-open", joiner_type="none",
+    ))
 
     def crf(self) -> int:
         """Return the H.264 CRF value implied by `quality`."""
@@ -400,6 +412,10 @@ class Output:
             d["metadata"] = md
         if self.closing_joiner.joiner_type != "none":
             d["closing_joiner"] = self.closing_joiner.to_dict()
+        # Written only when set, so every project that predates the title
+        # page round-trips byte-identically.
+        if self.opening_joiner.joiner_type != "none":
+            d["opening_joiner"] = self.opening_joiner.to_dict()
         return d
 
     @staticmethod
@@ -408,6 +424,7 @@ class Output:
             return Output()
         bug_dict = d.get("bug")
         closing_dict = d.get("closing_joiner")
+        opening_dict = d.get("opening_joiner")
         return Output(
             folder=d.get("folder"),
             basename=d.get("basename", "combined"),
@@ -426,6 +443,10 @@ class Output:
             closing_joiner=(
                 Joiner.from_dict(closing_dict) if closing_dict
                 else Joiner(id="join-close", joiner_type="none")
+            ),
+            opening_joiner=(
+                Joiner.from_dict(opening_dict) if opening_dict
+                else Joiner(id="join-open", joiner_type="none")
             ),
         )
 
@@ -978,8 +999,17 @@ class Project:
     def items(self) -> list:
         """Flattened `[Joiner?, Segment, Segment, ..., Joiner?, ...]`
         view for downstream code that still walks a linear timeline.
-        A section's "none" leading joiner is suppressed (it's implicit)."""
+        A section's "none" leading joiner is suppressed (it's implicit).
+
+        The compilation's own title page, if it has one, comes first —
+        this is the single place it is threaded in, because everything
+        downstream (the layout, the filtergraph walk, chapters, the
+        funscript and e-stim offsets, the title-card renderer) reads
+        this list rather than the sections.
+        """
         out: list = []
+        if self.output.opening_joiner.joiner_type != "none":
+            out.append(self.output.opening_joiner)
         for sec in self.sections:
             if sec.leading_joiner.joiner_type != "none":
                 out.append(sec.leading_joiner)

@@ -986,3 +986,54 @@ describe('title_card joiner', () => {
     expect(back.theme).toBe('dark');
   });
 });
+
+
+describe("the compilation's title page", () => {
+  const TITLE_PAGE = {
+    kind: 'title_card', title: 'MY COMPILATION', subtitle: 'vol 3',
+    holdS: 5, fadeOutS: 1, fadeInS: 1,
+  };
+  const addedMs = (j) => (!j || j.kind === 'none' ? 0 : Math.round((j.holdS || 0) * 1000));
+
+  it('comes before every scene in the total', () => {
+    const project = {
+      output: { openingJoiner: TITLE_PAGE },
+      sections: [
+        { id: 's1', joiner: { kind: 'none' }, segments: [{ id: 'a', durMs: 40000 }] },
+      ],
+    };
+    expect(projectDurationMs(project, addedMs)).toBe(45000);
+  });
+
+  it("is not the same thing as the first scene's joiner", () => {
+    // Both land before any footage, and both count. The title page is
+    // the production's; the section's is the first chapter's.
+    const project = {
+      output: { openingJoiner: TITLE_PAGE },
+      sections: [
+        { id: 's1', joiner: { kind: 'title_card', title: 'Chapter One', holdS: 3 },
+          segments: [{ id: 'a', durMs: 40000 }] },
+      ],
+    };
+    expect(projectDurationMs(project, addedMs)).toBe(48000);
+  });
+
+  it('writes nothing when there is no title page', () => {
+    const real = toForgeProject(
+      { name: 'x', output: { folder: 'out' }, sections: [] }, { folder: 'out' });
+    expect(real.output.opening_joiner).toBeUndefined();
+  });
+
+  it('round-trips through the engine shape', () => {
+    const real = toForgeProject(
+      { name: 'x', output: { folder: 'out', openingJoiner: TITLE_PAGE }, sections: [] },
+      { folder: 'out' });
+    expect(real.output.opening_joiner.joiner_type).toBe('title_card');
+    expect(real.output.opening_joiner.params.title).toBe('MY COMPILATION');
+
+    const back = fromForgeProject(real);
+    expect(back.output.openingJoiner.kind).toBe('title_card');
+    expect(back.output.openingJoiner.title).toBe('MY COMPILATION');
+    expect(back.output.openingJoiner.holdS).toBe(5);
+  });
+});
