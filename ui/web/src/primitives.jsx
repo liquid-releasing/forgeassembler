@@ -61,11 +61,17 @@ function Button({ kind = "secondary", size = "md", icon, iconRight, children, di
     ghost:     { background: "transparent", color: active ? "var(--text)" : "var(--text-muted)" },
     danger:    { background: "transparent", color: "var(--danger)", borderColor: "var(--danger)" },
     success:   { background: "var(--success)", color: "#0e1117" },
+    // The one action on a screen that a user should be able to find without
+    // reading it. Reserved for the button that starts the long, expensive
+    // thing -- on a dark chrome nothing else is this loud, including the
+    // accent, which is already spent on selection and chapter marks.
+    white:     { background: "#fff", color: "#0e1117" },
   }[kind];
   const [hover, setHover] = useState(false);
   const [press, setPress] = useState(false);
   const hoverStyle = !disabled && hover ? (
-    kind === "primary" ? { transform: "translateY(-2px)", boxShadow: "var(--elev-2)" } :
+    kind === "primary" || kind === "white"
+      ? { transform: "translateY(-2px)", boxShadow: "var(--elev-2)" } :
     kind === "secondary" ? { borderColor: "var(--accent)", background: "rgba(255,75,75,0.06)" } :
     kind === "ghost" ? { background: "var(--surface)", color: "var(--text)" } :
     kind === "danger" ? { background: "rgba(255,84,112,0.10)" } : {}

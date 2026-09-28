@@ -261,9 +261,20 @@ function FAStatusBar({ activeTab, chainFile, saving = null, dirty = false,
 }
 
 // ── AcceptBar — bottom of every pipeline tab ──────────────────────
+// `primary` replaces the accept button entirely: {label, icon, kind, onClick,
+// disabled, reason}. The Forge tab uses it because its bar is not really an
+// accept bar -- it is where the long expensive thing is started, and then
+// where you go next once it has finished. Passing it keeps that tab from
+// growing a second bar that looks the same and means something else.
 function FAAcceptBar({ summary, chainFile, accepted, onAccept, onReset,
-                      primaryLabel = "Accept and chain",
+                      primaryLabel = "Accept and chain", primary = null,
                       disabled = false, disabledReason = null }) {
+  const p = primary || {
+    label: accepted ? "Re-accept" : primaryLabel,
+    icon: accepted ? "rotate-cw" : "check",
+    kind: accepted ? "secondary" : "primary",
+    onClick: onAccept, disabled, reason: disabledReason,
+  };
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 14,
@@ -274,10 +285,10 @@ function FAAcceptBar({ summary, chainFile, accepted, onAccept, onReset,
             style={{ color: accepted ? "var(--success)" : "var(--text-dim)" }} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", lineHeight: 1.3 }}>
         <span style={{ fontSize: 12, color: "var(--text)" }}>{summary}</span>
-        {disabled && disabledReason ? (
+        {p.disabled && p.reason ? (
           // Why the button is dead matters more than what it would have
           // written: a disabled control with no reason reads as a bug.
-          <span style={{ fontSize: 11, color: "var(--warn)" }}>{disabledReason}</span>
+          <span style={{ fontSize: 11, color: "var(--warn)" }}>{p.reason}</span>
         ) : chainFile ? (
           <span className="mono" style={{ fontSize: 11, color: "var(--text-dim)" }}>
             writes <span style={{ color: "#ff7b7b" }}>{chainFile}</span> · downstream tabs read this file
@@ -286,10 +297,10 @@ function FAAcceptBar({ summary, chainFile, accepted, onAccept, onReset,
       </div>
       {accepted && <Pill tone="success" dot>Accepted</Pill>}
       <Button kind="ghost" size="sm" onClick={onReset}>Reset</Button>
-      <Button kind={accepted ? "secondary" : "primary"} icon={accepted ? "rotate-cw" : "check"}
-              disabled={disabled} title={disabled ? disabledReason : undefined}
-              onClick={onAccept}>
-        {accepted ? "Re-accept" : primaryLabel}
+      <Button kind={p.kind} icon={p.icon}
+              disabled={p.disabled} title={p.disabled ? p.reason : undefined}
+              onClick={p.onClick}>
+        {p.label}
       </Button>
     </div>
   );
