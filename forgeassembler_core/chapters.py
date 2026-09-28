@@ -40,29 +40,43 @@ class Chapter:
 def build_chapters(project: "Project", layout: "Layout") -> list[Chapter]:
     """Return one Chapter per Section in the project, in timeline order.
 
-    A section's chapter runs from its first segment's start_ms through
-    to the next section's first segment's start_ms (or the project's
-    total duration for the last section). Any leading joiner time gets
-    absorbed into the PRECEDING chapter's tail, so chapters remain
-    contiguous and player UIs navigate directly between sections.
+    A section's chapter starts on its **title card** when it has one, and
+    on its first segment otherwise, running through to the next section's
+    start (or the project's total duration for the last section).
+
+    A title card announces the section it introduces, so skipping to a
+    chapter has to land ON the card — landing just past it hides the one
+    frame that says where you are. A `fade_to_black` is the opposite: it
+    is the previous section leaving, not this one arriving, so it stays
+    absorbed into the preceding chapter's tail.
+
+    Either way the chapters remain contiguous, so player UIs still
+    navigate directly between sections with nothing falling in a gap.
     """
-    from .project import Segment as _Seg
-    # Map each segment id to its start_ms so we can look up section
+    from .project import Joiner as _Joiner, Segment as _Seg
+    # Map each item id to its start_ms so we can look up section
     # boundaries without re-walking the layout.
     seg_start: dict[str, int] = {}
+    joiner_start: dict[str, int] = {}
     for li in layout.items:
         if isinstance(li.item, _Seg):
             seg_start[li.item.id] = li.start_ms  # type: ignore[union-attr]
+        elif isinstance(li.item, _Joiner):
+            joiner_start[li.item.id] = li.start_ms  # type: ignore[union-attr]
 
-    # Collect the timeline start of each non-empty section (= first
-    # segment's start_ms).
+    # Collect the timeline start of each non-empty section.
     sec_starts: list[tuple[int, object]] = []  # (start_ms, Section)
     for sec in project.sections:
         if not sec.segments:
             continue
         first_id = sec.segments[0].id
-        if first_id in seg_start:
-            sec_starts.append((seg_start[first_id], sec))
+        if first_id not in seg_start:
+            continue
+        start = seg_start[first_id]
+        lead = sec.leading_joiner
+        if lead.joiner_type == "title_card" and lead.id in joiner_start:
+            start = joiner_start[lead.id]
+        sec_starts.append((start, sec))
 
     chapters: list[Chapter] = []
     for i, (start, sec) in enumerate(sec_starts):

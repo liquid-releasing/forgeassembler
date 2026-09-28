@@ -265,6 +265,80 @@ def test_build_ffmpeg_command_chapters_before_user_metadata(tmp_path: Path):
     assert map_idx < meta_idx
 
 
+def _card(jid: str, text: str, secs: float = 3.0) -> Joiner:
+    return Joiner(id=jid, joiner_type="title_card",
+                  params={"duration_s": secs, "text": text})
+
+
+# ── where a chapter begins when the section is announced ──────────────
+def test_a_chapter_starts_on_its_title_card(tmp_path: Path):
+    """Skipping to chapter 2 has to land ON the card that says "Part Two".
+    Landing past it hides the one frame that says where you are."""
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(_mp4(tmp_path, "a"))),
+        _card("j1", "Part Two"),
+        Segment(id="s2", video=str(_mp4(tmp_path, "b"))),
+    )
+    layout = lay_out(p, probe=lambda _p: 5000)
+    ch = build_chapters(p, layout)
+    assert ch[1].start_ms == 5000, "the card starts the moment clip a ends"
+
+
+def test_the_card_is_not_left_dangling_in_the_previous_chapter(tmp_path: Path):
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(_mp4(tmp_path, "a"))),
+        _card("j1", "Part Two"),
+        Segment(id="s2", video=str(_mp4(tmp_path, "b"))),
+    )
+    layout = lay_out(p, probe=lambda _p: 5000)
+    ch = build_chapters(p, layout)
+    assert ch[0].end_ms == ch[1].start_ms == 5000
+
+
+def test_a_fade_to_black_stays_with_the_chapter_it_is_leaving(tmp_path: Path):
+    """A fade is the previous section departing, not this one arriving —
+    so unlike a card it does NOT pull the chapter mark back."""
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(_mp4(tmp_path, "a"))),
+        Joiner(id="j1", joiner_type="fade_to_black", params={"duration_s": 2.0}),
+        Segment(id="s2", video=str(_mp4(tmp_path, "b"))),
+    )
+    layout = lay_out(p, probe=lambda _p: 5000)
+    ch = build_chapters(p, layout)
+    assert ch[1].start_ms == 7000, "after the 2s fade, not before it"
+
+
+def test_a_first_section_card_puts_chapter_one_at_zero(tmp_path: Path):
+    p = _project(
+        tmp_path,
+        _card("j0", "Part One"),
+        Segment(id="s1", video=str(_mp4(tmp_path, "a"))),
+    )
+    layout = lay_out(p, probe=lambda _p: 5000)
+    assert build_chapters(p, layout)[0].start_ms == 0
+
+
+def test_chapters_stay_contiguous_and_cover_the_whole_timeline(tmp_path: Path):
+    """The property that makes a player's chapter list navigable: no gap
+    to fall into, no overlap, and the last one runs to the end."""
+    p = _project(
+        tmp_path,
+        Segment(id="s1", video=str(_mp4(tmp_path, "a"))),
+        _card("j1", "Two"),
+        Segment(id="s2", video=str(_mp4(tmp_path, "b"))),
+        Joiner(id="j2", joiner_type="fade_to_black", params={"duration_s": 2.0}),
+        Segment(id="s3", video=str(_mp4(tmp_path, "c"))),
+    )
+    layout = lay_out(p, probe=lambda _p: 5000)
+    ch = build_chapters(p, layout)
+    assert ch[0].start_ms == 0
+    assert [c.end_ms for c in ch[:-1]] == [c.start_ms for c in ch[1:]]
+    assert ch[-1].end_ms == layout.total_duration_ms
+
+
 def test_build_ffmpeg_command_chapters_to_argv_renders_input(tmp_path: Path):
     v = _mp4(tmp_path, "a")
     ch = tmp_path / "chapters.txt"
