@@ -3,7 +3,7 @@ import React from 'react';
 import { FASectionLabel, FATabHeader, fmtClipDur, fmtTotal } from './AppShell';
 import { FA_DATA } from './data';
 import { DropLine, useDraggable, useDroppable } from './dragdrop';
-import { Button, Field, Icon, Pill, TextInput } from './primitives';
+import { Button, Field, Icon, Pill, TextInput, useBackdropDismiss } from './primitives';
 import { revealPath } from './api/forge';
 import { toMediaUrl } from './lib/mediaUrl';
 import { channelGapsFor, channelName, effectiveDurMs,
@@ -223,8 +223,9 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
     { v: "silence", label: "Silence", icon: "volume-x" },
   ];
 
+  const backdrop = useBackdropDismiss(onClose);
   return (
-    <div onClick={onClose} style={{
+    <div {...backdrop} style={{
       position: "fixed", inset: 0, zIndex: 50,
       background: "rgba(0,0,0,0.6)", display: "grid", placeItems: "center",
     }}>

@@ -1,7 +1,7 @@
 /* @esm-converted */
 import React from 'react';
 import { FASectionLabel } from './AppShell';
-import { Button, Field, Icon, TextInput } from './primitives';
+import { Button, Field, Icon, TextInput, useBackdropDismiss } from './primitives';
 import { pickFile, pickFolder } from './api/forge';
 import { lastFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
 import { PROJECT_EXT, PROJECT_FILTERS, projectFileName } from './lib/projectFile';
@@ -220,6 +220,7 @@ function Modal({ title, icon, iconTone = "accent", subtitle, width = 480, onClos
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
+  const backdrop = useBackdropDismiss(onClose);
   const iconColor = {
     accent: "var(--accent-warm)",
     warn:   "var(--warn)",
@@ -229,7 +230,7 @@ function Modal({ title, icon, iconTone = "accent", subtitle, width = 480, onClos
     <div style={{
       position: "fixed", inset: 0, zIndex: 50,
       background: "rgba(0,0,0,0.65)", display: "grid", placeItems: "center",
-    }} onClick={onClose}>
+    }} {...backdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{
         width, maxHeight: "88vh", display: "flex", flexDirection: "column",
         background: "var(--surface)", border: "1px solid var(--border)",

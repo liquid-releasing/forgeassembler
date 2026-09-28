@@ -1,6 +1,6 @@
 /* @esm-converted */
 import React from 'react';
-import { Button, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
+import { Button, Field, Icon, Pill, Segmented, Slider, TextInput, useBackdropDismiss } from './primitives';
 
 // TitleEditor — modal for authoring a title.
 //
@@ -284,11 +284,12 @@ function TitleEditor({ initial, selectedSeg, userGlyphs = [], userTemplates = []
     renderTitleCardSvg(draft, { width: 1920, height: 1080, transparent: isOverlay, userGlyphs }),
     [draft, isOverlay, userGlyphs]);
 
+  const backdrop = useBackdropDismiss(onCancel);
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 40, background: "rgba(0,0,0,0.65)",
       display: "grid", placeItems: "center",
-    }} onClick={onCancel}>
+    }} {...backdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{
         width: 1020, maxHeight: "92vh", overflow: "hidden",
         display: "flex", flexDirection: "column",
@@ -767,8 +768,9 @@ function TemplateBar({ value, userTemplates = [], userGlyphs = [], onLoad }) {
 // ── Save-as-template prompt ─────────────────────────────────────
 function SaveTemplatePrompt({ draft, onCancel, onSave }) {
   const [name, setName] = teState(`${draft.title || "Untitled"} · ${layoutById(draft.layout).label.toLowerCase()}`);
+  const backdrop = useBackdropDismiss(onCancel);
   return (
-    <div onClick={onCancel} style={{
+    <div {...backdrop} style={{
       position: "fixed", inset: 0, zIndex: 50,
       background: "rgba(0,0,0,0.65)", display: "grid", placeItems: "center",
     }}>

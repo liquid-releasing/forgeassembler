@@ -241,10 +241,43 @@ function fmtTimeShort(ms) {
   return `${m}:${String(sec).padStart(2,"0")}`;
 }
 
+// ─── Backdrop dismissal ───────────────────────────────────────────
+// Props for a modal's BACKDROP, so clicking the dark area closes it.
+//
+// Not `onClick={onDismiss}`. A `click` fires on the nearest common
+// ancestor of where the press went down and where it came up, so
+// pressing on the filename field, dragging out to select, and releasing
+// over the backdrop lands a click on the BACKDROP itself -- and the
+// panel's `stopPropagation` never runs, because the event never passed
+// through the panel. The dialog closed and took the edit with it.
+// Selecting text is the one ordinary gesture that leaves the panel
+// mid-press, which is why this only ever bit while renaming a file.
+//
+// So: dismiss on pointerup, and only when the press BOTH started and
+// ended on the backdrop. Pointer events rather than mouse ones, so a
+// touchscreen behaves the same.
+function useBackdropDismiss(onDismiss) {
+  const startedOnBackdrop = useRef(false);
+  return {
+    onPointerDown: (e) => {
+      startedOnBackdrop.current = e.target === e.currentTarget;
+    },
+    onPointerUp: (e) => {
+      const outside = startedOnBackdrop.current && e.target === e.currentTarget;
+      startedOnBackdrop.current = false;
+      if (outside) onDismiss?.();
+    },
+    // A press that ends outside the window never delivers pointerup, and
+    // a stale `true` would close the dialog on the NEXT release anywhere
+    // on the backdrop.
+    onPointerCancel: () => { startedOnBackdrop.current = false; },
+  };
+}
+
 Object.assign(window, {
   Icon, Button, Pill, Card, Field, TextInput, Slider, Segmented, SectionHeading,
   fmtTime, fmtTimeShort,
 });
 
 
-export { Button, Card, Field, Icon, Pill, SectionHeading, Segmented, Slider, TextInput, ffBtnBase, fmtTime, fmtTimeShort };
+export { Button, Card, Field, Icon, Pill, SectionHeading, Segmented, Slider, TextInput, ffBtnBase, fmtTime, fmtTimeShort, useBackdropDismiss };
