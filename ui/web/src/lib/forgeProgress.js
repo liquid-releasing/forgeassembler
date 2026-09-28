@@ -58,24 +58,6 @@ export function parseProgressLine(line) {
 }
 
 /**
- * Where the progress bar sits while stage `stage` (1-based) is `frac` of
- * the way through its own work.
- *
- * This lives here rather than inline in the forge handler for the same
- * reason lib/forgeGate.js does: nothing in this suite mounts a component,
- * so arithmetic written inside App.jsx cannot be tested — and this
- * arithmetic was wrong in a way that survived exactly because of that.
- *
- * `weights` is each stage's share of the bar, in stage order. Without it
- * every stage gets an equal slice, which is what the CLI's older `meta:`
- * line implies and what this did before: on a 4-stage run the video encode
- * owned a quarter of the bar while taking four fifths of the time, so a
- * nearly-finished 4K render reported "22%".
- *
- * Capped below 1 because only the final summary may claim completion; a
- * bar that reaches 100% while work continues is a lie the user acts on.
- */
-/**
  * Which stage a run is in, from the stage lines it has seen.
  *
  * Keyed on the stage's TEXT rather than a counter, because the counter
@@ -98,6 +80,24 @@ export function makeStageTracker() {
   };
 }
 
+/**
+ * Where the progress bar sits while stage `stage` (1-based) is `frac` of
+ * the way through its own work.
+ *
+ * This lives here rather than inline in the forge handler for the same
+ * reason lib/forgeGate.js does: nothing in this suite mounts a component,
+ * so arithmetic written inside App.jsx cannot be tested — and this
+ * arithmetic was wrong in a way that survived exactly because of that.
+ *
+ * `weights` is each stage's share of the bar, in stage order. Without it
+ * every stage gets an equal slice, which is what the CLI's older `meta:`
+ * line implies and what this did before: on a 4-stage run the video encode
+ * owned a quarter of the bar while taking four fifths of the time, so a
+ * nearly-finished 4K render reported "22%".
+ *
+ * Capped below 1 because only the final summary may claim completion; a
+ * bar that reaches 100% while work continues is a lie the user acts on.
+ */
 export function stageProgress({ stage, stageCount, weights, frac, cap = 0.95 }) {
   const n = Math.max(1, stageCount || 1);
   const i = Math.max(0, (stage || 0) - 1);
