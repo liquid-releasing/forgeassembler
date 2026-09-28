@@ -580,8 +580,14 @@ class Joiner:
 
     @staticmethod
     def from_dict(d: dict) -> "Joiner":
+        # The id is generated when absent rather than raising. It used to
+        # be `d["id"]`, so a joiner written without one took the whole
+        # project down with a KeyError on load -- and the id is ours, not
+        # the user's: it exists so the engine can key temp files on it.
+        # Hand-editing a project is a supported thing to do, and having
+        # to invent an id for a block you just typed is not.
         return Joiner(
-            id=d["id"],
+            id=d.get("id") or new_id("join"),
             joiner_type=d.get("joiner_type", "none"),
             params=d.get("params", {}),
         )

@@ -1030,6 +1030,10 @@ describe("the compilation's title page", () => {
       { folder: 'out' });
     expect(real.output.opening_joiner.joiner_type).toBe('title_card');
     expect(real.output.opening_joiner.params.title).toBe('MY COMPILATION');
+    // ⚠ The engine keys the card's rendered PNG on this, and its loader
+    // raised KeyError without one -- a title page saved with no id took
+    // the project down on next open.
+    expect(real.output.opening_joiner.id).toBe('join-open');
 
     const back = fromForgeProject(real);
     expect(back.output.openingJoiner.kind).toBe('title_card');

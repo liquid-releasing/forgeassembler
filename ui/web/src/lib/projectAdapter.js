@@ -594,8 +594,12 @@ export function toForgeProject(vm, { folder = null } = {}) {
       ...(vm.output?.closingJoiner ? { closing_joiner: vm.output.closingJoiner } : {}),
       // The compilation's own title page. Written only when it is
       // something, so a project without one round-trips unchanged.
+      // ⚠ The id is not decoration. The engine keys a card's rendered PNG
+      // and its background frame on it, and `Joiner.from_dict` used to
+      // raise KeyError without one. A fixed id, matching the engine's own
+      // default, so the title page keeps the same identity across saves.
       ...(vm.output?.openingJoiner && vm.output.openingJoiner.kind !== 'none'
-        ? { opening_joiner: joinerToReal(vm.output.openingJoiner) }
+        ? { opening_joiner: { id: 'join-open', ...joinerToReal(vm.output.openingJoiner) } }
         : {}),
     },
     audio_beds: vm.audioBeds || [],
