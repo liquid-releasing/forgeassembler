@@ -410,8 +410,11 @@ class Output:
     # forge` (and anything scripted on top of it) would silently drop the
     # branding.
     #
-    # Neither is a Section, so neither gets a chapter marker: chapter 01 is
+    # Neither is a Section, but they are treated differently in the chapter
+    # list -- see `build_chapters`. The intro gets no marker: chapter 01 is
     # the first real scene, and a viewer skipping to it lands on content.
+    # The outro DOES get one, because that is where the credits are and a
+    # viewer who wants them needs somewhere to jump.
     branding_intro: Optional["Segment"] = None
     branding_outro: Optional["Segment"] = None
     # Closing transition for the whole output. When `closing_joiner` is

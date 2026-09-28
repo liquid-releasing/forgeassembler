@@ -62,6 +62,50 @@ to the first — and writing it again only fills the folder with duplicates.
 
 The video is the only output a resolution change actually affects.
 
+## When the video-only shortcut does NOT apply
+
+!!! danger "Only for resolution and frame rate — nothing else"
+    The shortcut above is safe **only** when the two settings you changed are
+    Resolution and Frame rate. If you changed anything that alters the
+    timeline, turning the other outputs off will leave them describing a
+    compilation that no longer exists.
+
+Anything that changes *when* things happen needs a full forge, with every
+output switched back on:
+
+- adding or removing **branding** at either end
+- adding, removing, reordering or retrimming **scenes**
+- changing a **joiner** — a title card or a fade has a duration, so adding
+  one moves everything after it
+- changing a **section**'s contents
+
+The reason is simple arithmetic. A 60-second branding bumper at the front
+pushes every frame after it 60 seconds later. Measured on a real project:
+chapter 1 started at 5,100 ms without branding and 65,100 ms with it. If you
+re-render only the video, your funscripts still say 5,100 ms — so every
+stroke in the compilation fires a minute early, for its entire length.
+
+!!! tip "The rule in one line"
+    Changed how it *looks*? Video only. Changed how *long* anything is?
+    Forge everything.
+
+## Adding branding to a compilation you already rendered
+
+This is the common case of the rule above, and it works exactly as you would
+hope: open the existing `.forgeproject`, set the branding at either end on
+the Output tab, and forge.
+
+A project saved before branding existed carries no branding settings at all,
+and picks them up cleanly when you add them — nothing needs rebuilding and no
+scene is touched. Leave **all** the Produce switches on, because the
+timeline just moved.
+
+The new render replaces the old one, since the size did not change and so
+neither did the filename. That is safe: ForgeAssembler encodes to a temporary
+file and only takes the real name once the render is complete, so if anything
+goes wrong the previous render is still there. See
+[Stopping a forge](stopping-a-forge.md).
+
 ## Which one to keep and which one to share
 
 !!! warning "Rendering at 4K does not add detail"
