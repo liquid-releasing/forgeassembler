@@ -27,11 +27,77 @@ point of a review surface.
 from __future__ import annotations
 
 import json
+import re
 import zipfile
 from pathlib import Path
 from typing import Optional
 
 from .channels import MAIN, STATION_FOLDER, station_folder, with_station
+from .project import RESOLUTION_FILENAME_LABEL
+
+# Ordered, unlike `_MEDIA_EXTS` below: this drives which extension wins when a
+# folder holds more than one, so it must not be a set.
+_MEDIA_PREFERRED = (".mp4", ".mkv", ".mov", ".m4v")
+
+# A render tag as `video_filename` writes it: a size label welded to the frame
+# rate, e.g. `4k25`, `uw1440p60`. Longest labels first so `1080p` cannot be
+# shadowed by a shorter alternative that happens to prefix it.
+_RENDER_TAG = re.compile(
+    "^(?:"
+    + "|".join(sorted(
+        (re.escape(v) for v in set(RESOLUTION_FILENAME_LABEL.values())),
+        key=len, reverse=True,
+    ))
+    + r")\d+$",
+)
+
+# `Best Of.4k30.tmp.10344.mp4` -- a forge writing right now. It is a partial
+# file and it is about to be renamed away, so nothing may read it: not as a
+# render to play, and not as evidence of what this folder is called.
+_TEMP_RENDER = re.compile(r"\.tmp\.\d+$")
+
+
+def _find_media(folder: Path, stem: str) -> Optional[Path]:
+    """The video to run in the monitor, or None.
+
+    A forge used to write `<stem>.mp4`. It now writes `<stem>.<tag>.mp4`
+    -- `Best Of.4k25.mp4` -- so that a 4K copy to keep and a 1080p copy to
+    send can sit in one folder without overwriting each other. Looking only
+    for the untagged name left the monitor with nothing to play.
+
+    Untagged wins when present: that is what an older forge wrote, and what
+    a file the user renamed by hand looks like. Otherwise the newest tagged
+    rendition -- several coexist by design, and the Viewer exists to check
+    the render you just made.
+
+    Matching the tag SHAPE rather than globbing `<stem>.*` is what keeps
+    `<stem>.tmp.10344.mp4`, the half-written temp of a forge still running,
+    from being offered up as the finished article.
+    """
+    for ext in _MEDIA_PREFERRED:
+        exact = folder / f"{stem}{ext}"
+        if exact.is_file():
+            return exact
+
+    candidates: list[Path] = []
+    try:
+        entries = list(folder.iterdir())
+    except OSError:
+        return None
+    for p in entries:
+        # Not `folder.glob(stem + ".*")`: a stem is a user-chosen filename,
+        # and one containing `[` or `?` would be read as a glob pattern and
+        # silently match nothing.
+        if p.suffix.lower() not in _MEDIA_EXTS or not p.is_file():
+            continue
+        if not p.name.startswith(stem + "."):
+            continue
+        middle = p.name[len(stem) + 1: len(p.name) - len(p.suffix)]
+        if _RENDER_TAG.match(middle):
+            candidates.append(p)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 __all__ = [
     "load_output",
@@ -141,13 +207,46 @@ def _channel_from_filename(filename: str, stem: str) -> str:
     return name.split(".", 1)[1] if "." in name else name
 
 
+def _strip_render_tag(stem: str) -> str:
+    """`It's Just AI Sex.4k30` -> `It's Just AI Sex`; anything else unchanged."""
+    head, _, tail = stem.rpartition(".")
+    return head if head and _RENDER_TAG.match(tail) else stem
+
+
 def _stem_for_folder(folder: Path) -> Optional[str]:
     """Which stem a forged output folder belongs to.
 
-    In order of authority: the project file the forge saves beside its output,
-    then the video, then a top-level funscript. Guessing from the first file
-    alphabetically would pick a stray.
+    In order of authority: the `.forge` bundle, then the video, then a
+    top-level funscript, and only then the project file. Guessing from the
+    first file alphabetically would pick a stray.
+
+    The project file comes LAST, though it used to come first. Its name is
+    the PROJECT's -- `its-just-ai-sex.forgeproject` -- while every output is
+    named from `output.basename`, `It's Just AI Sex`. Those are separate
+    fields and a user who renames one does not rename the other, so trusting
+    the project file made the Viewer hunt for files under a name nothing on
+    disk used: no video, no chapters, no bundle. It stays in the list only
+    as a last resort for a folder whose outputs are gone.
+
+    The video's own stem carries the render tag (`.4k30`), which is likewise
+    not the stem the funscripts and sidecars use -- hence the strip.
     """
+    bundles = sorted(folder.glob("*.forge"),
+                     key=lambda p: p.stat().st_mtime, reverse=True)
+    if bundles:
+        return bundles[0].stem
+
+    vids = sorted((p for p in folder.iterdir()
+                   if p.is_file() and p.suffix.lower() in _MEDIA_EXTS
+                   and not _TEMP_RENDER.search(p.stem)),
+                  key=lambda p: p.stat().st_mtime, reverse=True)
+    if vids:
+        return _strip_render_tag(vids[0].stem)
+
+    funs = sorted(folder.glob("*.funscript"))
+    if funs:
+        return funs[0].name[:-len(".funscript")]
+
     for pattern in ("*.forgeproject", "*.forgeproject.json"):
         hits = sorted(folder.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
         if hits:
@@ -155,13 +254,7 @@ def _stem_for_folder(folder: Path) -> Optional[str]:
             for suffix in (".forgeproject.json", ".forgeproject"):
                 if name.endswith(suffix):
                     return name[:-len(suffix)]
-    vids = sorted((p for p in folder.iterdir()
-                   if p.is_file() and p.suffix.lower() in _MEDIA_EXTS),
-                  key=lambda p: p.stat().st_mtime, reverse=True)
-    if vids:
-        return vids[0].stem
-    funs = sorted(folder.glob("*.funscript"))
-    return funs[0].name[:-len(".funscript")] if funs else None
+    return None
 
 
 def resolve_source(path: str) -> Optional[tuple[str, Path, str]]:
@@ -457,8 +550,7 @@ def load_output(path: str, *, max_points: int = 2000, audio_points: int = 16000)
 
     # The video to run in the monitor. The bundle does not carry it by default
     # (a compilation is measured in gigabytes), so look for it on disk.
-    media = next((folder / f"{stem}{ext}" for ext in (".mp4", ".mkv", ".mov", ".m4v")
-                  if (folder / f"{stem}{ext}").is_file()), None)
+    media = _find_media(folder, stem)
     res["mediaPath"] = str(media) if media else None
     return res
 

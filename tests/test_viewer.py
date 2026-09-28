@@ -75,6 +75,81 @@ def test_resolve_returns_none_for_a_path_that_is_not_there(tmp_path):
     assert resolve_source(str(tmp_path / "nope.mp4")) is None
 
 
+# ── the stem is the OUTPUT's name, not the project's ─────────────────
+# Measured against a real 2h 4K forge: the folder held
+# `its-just-ai-sex.forgeproject` beside `It's Just AI Sex.4k30.mp4`,
+# `It's Just AI Sex.forge` and `It's Just AI Sex.funscript`. Trusting the
+# project file made the Viewer hunt under a name nothing on disk used, so
+# it found no video, no chapters and no bundle.
+def test_the_project_file_does_not_get_to_name_the_output(tmp_path):
+    """`output.basename` and the project's filename are separate fields."""
+    (tmp_path / "its-just-ai-sex.forgeproject").write_text("{}", encoding="utf-8")
+    _funscript(tmp_path / "It's Just AI Sex.funscript", _ramp())
+    kind, src, stem = resolve_source(str(tmp_path))
+    assert stem == "It's Just AI Sex"
+
+
+def test_the_bundle_outranks_the_project_file(tmp_path):
+    (tmp_path / "renamed-project.forgeproject").write_text("{}", encoding="utf-8")
+    (tmp_path / "Best Of.forge").write_bytes(b"PK\x03\x04stub")
+    kind, src, stem = resolve_source(str(tmp_path))
+    assert (kind, stem) == ("forge", "Best Of")
+
+
+def test_a_video_stem_gives_up_its_render_tag(tmp_path):
+    """`Best Of.4k30.mp4` belongs to the stem `Best Of` -- that is what the
+    funscripts and sidecars beside it are called."""
+    (tmp_path / "Best Of.4k30.mp4").write_bytes(b"x")
+    kind, src, stem = resolve_source(str(tmp_path))
+    assert stem == "Best Of"
+
+
+def test_a_stem_that_merely_looks_tagged_is_left_alone(tmp_path):
+    """`.part2` is not a render tag. Only a size label welded to a frame
+    rate is, so nothing else may be trimmed off a user's filename."""
+    (tmp_path / "Best Of.part2.mp4").write_bytes(b"x")
+    kind, src, stem = resolve_source(str(tmp_path))
+    assert stem == "Best Of.part2"
+
+
+# ── finding the render to play ───────────────────────────────────────
+def test_the_monitor_finds_a_tagged_render(folder_output):
+    """Renders carry their size now, so the untagged name is often absent."""
+    (folder_output / "Comp.mp4").unlink()
+    (folder_output / "Comp.4k30.mp4").write_bytes(b"x")
+    assert load_output(str(folder_output))["mediaPath"].endswith("Comp.4k30.mp4")
+
+
+def test_an_untagged_render_still_wins(folder_output):
+    """What an older forge wrote, and what a hand-renamed file looks like."""
+    (folder_output / "Comp.1080p30.mp4").write_bytes(b"x")
+    assert load_output(str(folder_output))["mediaPath"].endswith("Comp.mp4")
+
+
+def test_the_newest_rendition_is_the_one_offered(folder_output):
+    """Several coexist by design; the Viewer exists to check the one you
+    just made."""
+    import os
+    import time
+    (folder_output / "Comp.mp4").unlink()
+    old = folder_output / "Comp.1080p30.mp4"
+    new = folder_output / "Comp.4k30.mp4"
+    old.write_bytes(b"x")
+    new.write_bytes(b"x")
+    now = time.time()
+    os.utime(old, (now - 5000, now - 5000))
+    os.utime(new, (now, now))
+    assert load_output(str(folder_output))["mediaPath"].endswith("Comp.4k30.mp4")
+
+
+def test_a_half_written_temp_is_never_offered_as_the_render(folder_output):
+    """`Comp.4k30.tmp.10344.mp4` is a forge still running. Handing it to the
+    monitor would play a truncated file and look like a broken render."""
+    (folder_output / "Comp.mp4").unlink()
+    (folder_output / "Comp.4k30.tmp.10344.mp4").write_bytes(b"half")
+    assert load_output(str(folder_output))["mediaPath"] is None
+
+
 # ── the loose folder layout ──────────────────────────────────────────
 def test_folder_output_groups_channels_by_device(folder_output):
     res = load_output(str(folder_output))
