@@ -214,6 +214,15 @@ export function forgeProject(projectPath, { output = null, basename = null } = {
     () => Promise.resolve('{"video":null,"funscripts":[],"audio_estim":[]}'));
 }
 
+// The string `forgeProject` rejects with when the run was stopped on purpose,
+// rather than having failed. Kept next to the caller that has to recognise it.
+export const FORGE_CANCELLED = 'cancelled';
+
+/** Stop the forge in flight. Resolves false when there was nothing to stop. */
+export function cancelForge() {
+  return call('cancel_forge', {}, () => Promise.resolve(false));
+}
+
 export async function onForgeProgress(handler) {
   if (!isTauri()) return () => {};
   const { listen } = await import('@tauri-apps/api/event');

@@ -26,6 +26,7 @@ pub fn run() {
             commands::import_forge_bundle,
             commands::validate_project,
             commands::forge_project,
+            commands::cancel_forge,
             commands::load_project,
             commands::save_project,
             commands::read_sidecar,

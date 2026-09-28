@@ -11,10 +11,35 @@
 use serde::Serialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 use tokio::process::Command;
+
+// ---------------------------------------------------------------------------
+// Cancelling a forge
+// ---------------------------------------------------------------------------
+//
+// A forge is a two-hour job. It has to be stoppable, and stopping it is not
+// as simple as dropping the future: `Command::output()` used to own the whole
+// run, so there was no child to reach and nothing to kill. We spawn and keep
+// the pid instead.
+//
+// The pid we keep is the CLI's -- Python. ffmpeg is its child, a separate
+// process, which is why killing Python alone is not enough: measured twice in
+// one session, ffmpeg's pid changed between forge stages while Python's did
+// not. An orphaned ffmpeg keeps writing, and two writers on one output path
+// is how you get a multi-gigabyte file that will not play.
+static FORGE_PID: Mutex<Option<u32>> = Mutex::new(None);
+
+// Set by `cancel_forge`, read by the runner when the child exits non-zero.
+// Without it a cancel is indistinguishable from a crash, and the user gets
+// "Forge failed" for something they chose to do.
+static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// The sentinel `forge_project` returns when the run was deliberately stopped.
+pub const CANCELLED: &str = "cancelled";
 
 #[derive(Serialize)]
 pub struct Pong {
@@ -182,16 +207,42 @@ async fn run_cli_with_progress(
         drain(&mut offset);
     });
 
-    let output = cmd
-        .output()
-        .await
+    // Cleared BEFORE the spawn, not after: a cancel arriving in the gap
+    // would otherwise be wiped and the user's click would do nothing.
+    CANCEL_REQUESTED.store(false, Ordering::SeqCst);
+
+    // `spawn` rather than `output` so there is a child to cancel. `output`
+    // pipes both streams for you; `spawn` does not, and `wait_with_output`
+    // returns empty stderr without this -- which would silently cost us
+    // ffmpeg's own words on every failure.
+    let child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("spawn forge-cli failed: {}", e))?;
+
+    if let Some(pid) = child.id() {
+        *FORGE_PID.lock().unwrap() = Some(pid);
+    }
+
+    let waited = child.wait_with_output().await;
+
+    // Whatever happened, this forge is over: nothing may be left pointing at
+    // a pid the OS is free to reissue to an unrelated process.
+    *FORGE_PID.lock().unwrap() = None;
 
     let _ = cancel_tx.send(());
     let _ = polling.await;
     let _ = tokio::fs::remove_file(&temp_path).await;
 
+    let output = waited.map_err(|e| format!("forge-cli failed: {}", e))?;
+
     if !output.status.success() {
+        // A killed child exits non-zero, so this is the only place that can
+        // tell a cancel from a crash.
+        if CANCEL_REQUESTED.swap(false, Ordering::SeqCst) {
+            return Err(CANCELLED.to_string());
+        }
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
             "cli {} exited non-zero: {}",
@@ -200,6 +251,51 @@ async fn run_cli_with_progress(
         ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Stop the forge in flight. Returns false when there was nothing to stop.
+///
+/// Kills the process TREE. The CLI is Python and ffmpeg is its child, so
+/// killing the pid alone leaves ffmpeg running against the output path --
+/// the failure that once produced a 5.33GB file with no moov atom.
+#[tauri::command]
+pub async fn cancel_forge() -> Result<bool, String> {
+    // Copy the pid out and drop the guard: a std Mutex guard must not be
+    // held across an await.
+    let pid = { *FORGE_PID.lock().unwrap() };
+    let Some(pid) = pid else {
+        return Ok(false);
+    };
+
+    // Set BEFORE the kill, so the runner -- which may wake the instant the
+    // child dies -- cannot read it as a crash.
+    CANCEL_REQUESTED.store(true, Ordering::SeqCst);
+
+    #[cfg(windows)]
+    let killed = Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .map_err(|e| format!("taskkill {}: {}", pid, e))?;
+
+    // `pkill -P` first so ffmpeg goes before the parent that would otherwise
+    // be gone and leave it reparented to init.
+    #[cfg(not(windows))]
+    let killed = Command::new("/bin/sh")
+        .arg("-c")
+        .arg(format!("pkill -TERM -P {pid}; kill -TERM {pid}"))
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .map_err(|e| format!("kill {}: {}", pid, e))?;
+
+    if !killed {
+        // The process was already gone -- it finished while the click was in
+        // flight. Not an error, but the forge was not cancelled either.
+        CANCEL_REQUESTED.store(false, Ordering::SeqCst);
+    }
+    Ok(killed)
 }
 
 // ---------------------------------------------------------------------------

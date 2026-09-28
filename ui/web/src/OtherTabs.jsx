@@ -394,7 +394,8 @@ function ResolutionPicker({ value, onChange }) {
 }
 
 // ── Forge tab ─────────────────────────────────────────────────────
-function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) {
+function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
+                    forging, progress, forgeStage }) {
   // What the forge will write, counted the same way the engine counts it.
   const flat = project.sections.flatMap(s => s.segments);
   const cov = projectChannelCoverage(project);
@@ -416,6 +417,17 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) 
                 ["Chapters",      flat.length],
                 ["Total duration", fmtTotal(totalMs)],
                 ["Resolution",    project.output.resolution],
+                ["Frame rate",    project.output.frameRate === "source"
+                                    ? "source (read off your first clip)"
+                                    : `${project.output.frameRate} fps`],
+                // The name the render will carry. Both settings above feed
+                // the tag, so seeing the filename is the quickest check that
+                // this run will not overwrite the last one -- worth knowing
+                // BEFORE committing two hours to it.
+                ["Video file",    project.output.video === false
+                                    ? "not this run"
+                                    : (renderedVideoName(project)
+                                       || `${project.name}.mp4`)],
                 ["Loudness",      project.output.normalizeAudio ? "−16 LUFS" : "off"],
                 ["Funscripts",    cov.detected
                                     ? `${cov.detected} channel${cov.detected === 1 ? "" : "s"} · `
@@ -480,7 +492,9 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) 
       </div>
 
       <div style={{ marginTop: 18 }}>
-        <ForgePanel project={project} onForge={onForge} forging={forging} progress={progress} forgeStage={forgeStage} totalMs={totalMs} />
+        <ForgePanel project={project} onForge={onForge} onCancelForge={onCancelForge}
+                    cancelling={cancelling} forging={forging} progress={progress}
+                    forgeStage={forgeStage} totalMs={totalMs} />
       </div>
     </FATabBody>
   );
@@ -596,7 +610,8 @@ function useForgeEstimate(project, totalMs) {
   return `Roughly ${pretty} on ${enc.label}.`;
 }
 
-function ForgePanel({ project, onForge, forging, progress, forgeStage, totalMs }) {
+function ForgePanel({ project, onForge, onCancelForge, cancelling,
+                      forging, progress, forgeStage, totalMs }) {
   const estimate = useForgeEstimate(project, totalMs);
   return (
     <Card padding={20} style={{
@@ -623,6 +638,18 @@ function ForgePanel({ project, onForge, forging, progress, forgeStage, totalMs }
                   output{project.output.video === false ? "" : ` at ${project.output.resolution}`}. {estimate}</>}
           </p>
         </div>
+        {/* Cancel sits beside "Forging…", which is where someone looks when
+            they have changed their mind. It says what it costs, because the
+            reassuring half is not obvious: the encode goes to a temp file,
+            so stopping loses only this run, never the render already in the
+            output folder. */}
+        {forging && (
+          <Button kind="ghost" size="md" icon="x" onClick={onCancelForge}
+                  disabled={cancelling}
+                  title="Stops this render. Any earlier render in the output folder is left untouched.">
+            {cancelling ? "Cancelling…" : "Cancel"}
+          </Button>
+        )}
         <Button kind="primary" size="md" icon="hammer" onClick={onForge} disabled={forging}>
           {forging ? "Forging…" : "Forge"}
         </Button>

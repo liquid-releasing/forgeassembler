@@ -14,6 +14,7 @@ import { Modal, ModalFooter, OpenProjectDialog, SaveAsDialog,
 import { FA_DATA } from './data';
 import { loadProject, saveProject, pickFolder, pickFile, detectForgeFolder, probeDuration,
          forgeProject, onForgeProgress, revealPath, validateProject,
+         cancelForge, FORGE_CANCELLED,
          importForgeBundle, extractThumbnail, thumbnailPathFor } from './api/forge';
 import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
          projectDurationMs, projectSignature } from './lib/projectAdapter';
@@ -847,6 +848,10 @@ function App() {
   //
   // A ref changes synchronously, so the second click sees it.
   const forgingRef = useRef(false);
+  // True from the moment Cancel is clicked until the run actually ends, so
+  // the button can stop the user clicking it a second time while the tree
+  // is being killed -- which takes a moment on a 4K encode.
+  const [cancelling, setCancelling] = useState(false);
 
   async function startForge() {
     if (forgingRef.current) return;
@@ -855,6 +860,7 @@ function App() {
       await runForge();
     } finally {
       forgingRef.current = false;
+      setCancelling(false);
     }
   }
 
@@ -957,12 +963,42 @@ function App() {
       const reveal = summary?.video || project.output?.folder;
       if (reveal) revealPath(reveal).catch(() => {});
     } catch (e) {
-      console.error('[forge] failed', e);
-      setIoError(`Forge failed: ${e?.message || e}`);
-      setForgeStage(null);
+      // A cancel is not a failure. The Rust side kills the child, which
+      // exits non-zero exactly as a crash would, so this sentinel is the
+      // only thing that tells them apart -- without it the user gets
+      // "Forge failed" for something they chose to do.
+      if (String(e?.message || e).includes(FORGE_CANCELLED)) {
+        console.info('[forge] cancelled by the user');
+        setForgeStage(null);
+        setProgress(null);
+        // Said plainly, because the reassuring half is not obvious: the
+        // encode went to a temp file, so the render it would have replaced
+        // is still there.
+        setIoError('Forge cancelled. Nothing was written — any earlier '
+                   + 'render in the output folder is untouched.');
+      } else {
+        console.error('[forge] failed', e);
+        setIoError(`Forge failed: ${e?.message || e}`);
+        setForgeStage(null);
+      }
     } finally {
       unlisten();
       setForging(false);
+    }
+  }
+
+  // Stop the forge in flight. The engine publishes the video with
+  // os.replace, so a killed encode loses only its temp.
+  async function handleCancelForge() {
+    if (!forgingRef.current || cancelling) return;
+    setCancelling(true);
+    setForgeStage('Cancelling…');
+    try {
+      await cancelForge();
+    } catch (e) {
+      console.error('[forge] cancel failed', e);
+      setIoError(`Couldn't cancel the forge: ${e?.message || e}`);
+      setCancelling(false);
     }
   }
 
@@ -1032,7 +1068,9 @@ function App() {
     // No accept bar: the Viewer changes nothing, so there is nothing to chain.
     body = <ViewerTab project={project} forgedPath={forgedPath} />;
   } else if (tab === "forge") {
-    body = <ForgeTab project={project} totalMs={totalMs} onForge={startForge} forging={forging} progress={progress} forgeStage={forgeStage} />;
+    body = <ForgeTab project={project} totalMs={totalMs} onForge={startForge}
+                     onCancelForge={handleCancelForge} cancelling={cancelling}
+                     forging={forging} progress={progress} forgeStage={forgeStage} />;
     acceptKey = "forge";
     acceptSummary = forging ? "Forging in progress…" : (pipeline.forge.accepted ? "Forged successfully." : "Press Forge to render the combined output.");
     // This bar is not really an accept bar. It is where the long expensive
