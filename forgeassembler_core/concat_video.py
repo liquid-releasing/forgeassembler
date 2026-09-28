@@ -1480,8 +1480,38 @@ def forge_video(
             encoder=encoder,
         )
 
+        # Encode to a temp sibling and publish with os.replace, so the
+        # final name only ever appears on a COMPLETE render.
+        #
+        # This is what makes cancelling an encode safe. Writing straight
+        # to `out_path` with `-y` means a forge stopped at 79% leaves a
+        # partial file wearing the finished name -- and the previous good
+        # render is already gone, overwritten in place from the first
+        # frame. A killed encode now costs only the temp; whatever was
+        # there before survives untouched.
+        #
+        # ffmpeg picks its muxer from the extension, so the temp keeps
+        # it: `<stem>.tmp.<pid>.mp4`.
         out_path = Path(cmd.output_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Sweep temps abandoned by an earlier cancelled run. A hard kill
+        # never gets to run our own cleanup, and a 4K feature's worth of
+        # orphaned bytes is worth reclaiming. Safe unconditionally: the
+        # app admits one forge at a time, and two forges sharing an
+        # output path is itself the bug the click latch exists to stop.
+        for stale in out_path.parent.glob(
+            out_path.stem + ".tmp.*" + out_path.suffix,
+        ):
+            try:
+                stale.unlink()
+            except OSError:
+                pass  # still held open, or not ours to remove
+
+        tmp_path = out_path.with_name(
+            out_path.stem + ".tmp." + str(os.getpid()) + out_path.suffix,
+        )
+        cmd.output_path = str(tmp_path)
 
         argv = cmd.to_argv(exe)
         proc = subprocess.Popen(
@@ -1505,11 +1535,14 @@ def forge_video(
                 log_callback(stripped)
         proc.wait()
         if proc.returncode != 0:
+            tmp_path.unlink(missing_ok=True)
             snippet = "\n".join(tail) if tail else "(no stderr captured)"
             raise RuntimeError(
                 f"ffmpeg exited with code {proc.returncode}.\n"
                 f"Last {len(tail)} line(s) of ffmpeg output:\n{snippet}",
             )
+        # The publish. Atomic on the same volume, which a sibling always is.
+        os.replace(tmp_path, out_path)
         return out_path
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
