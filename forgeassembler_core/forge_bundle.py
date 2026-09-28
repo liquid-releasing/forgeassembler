@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import tempfile
 import zipfile
@@ -111,21 +112,66 @@ def _read_manifest_from_zip(p: Path) -> dict:
 # new contents — so a stale cache would quietly outrank the bundle. The
 # `.forge` file is the source of truth about a clip; this stamp is what
 # keeps that true.
+# Explorer's "copy of" suffix: `scene (1).forge`, `scene (2).forge`. Exporting
+# a scene again without deleting the old bundle is how a folder ends up with
+# several, and they are NOT alternatives -- they are one scene, re-exported.
+_VERSIONED = re.compile(r"^(?P<root>.*?) \((?P<n>\d+)\)$")
+
+
+def _version_of(stem: str) -> tuple[str, int]:
+    """`("scene", 2)` for `scene (2)`, `("scene", 0)` for `scene`."""
+    m = _VERSIONED.match(stem)
+    return (m.group("root"), int(m.group("n"))) if m else (stem, 0)
+
+
 def forge_bundles_in(folder: str | Path) -> list[Path]:
-    """Every `.forge` bundle directly inside `folder`, name-sorted.
+    """Every `.forge` bundle directly inside `folder`, name-sorted, ONE per scene.
 
     Deliberately shallow and cheap: no zip is opened, so a folder of 50
     scenes lists instantly and the caller decides which to actually
     import. Sorted so "Add folder" produces the same section order every
-    time (vol 1, vol 2, ...).
+    time (vol 1, vol 2, ...) -- which also means a user can rename the
+    bundles to choose that order.
+
+    Where a scene has been re-exported, Explorer leaves `scene.forge` beside
+    `scene (1).forge`. Those are the same scene twice, and the later export is
+    the one with the newer contents: a measured folder had an 18-channel
+    `jugzzzz.forge` next to a 22-channel `jugzzzz (1).forge`, so importing the
+    first produced a scene that looked like it was missing four channels it
+    had actually been given. Only the newest survives, and it keeps the ROOT
+    name's place in the order so renaming still controls the sequence.
+
+    Newest means the highest `(n)`, and mtime decides when there is no `(n)`
+    to compare -- a bare `scene.forge` written after `scene (1).forge` is the
+    newer one.
     """
     d = Path(folder)
     if not d.is_dir():
         raise NotADirectoryError(d)
-    return sorted(
-        (f for f in d.iterdir() if f.is_file() and f.suffix.lower() == ".forge"),
-        key=lambda f: f.name.lower(),
-    )
+    found = [f for f in d.iterdir() if f.is_file() and f.suffix.lower() == ".forge"]
+
+    groups: dict[str, list[tuple[int, float, Path]]] = {}
+    for f in found:
+        root, n = _version_of(f.stem)
+        try:
+            mtime = f.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        groups.setdefault(root.lower(), []).append((n, mtime, f))
+
+    keep: list[Path] = []
+    for members in groups.values():
+        # Collapse ONLY when the un-numbered original is also present, which
+        # is the shape Explorer actually produces: it adds `(1)` beside the
+        # file it could not overwrite. Without that guard, a scene genuinely
+        # delivered in parts -- `Show (1).forge` and `Show (2).forge`, no bare
+        # `Show` -- would silently lose every part but the last.
+        if len(members) > 1 and any(n == 0 for n, _, _ in members):
+            keep.append(max(members)[2])
+        else:
+            keep.extend(m[2] for m in members)
+
+    return sorted(keep, key=lambda f: f.name.lower())
 
 
 SOURCE_STAMP_NAME = ".source.json"
@@ -227,12 +273,19 @@ def _channel_for_audio(rel_path: str, artifact: dict) -> str:
     return f"{suffix}.{ext}" if suffix else ext
 
 
-def _channel_for_funscript(rel_path: str, artifact: dict) -> str:
+def _channel_for_funscript(rel_path: str, artifact: dict, stem: str = "") -> str:
     """Map an artifact's relative path to a channel key.
 
     `motion.funscript` is the main stroke track. Station files are named
     `<stem>.<channel>.funscript`, so the trailing FF suffix IS the channel
     (alpha, beta, e1..e4, surge, sway, pulse_frequency, alpha-prostate, …).
+
+    The split is made against the KNOWN stem, not by taking whatever follows
+    the last dot. A real scene is called
+    `-Madmartigan- - let's get FUCKED UP (final_).forgeme`, and its station L0
+    -- `stations/tcode/<stem>.funscript` -- read as a channel named `forgeme`.
+    That phantom then counted as a channel the scene had and every other scene
+    lacked, so it raised a gap warning on all of them at once.
 
     The key is STATION-QUALIFIED, because the channel name alone stopped
     being unique when FOC-Stim arrived: `estim3p`, `focstim` and `focstim4p`
@@ -245,15 +298,23 @@ def _channel_for_funscript(rel_path: str, artifact: dict) -> str:
     name = Path(rel_path).name
     if name == MOTION_NAME:
         return "main"
-    _base, channel = _split_ff_suffix(name)
     station = artifact.get("station")
+    if stem and name == f"{stem}.funscript":
+        # A station's own stroke track keeps the suffix-less spelling.
+        channel = None
+    elif stem and name.startswith(f"{stem}.") and name.endswith(".funscript"):
+        channel = name[len(stem) + 1:-len(".funscript")] or None
+    else:
+        # No stem to measure against (or a file that does not belong to it):
+        # fall back to the old guess rather than dropping the channel.
+        _base, channel = _split_ff_suffix(name)
     if not station and artifact.get("axis") == "L0":
         return "main"
     return make_key(station, channel or "main")
 
 
 def _map_artifacts(
-    manifest: dict, cache_dir: Path,
+    manifest: dict, cache_dir: Path, stem: str = "",
 ) -> tuple[dict[str, Path], dict[str, Path], dict[str, Path], dict[str, Path]]:
     """Sort every manifest artifact into funscripts, audio, analysis
     sidecars and thumbnails — all keyed the way consumers ask for them."""
@@ -268,7 +329,7 @@ def _map_artifacts(
         kind = art.get("kind")
         fp = cache_dir / rel
         if kind == "funscript":
-            channel = _channel_for_funscript(rel, art)
+            channel = _channel_for_funscript(rel, art, stem)
             # Keys are station-qualified, so two stations writing `alpha` no
             # longer fight over one slot. setdefault still guards a manifest
             # that lists the same path twice; first wins, deterministic.
@@ -363,7 +424,8 @@ def detect_forge_bundle(
     # Re-read from the extracted copy (authoritative on disk).
     manifest = json.loads((cache_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
     stem = manifest.get("stem") or p.stem
-    funscripts, audio_estim, sidecars, thumbnails = _map_artifacts(manifest, cache_dir)
+    funscripts, audio_estim, sidecars, thumbnails = _map_artifacts(
+        manifest, cache_dir, stem)
     media = manifest.get("media")
     media_path = _resolve_media(
         p, cache_dir, media,

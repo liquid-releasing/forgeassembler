@@ -22,6 +22,7 @@ import pytest
 from forgeassembler_core.forge_bundle import (
     ForgeBundle,
     detect_forge_bundle,
+    forge_bundles_in,
     forge_bundle_to_segment,
     is_forge_bundle,
 )
@@ -568,3 +569,120 @@ def test_segment_carries_every_station_channel(tmp_path):
 
     assert len(seg.explicit_funscripts) == 11
     assert seg.explicit_funscripts["focstim:alpha"].endswith("Scene.alpha.funscript")
+
+
+# ── dotted stems: the phantom channel ────────────────────────────────
+def test_a_dotted_stem_does_not_invent_a_channel(tmp_path):
+    """A station's own stroke track is `stations/<id>/<stem>.funscript`, with
+    no channel suffix. Taking whatever follows the last dot read the tail of
+    the STEM as the channel name: a real scene called
+    `-Madmartigan- - let's get FUCKED UP (final_).forgeme` produced a channel
+    called `forgeme`.
+
+    That is worse than cosmetic. The Build tab warns when a scene lacks a
+    channel its neighbours have, so one phantom on one scene raised a gap
+    warning on every other scene in the compilation."""
+    stem = "-Madmartigan- - let's get FUCKED UP (final_).forgeme"
+    manifest = {
+        "version": 1, "schema": "ffmeta/v1", "stem": stem,
+        "created_with": "FunscriptForge", "duration_ms": 1000,
+        "artifacts": [
+            {"path": "motion.funscript", "kind": "funscript", "role": "stroke", "axis": "L0"},
+            # The station's own L0 — suffix-less, and the one that broke.
+            {"path": f"stations/tcode/{stem}.funscript",
+             "kind": "funscript", "role": "stroke", "station": "tcode"},
+            {"path": f"stations/tcode/{stem}.surge.funscript",
+             "kind": "funscript", "role": "stroke", "station": "tcode"},
+        ],
+        "stations": {"tcode": {"files": []}},
+    }
+    files = {a["path"]: _fake_funscript() for a in manifest["artifacts"]}
+    b = _write_bundle(tmp_path / f"{stem}.forge", manifest, files)
+
+    keys = set(detect_forge_bundle(str(b), cache_root=tmp_path / "cache").funscripts)
+    assert "tcode:forgeme" not in keys
+    assert "tcode:main" in keys
+    assert "tcode:surge" in keys
+
+
+def test_a_channel_suffix_still_wins_over_a_dotted_stem(tmp_path):
+    """The stem ends in `.v2`, and the file carries a real channel after it."""
+    stem = "Best of.v2"
+    manifest = {
+        "version": 1, "schema": "ffmeta/v1", "stem": stem,
+        "created_with": "FunscriptForge", "duration_ms": 1000,
+        "artifacts": [
+            {"path": "motion.funscript", "kind": "funscript", "role": "stroke", "axis": "L0"},
+            {"path": f"stations/estim3p/{stem}.alpha.funscript",
+             "kind": "funscript", "role": "estim", "station": "estim3p"},
+        ],
+        "stations": {"estim3p": {"files": []}},
+    }
+    files = {a["path"]: _fake_funscript() for a in manifest["artifacts"]}
+    b = _write_bundle(tmp_path / f"{stem}.forge", manifest, files)
+    keys = set(detect_forge_bundle(str(b), cache_root=tmp_path / "cache").funscripts)
+    assert "estim3p:alpha" in keys
+    assert "estim3p:v2" not in keys
+
+
+# ── re-exported scenes: `scene.forge` beside `scene (1).forge` ────────
+def _stub_bundle(folder: Path, stem: str) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    manifest = {"version": 1, "schema": "ffmeta/v1", "stem": stem,
+                "created_with": "FunscriptForge", "duration_ms": 1, "artifacts": []}
+    return _write_bundle(folder / f"{stem}.forge", manifest, {})
+
+
+def test_a_re_export_replaces_the_bundle_it_sits_beside(tmp_path):
+    """Measured on a real folder: an 18-channel `jugzzzz.forge` sat next to a
+    22-channel `jugzzzz (1).forge`. Importing the first produced a scene that
+    looked to be missing four channels it had in fact been given."""
+    import os
+    d = tmp_path / "scenes"
+    a = _stub_bundle(d, "jugzzzz")
+    b = _stub_bundle(d, "jugzzzz (1)")
+    os.utime(a, (1_000_000, 1_000_000))
+    os.utime(b, (2_000_000, 2_000_000))
+
+    got = forge_bundles_in(d)
+    assert [p.name for p in got] == ["jugzzzz (1).forge"]
+
+
+def test_the_highest_number_wins(tmp_path):
+    d = tmp_path / "scenes"
+    _stub_bundle(d, "scene")
+    _stub_bundle(d, "scene (1)")
+    _stub_bundle(d, "scene (2)")
+    assert [p.name for p in forge_bundles_in(d)] == ["scene (2).forge"]
+
+
+def test_parts_are_not_versions(tmp_path):
+    """`Show (1)` and `Show (2)` with NO bare `Show` are a scene delivered in
+    parts, not one scene exported twice. Collapsing them would drop a part."""
+    d = tmp_path / "scenes"
+    _stub_bundle(d, "Show (1)")
+    _stub_bundle(d, "Show (2)")
+    assert [p.name for p in forge_bundles_in(d)] == ["Show (1).forge", "Show (2).forge"]
+
+
+def test_unrelated_scenes_are_untouched(tmp_path):
+    d = tmp_path / "scenes"
+    _stub_bundle(d, "alpha")
+    _stub_bundle(d, "beta")
+    assert [p.name for p in forge_bundles_in(d)] == ["alpha.forge", "beta.forge"]
+
+
+def test_a_name_ending_in_parens_that_is_not_a_number_is_not_a_version(tmp_path):
+    d = tmp_path / "scenes"
+    _stub_bundle(d, "clip")
+    _stub_bundle(d, "clip (final_)")
+    assert len(forge_bundles_in(d)) == 2
+
+
+def test_the_users_own_ready_marker_is_left_alone(tmp_path):
+    """`.forgeme` is the user's signal to themselves that a scene is ready for
+    the next step. It is part of the name, not a suffix to normalise away."""
+    d = tmp_path / "scenes"
+    _stub_bundle(d, "clip.forgeme")
+    _stub_bundle(d, "clip")
+    assert sorted(p.name for p in forge_bundles_in(d)) == ["clip.forge", "clip.forgeme.forge"]
