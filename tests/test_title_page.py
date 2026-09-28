@@ -128,3 +128,31 @@ def test_a_fade_works_as_an_opening_too():
     })
     layout = _layout(project)
     assert (layout.items[0].start_ms, layout.items[0].end_ms) == (0, 2000)
+
+
+def test_a_joiner_written_without_an_id_still_loads():
+    # `Joiner.from_dict` used to be `d["id"]`, so a title page saved by
+    # anything that did not invent an id -- including the app, and
+    # including a hand-edited project -- took the whole load down with a
+    # KeyError. The id is the ENGINE's, used to key the card's PNG and
+    # its background frame; it is not something a user should have to
+    # supply.
+    project = Project.from_dict({
+        "version": "2.0", "name": "t", "sections": [],
+        "output": {"folder": "o", "basename": "c",
+                   "opening_joiner": {"joiner_type": "title_card",
+                                       "params": {"title": "X"}}},
+    })
+    assert project.output.opening_joiner.joiner_type == "title_card"
+    assert project.output.opening_joiner.id           # invented, not empty
+
+
+def test_an_id_that_was_given_is_kept():
+    project = Project.from_dict({
+        "version": "2.0", "name": "t", "sections": [],
+        "output": {"folder": "o", "basename": "c",
+                   "opening_joiner": {"id": "join-open",
+                                       "joiner_type": "title_card",
+                                       "params": {"title": "X"}}},
+    })
+    assert project.output.opening_joiner.id == "join-open"

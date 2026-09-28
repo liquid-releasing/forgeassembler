@@ -692,7 +692,8 @@ function NewSceneJoinerPicker({ value, template, onPick, onOpenEditor }) {
 
 // ── Build tab ─────────────────────────────────────────────────────
 function BuildTab({ project, selectedIds, onSelect,
-                    onEditJoiner, onRenameSection, onAddForgeFolder, onAddForgeScene,
+                    onEditJoiner, onEditTitlePage, onRenameSection,
+                    onAddForgeFolder, onAddForgeScene,
                     newSceneJoiner, onPickNewSceneJoiner, onEditNewSceneJoiner,
                     onRemoveSection, onEditClip,
                     newSceneJoinerKind }) {
@@ -744,6 +745,7 @@ function BuildTab({ project, selectedIds, onSelect,
         selectedIds={selectedIds}
         onSelect={onSelect}
         onEditJoiner={onEditJoiner}
+        onEditTitlePage={onEditTitlePage}
         onRenameSection={onRenameSection}
         onRemoveSection={onRemoveSection}
         onEditClip={onEditClip}
