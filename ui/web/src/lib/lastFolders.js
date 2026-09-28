@@ -39,6 +39,42 @@ export function baseName(path) {
   return cut < 0 ? trimmed : trimmed.slice(cut + 1);
 }
 
+// ── Remembered branding ──────────────────────────────────────────────
+//
+// Your studio bumper does not change per release, so the app remembers
+// which `.forge` you use and offers it on the next new compilation. This is
+// only a DEFAULT: what the project file carries is the imported segment
+// itself, because `cli.py forge` cannot read localStorage and a scripted
+// forge must not silently drop the branding.
+const BRANDING_KEY = 'fa.branding';
+
+/** The remembered bundle path for 'intro' | 'outro', or null. */
+export function rememberedBranding(which) {
+  try {
+    const raw = localStorage.getItem(BRANDING_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    const v = parsed && typeof parsed === 'object' ? parsed[which] : null;
+    return typeof v === 'string' && v ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember (or forget, with null) the bundle used for 'intro' | 'outro'. */
+export function rememberBranding(which, bundlePath) {
+  try {
+    const raw = localStorage.getItem(BRANDING_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const next = parsed && typeof parsed === 'object' ? { ...parsed } : {};
+    if (bundlePath) next[which] = bundlePath;
+    else delete next[which];
+    localStorage.setItem(BRANDING_KEY, JSON.stringify(next));
+  } catch {
+    // Same contract as the folder memory: never take a picker down over a
+    // convenience. A private window can throw on the accessor itself.
+  }
+}
+
 function readAll() {
   try {
     const raw = localStorage.getItem(KEY);

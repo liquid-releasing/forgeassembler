@@ -656,6 +656,15 @@ export function toForgeProject(vm, { folder = null } = {}) {
       ...(vm.output?.openingJoiner && vm.output.openingJoiner.kind !== 'none'
         ? { opening_joiner: { id: 'join-open', ...joinerToReal(vm.output.openingJoiner) } }
         : {}),
+      // Branding rides in the project as a resolved SEGMENT, not as a path to
+      // the `.forge` it came from. The app remembers which bundle you use and
+      // offers it for the next compilation, but `cli.py forge` cannot read
+      // that memory -- so anything scripted would drop the branding without
+      // saying a word if the file did not carry it.
+      ...(vm.output?.brandingIntro
+        ? { branding_intro: segToReal(vm.output.brandingIntro) } : {}),
+      ...(vm.output?.brandingOutro
+        ? { branding_outro: segToReal(vm.output.brandingOutro) } : {}),
     },
     audio_beds: vm.audioBeds || [],
   };
@@ -695,6 +704,10 @@ export function fromForgeProject(json) {
       ...(json.output?.metadata ? { metadata: json.output.metadata } : {}),
       ...(json.output?.closing_joiner ? { closingJoiner: json.output.closing_joiner } : {}),
       openingJoiner: joinerFromReal(json.output?.opening_joiner),
+      brandingIntro: json.output?.branding_intro
+        ? segFromReal(json.output.branding_intro) : null,
+      brandingOutro: json.output?.branding_outro
+        ? segFromReal(json.output.branding_outro) : null,
     },
     channels,
     sections: (Array.isArray(json.sections)

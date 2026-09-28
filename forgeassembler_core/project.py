@@ -399,6 +399,21 @@ class Output:
     produce_forge_bundle_media: bool = False
     bug: Optional[BugOverlay] = None
     metadata: Metadata = field(default_factory=Metadata)
+    # Optional studio branding at each end of the compilation, imported from
+    # a `.forge` scene like any other clip -- so it brings its own audio AND
+    # its own funscripts, which is the point: the intro doubles as a
+    # calibration run before any content plays.
+    #
+    # Stored as a resolved Segment rather than a path to the bundle. The UI
+    # remembers which bundle you use and fills it in for a new project, but
+    # what the project FILE carries has to be self-contained, or `cli.py
+    # forge` (and anything scripted on top of it) would silently drop the
+    # branding.
+    #
+    # Neither is a Section, so neither gets a chapter marker: chapter 01 is
+    # the first real scene, and a viewer skipping to it lands on content.
+    branding_intro: Optional["Segment"] = None
+    branding_outro: Optional["Segment"] = None
     # Closing transition for the whole output. When `closing_joiner` is
     # "fade_to_black", the engine fades the final video (and audio) to
     # black/silence in the last `duration_s` seconds of the output.
@@ -458,6 +473,10 @@ class Output:
         # page round-trips byte-identically.
         if self.opening_joiner.joiner_type != "none":
             d["opening_joiner"] = self.opening_joiner.to_dict()
+        if self.branding_intro is not None:
+            d["branding_intro"] = self.branding_intro.to_dict()
+        if self.branding_outro is not None:
+            d["branding_outro"] = self.branding_outro.to_dict()
         return d
 
     @staticmethod
@@ -489,6 +508,14 @@ class Output:
             opening_joiner=(
                 Joiner.from_dict(opening_dict) if opening_dict
                 else Joiner(id="join-open", joiner_type="none")
+            ),
+            branding_intro=(
+                Segment.from_dict(d["branding_intro"])
+                if d.get("branding_intro") else None
+            ),
+            branding_outro=(
+                Segment.from_dict(d["branding_outro"])
+                if d.get("branding_outro") else None
             ),
         )
 
@@ -1056,16 +1083,41 @@ class Project:
         this list rather than the sections.
         """
         out: list = []
+        # Branding first -- before the compilation's own title page. That is
+        # the cinema order (studio bumper, then the title), it puts the
+        # intro's calibration funscripts at absolute zero, and it gives the
+        # title card a clip to sit over: `previous_last_frame` walks BACK
+        # through this list for the nearest segment, and before branding
+        # existed there was nothing behind the first card to find.
+        if self.output.branding_intro is not None:
+            out.append(self.output.branding_intro)
         if self.output.opening_joiner.joiner_type != "none":
             out.append(self.output.opening_joiner)
         for sec in self.sections:
             if sec.leading_joiner.joiner_type != "none":
                 out.append(sec.leading_joiner)
             out.extend(sec.segments)
+        if self.output.branding_outro is not None:
+            out.append(self.output.branding_outro)
         return out
 
     def segments(self) -> list[Segment]:
+        """The CONTENT segments -- what the sections hold.
+
+        Deliberately excludes branding. Callers use this to ask questions
+        about the compilation itself, and the loudest of them is "what
+        resolution is the source?", which must follow the footage rather than
+        a bumper that may well have been authored at a different size.
+        """
         return [s for sec in self.sections for s in sec.segments]
+
+    def timeline_segments(self) -> list[Segment]:
+        """Every segment that CONTRIBUTES to the output, branding included.
+
+        For the questions that are about the finished file: which channels
+        does it carry, which clips have an audio stream to map.
+        """
+        return [i for i in self.items if isinstance(i, Segment)]
 
     def joiners(self) -> list[Joiner]:
         """Every non-'none' leading joiner in the project, in order."""
@@ -1232,7 +1284,10 @@ def validate(project: Project) -> list[ValidationIssue]:
     flat_items = project.items
 
     # File existence for segments
-    for seg in project.segments():
+    # `timeline_segments`, not `segments`: branding contributes to the
+    # output like any other clip, and a bumper whose video has moved should
+    # fail here rather than part-way through an encode.
+    for seg in project.timeline_segments():
         if not Path(seg.video).exists():
             issues.append(ValidationIssue(
                 "error",

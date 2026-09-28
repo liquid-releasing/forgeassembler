@@ -26,7 +26,8 @@ import { projectFileName } from './lib/projectFile';
 // here only ever SUBTRACT a group from that. Gaps (a channel one clip
 // lacks) are left blank — the engine has no fallback synthesis, and the
 // picker that used to offer one wasn't wired to anything.
-function OutputTab({ project, onSetOutput, onSetChannels }) {
+function OutputTab({ project, onSetOutput, onSetChannels,
+                     onPickBranding, onClearBranding }) {
   const out = project.output || {};
   const chans = project.channels || {};
   return (
@@ -72,6 +73,21 @@ function OutputTab({ project, onSetOutput, onSetChannels }) {
               </>
             )}
           </div>
+        </Card>
+        <Card>
+          <FASectionLabel>Branding</FASectionLabel>
+          <div style={{ marginBottom: 10, fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+            Optional <span className="mono">.forge</span> scenes at each end.
+            They bring their own audio and funscripts, so an intro doubles as a
+            calibration run before any content plays. Neither becomes a
+            chapter — chapter 01 stays your first scene.
+          </div>
+          <BrandingSlot which="intro" label="Before the compilation"
+                         seg={project.output?.brandingIntro}
+                         onPick={onPickBranding} onClear={onClearBranding} />
+          <BrandingSlot which="outro" label="After the compilation"
+                         seg={project.output?.brandingOutro}
+                         onPick={onPickBranding} onClear={onClearBranding} />
         </Card>
         <Card>
           <FASectionLabel>Resolution</FASectionLabel>
@@ -633,6 +649,40 @@ function ForgePanel({ project, onForge, forging, progress, forgeStage, totalMs }
   );
 }
 
+// One branding slot. Empty is the resting state and looks like it: a
+// dashed placeholder, not a control someone already set.
+function BrandingSlot({ which, label, seg, onPick, onClear }) {
+  const name = seg ? (seg.title || fileNameOf(seg.file)) : null;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
+      {seg ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8,
+                      padding: "7px 10px", borderRadius: 6,
+                      background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+          <Icon name="clapperboard" size={13} style={{ color: "var(--accent-warm)", flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: "hidden",
+                         textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                title={seg.file}>{name}</span>
+          <Button kind="ghost" size="sm" onClick={() => onPick?.(which)}>Change</Button>
+          <Button kind="ghost" size="icon" title="Use no branding here"
+                  onClick={() => onClear?.(which)}><Icon name="x" size={12} /></Button>
+        </div>
+      ) : (
+        <Button kind="secondary" size="sm" icon="plus"
+                onClick={() => onPick?.(which)}>Choose a .forge scene…</Button>
+      )}
+    </div>
+  );
+}
+
+function fileNameOf(p) {
+  const s = String(p || "");
+  const cut = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+  const base = cut < 0 ? s : s.slice(cut + 1);
+  return base.replace(/\.[^.]+$/, "") || "scene";
+}
+
 // ── Small toggle (used by Project / Channels) ─────────────────────
 function Toggle({ label, checked, disabled, onChange }) {
   return (
@@ -662,4 +712,5 @@ function Toggle({ label, checked, disabled, onChange }) {
 Object.assign(window, { OutputTab, ForgeTab, Toggle });
 
 
-export { ChapterMarkersCard, ForgePanel, ForgeTab, OutputChannelsCard, OutputTab, ResolutionPicker, Toggle };
+export { BrandingSlot, ChapterMarkersCard, ForgePanel, ForgeTab, OutputChannelsCard,
+         OutputTab, ResolutionPicker, Toggle };

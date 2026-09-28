@@ -275,10 +275,13 @@ def detected_channels(project: "Project") -> set[str]:
     """The union of every funscript channel present on any segment."""
     from .project import Segment as _Seg
     found: set[str] = set()
-    for section in project.sections:
-        for item in section.segments:
-            if isinstance(item, _Seg):
-                found |= channels_for_segment(item)
+    # Every segment on the TIMELINE, branding included: an intro bumper
+    # carries its own funscripts -- that is what makes it usable to calibrate
+    # a device before any content plays -- and a channel only it has still
+    # needs a track in the combined output.
+    for item in project.timeline_segments():
+        if isinstance(item, _Seg):
+            found |= channels_for_segment(item)
     return found
 
 

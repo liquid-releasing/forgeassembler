@@ -1096,3 +1096,38 @@ describe('renderedVideoName', () => {
       .toBeNull();
   });
 });
+
+describe('branding round-trip', () => {
+  const vm = () => ({
+    name: 'Comp',
+    output: {
+      resolution: '1080p', frameRate: '30',
+      brandingIntro: { id: 'bi', file: 'D:/brand/intro.mp4', title: 'Bumper',
+                       kind: 'video', audio: { mode: 'keep' } },
+      brandingOutro: null,
+    },
+    channels: {},
+    sections: [{ id: 's1', joiner: { kind: 'none' }, segments: [], overlays: [] }],
+  });
+
+  it('writes branding into the project FILE, not just the app', () => {
+    // `cli.py forge` cannot read the app's remembered settings, so anything
+    // scripted would drop the branding without a word if it lived only there.
+    const real = toForgeProject(vm());
+    expect(real.output.branding_intro.video).toBe('D:/brand/intro.mp4');
+  });
+
+  it('omits the keys entirely when there is no branding', () => {
+    const v = vm();
+    v.output.brandingIntro = null;
+    const real = toForgeProject(v);
+    expect('branding_intro' in real.output).toBe(false);
+    expect('branding_outro' in real.output).toBe(false);
+  });
+
+  it('comes back out again', () => {
+    const back = fromForgeProject(toForgeProject(vm()));
+    expect(back.output.brandingIntro.file).toBe('D:/brand/intro.mp4');
+    expect(back.output.brandingOutro).toBeNull();
+  });
+});

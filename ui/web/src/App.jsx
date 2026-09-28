@@ -20,7 +20,8 @@ import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
 import { parseProgressLine, stageProgress, makeStageTracker } from './lib/forgeProgress';
 import { markForgedGate } from './lib/forgeGate';
 import { DragDropProvider, reorderSectionInProject } from './dragdrop';
-import { baseName, lastFolder, parentFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
+import { baseName, lastFolder, parentFolder, rememberBranding, rememberedBranding,
+         rememberFolder, rememberFileFolder } from './lib/lastFolders';
 import { titleForClip, titleForFolder } from './lib/titleDefaults';
 
 const { useState, useEffect, useMemo, useRef } = React;
@@ -547,17 +548,21 @@ function App() {
   // `prompt: false` (batch import) never opens a relink dialog — it
   // returns false so the caller can collect the unresolved scenes and
   // report them once, instead of firing one modal per bundle.
-  async function importForgeScene(bundle, { prompt = true } = {}) {
+  // Import a `.forge` and hand back a segment, or null. Split out of
+  // `importForgeScene` because branding needs the same import -- including
+  // the relink prompt when a lean bundle carries no media -- but puts the
+  // result somewhere other than a new section.
+  async function forgeBundleToSegment(bundle, { prompt = true } = {}) {
     let payload;
     try {
       payload = await importForgeBundle(bundle);
     } catch (e) {
       console.error('[import-forge] failed', e);
       if (prompt) setIoError(`Couldn't import ${bundle}: ${e?.message || e}`);
-      return false;
+      return null;
     }
     if (payload?.needs_video) {
-      if (!prompt) return false;
+      if (!prompt) return null;
       const video = await pickFile({
         title: `Select the source VIDEO for “${payload.stem || 'this scene'}”`,
         filterName: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'],
@@ -565,22 +570,28 @@ function App() {
       });
       if (!video) {
         setIoError(`Import canceled — “${payload.stem || 'scene'}” needs a source video to relink.`);
-        return false;
+        return null;
       }
       try {
         payload = await importForgeBundle(bundle, { video });
       } catch (e) {
         console.error('[import-forge] relink failed', e);
         setIoError(`Couldn't relink video: ${e?.message || e}`);
-        return false;
+        return null;
       }
     }
     const seg = fromForgeBundleSegment(payload?.segment, payload);
     if (!seg) {
       if (prompt) setIoError(`Import produced no segment for ${payload?.stem || bundle}.`);
-      return false;
+      return null;
     }
     seg.id = `${seg.id || 'seg'}-${Date.now()}`;
+    return seg;
+  }
+
+  async function importForgeScene(bundle, { prompt = true } = {}) {
+    const seg = await forgeBundleToSegment(bundle, { prompt });
+    if (!seg) return false;
     // One scene, one section, always. A SECTION is what becomes a chapter,
     // so dropping two scenes into one section gave a two-scene compilation a
     // single chapter marker at 0:00 — nothing to navigate to. Nothing can put
@@ -670,6 +681,37 @@ function App() {
   }
 
   // ── Add a finished FunscriptForge `.forge` scene (header button) ──
+  // ── Branding: an optional `.forge` at each end of the compilation ──
+  //
+  // A bumper is a scene like any other -- it brings its own audio AND its own
+  // funscripts, which is what makes the intro usable to calibrate a device
+  // before any content plays. It belongs to no section, so it gets no chapter
+  // marker: chapter 01 stays the first real scene.
+  async function handlePickBranding(which) {
+    setIoError(null);
+    const bundle = await pickFile({
+      title: which === 'intro'
+        ? 'Select a .forge scene to play BEFORE the compilation'
+        : 'Select a .forge scene to play AFTER the compilation',
+      filterName: 'FunscriptForge bundle', extensions: ['forge'],
+      startDir: rememberedBranding(which) || lastFolder('branding') || lastFolder('scenes'),
+    });
+    if (!bundle) return;
+    const seg = await forgeBundleToSegment(bundle);
+    if (!seg) return;
+    rememberFileFolder('branding', bundle);
+    // Remembered so the NEXT compilation offers it: a studio bumper does not
+    // change per release. What the project saves is the segment above.
+    rememberBranding(which, bundle);
+    setBranding(which, seg);
+  }
+
+  function setBranding(which, seg) {
+    const key = which === 'intro' ? 'brandingIntro' : 'brandingOutro';
+    setProject(p => ({ ...p, output: { ...p.output, [key]: seg } }));
+    markDirty();
+  }
+
   async function handleAddForgeScene() {
     setIoError(null);
     const bundle = await pickFile({
@@ -927,6 +969,8 @@ function App() {
   // ─── Tab body ──────────────────────────────────────────────────
   let body, acceptKey = null, acceptSummary = "", acceptLabel = "Accept and chain";
   let acceptDisabled = false, acceptDisabledReason = null;
+  // When set, replaces the accept button entirely -- see FAAcceptBar.
+  let acceptPrimary = null;
 
   if (tab === "home") {
     body = (
@@ -979,7 +1023,9 @@ function App() {
   } else if (tab === "output") {
     body = <OutputTab project={project}
                        onSetOutput={setOutput}
-                       onSetChannels={setChannels} />;
+                       onSetChannels={setChannels}
+                       onPickBranding={handlePickBranding}
+                       onClearBranding={(which) => setBranding(which, null)} />;
     acceptKey = "output";
     acceptSummary = `Resolution ${project.output.resolution} · loudness ${project.output.normalizeAudio ? "−16 LUFS" : "off"}.`;
   } else if (tab === "viewer") {
@@ -989,11 +1035,18 @@ function App() {
     body = <ForgeTab project={project} totalMs={totalMs} onForge={startForge} forging={forging} progress={progress} forgeStage={forgeStage} />;
     acceptKey = "forge";
     acceptSummary = forging ? "Forging in progress…" : (pipeline.forge.accepted ? "Forged successfully." : "Press Forge to render the combined output.");
-    acceptLabel = "Mark forged";
-    // Marking the output forged claims the files on disk are this project.
-    // Until a forge of this exact project has finished, that claim is false.
-    acceptDisabled = !markForged.enabled;
-    acceptDisabledReason = markForged.reason;
+    // This bar is not really an accept bar. It is where the long expensive
+    // thing starts, and then where you go next once it has finished --
+    // "Mark forged" asked the user to assert something the app already knew.
+    // The card's own Forge button stays: this bar is always on screen, and
+    // the card scrolls away.
+    acceptPrimary = forging
+      ? { label: "Forging…", icon: "hammer", kind: "secondary",
+          disabled: true, reason: null, onClick: () => {} }
+      : markForged.enabled
+        ? { label: "Chain to Viewer", icon: "arrow-right", kind: "white",
+            onClick: () => setTab("viewer") }
+        : { label: "Forge", icon: "hammer", kind: "white", onClick: startForge };
   }
 
   // ─── Render ─────────────────────────────────────────────────────
@@ -1017,6 +1070,7 @@ function App() {
           chainFile={pipeline[acceptKey].chainFile}
           accepted={pipeline[acceptKey].accepted}
           primaryLabel={acceptLabel}
+          primary={acceptPrimary}
           disabled={acceptDisabled}
           disabledReason={acceptDisabledReason}
           onAccept={() => accept(acceptKey)}

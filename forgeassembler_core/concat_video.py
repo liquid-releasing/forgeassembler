@@ -1440,7 +1440,7 @@ def forge_video(
         # "Stream specifier ':a' matches no streams".
         from .probe import probe_has_audio_stream
         segments_with_audio: set[str] = set()
-        for seg in project.segments():
+        for seg in project.timeline_segments():
             if seg.is_still():
                 continue
             if seg.audio.mode != "keep":
