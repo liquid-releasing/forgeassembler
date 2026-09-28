@@ -600,6 +600,24 @@ def cmd_title_catalog(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_viewer_load(args: argparse.Namespace) -> int:
+    """Print what a forge WROTE, for the Viewer tab.
+
+    `--channel <device>/<channel>` asks for that one channel at full
+    resolution instead -- the monitor windows down to a few seconds, where
+    the timeline's peak-preserving envelope is the wrong shape entirely.
+    """
+    from forgeassembler_core.viewer import load_output, load_single_channel
+
+    if args.channel:
+        device, _, channel = args.channel.partition("/")
+        print(json.dumps(load_single_channel(args.input, device, channel)))
+        return 0
+    print(json.dumps(load_output(
+        args.input, max_points=args.max_points, audio_points=args.audio_points)))
+    return 0
+
+
 def cmd_title_preview(args: argparse.Namespace) -> int:
     """Render one title card to `--out <png>`.
 
@@ -889,7 +907,11 @@ def cmd_forge(args: argparse.Namespace) -> int:
             "amf":   "GPU · AMD AMF",
         }.get(_enc, "CPU · libx264")
         emit(f"progress: forging video at {out.resolution} ({_enc_label})")
-        say(f"Forging video at {out.resolution} [{_enc_label}] → {out.folder}/{out.basename}.mp4")
+        # The folder, not a filename: the name carries the rendered size
+        # (`<basename>.1080p30.mp4`) and that is not settled until the
+        # encoder has resolved `source`. The "Wrote ..." line below names
+        # the real file.
+        say(f"Forging video at {out.resolution} [{_enc_label}] → {out.folder}")
         try:
             output = forge_video(
                 project, layout,
@@ -1171,6 +1193,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_thumb.add_argument("--at", type=int, default=0, help="timestamp in ms (default 0)")
     p_thumb.add_argument("--out", required=True, help="output PNG path")
     p_thumb.set_defaults(func=cmd_thumbnail)
+
+    p_vload = sub.add_parser(
+        "viewer-load",
+        help="read back what a forge wrote, for the Viewer tab",
+    )
+    p_vload.add_argument(
+        "input",
+        help="the forged video, its .forge bundle, the .forgeproject, or the output folder",
+    )
+    p_vload.add_argument(
+        "--max-points", type=int, default=2000,
+        help="cap on points per timeline channel (peak-preserving)",
+    )
+    p_vload.add_argument(
+        "--audio-points", type=int, default=16000,
+        help="cap on audio envelope points",
+    )
+    p_vload.add_argument(
+        "--channel", default=None,
+        help="'<device>/<channel>' for that one channel at full resolution",
+    )
+    p_vload.set_defaults(func=cmd_viewer_load)
 
     p_tcat = sub.add_parser(
         "title-catalog",

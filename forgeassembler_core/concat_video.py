@@ -50,6 +50,7 @@ from .project import (
     Joiner as ProjectJoiner,
     Project,
     Segment,
+    video_filename,
 )
 
 # Legacy default for the per-side fade when a loaded project pre-dates
@@ -304,13 +305,21 @@ def build_ffmpeg_command(
             "build_ffmpeg_command called but output.produce_video is False",
         )
 
-    if output_path is None:
-        if not out.folder:
-            raise ValueError("output.folder is required to build a command")
-        output_path = str(Path(out.folder) / f"{out.basename}.mp4")
+    # The folder is checked BEFORE anything is resolved: "you have not chosen
+    # an output folder" is the useful complaint, and letting the frame-rate
+    # check fire first buried it.
+    if output_path is None and not out.folder:
+        raise ValueError("output.folder is required to build a command")
 
     width, height = _resolve_resolution(project, resolution_override)
     fps = _resolve_frame_rate(project, frame_rate_override)
+
+    if output_path is None:
+        # Named AFTER the size and rate are resolved, so the tag reports what
+        # was actually encoded -- `source` becomes `1080p30`, not "source".
+        # Without the tag a 4k render silently overwrites the 1080p one.
+        output_path = str(
+            Path(out.folder) / video_filename(out.basename, width, height, fps))
 
     segment_layouts = [li for li in layout.items if li.is_segment]
     if not segment_layouts:

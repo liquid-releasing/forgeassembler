@@ -6,7 +6,8 @@ import { ParamControl, TimingVisual } from './JoinerEditor';
 import { FA_DATA } from './data';
 import { pickFile, videoEncoder } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
-import { effectiveDurMs, projectChannelCoverage, segmentHasChannel } from './lib/projectAdapter';
+import { effectiveDurMs, funscriptRelPath, projectChannelCoverage,
+         renderedVideoName, segmentHasChannel } from './lib/projectAdapter';
 import { projectFileName } from './lib/projectFile';
 
 // Sketched other pipeline tabs. Intentionally light — the Build tab is
@@ -423,7 +424,13 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) 
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {[
-              { f: `${project.name}.mp4`, on: project.output.video },
+              // The rendered size goes in the name (`.1080p30.mp4`) so a 4k
+              // render lands beside the 1080p one instead of over it. With
+              // either setting on `source` the value is probed at forge time,
+              // so the tag genuinely is not known yet -- say that rather than
+              // print a name that turns out to be wrong.
+              { f: renderedVideoName(project) || `${project.name}.<size>.mp4`,
+                on: project.output.video },
               // One row per channel the engine will actually forge, named
               // the way it names them: main is the bare .funscript, every
               // other channel takes its own suffix. This list used to be
@@ -431,9 +438,11 @@ function ForgeTab({ project, totalMs, onForge, forging, progress, forgeStage }) 
               // .stereostim.wav that nothing produces, and never mentioned
               // the device channels that do get written.
               ...cov.groups.filter(g => g.included).flatMap(g => g.channels.map(c => ({
-                f: c.id === "main"
-                  ? `${project.name}.funscript`
-                  : `${project.name}.${c.id}.funscript`,
+                // The path the ENGINE writes, not the channel key. The key is
+                // station-qualified (`tcode:main`) and a colon cannot be in a
+                // Windows filename -- this panel was advertising files that
+                // could never exist.
+                f: funscriptRelPath(c.id, project.name),
                 on: project.output.funscripts !== false,
                 sub: c.id !== "main",
               }))),
@@ -533,7 +542,8 @@ function ChapterMarkersCard({ project }) {
       <div className="mono" style={{
         marginTop: 12, fontSize: 10.5, color: "var(--text-dim)",
       }}>
-        written to <span style={{ color: "var(--text-muted)" }}>{project.name}.mp4</span>
+        written to <span style={{ color: "var(--text-muted)" }}>
+          {renderedVideoName(project) || `${project.name}.<size>.mp4`}</span>
         {" "}as MOV/MP4 chapter atoms · also embedded in
         <span style={{ color: "var(--text-muted)" }}> {project.name}.funscript</span> metadata
       </div>

@@ -97,6 +97,61 @@ export function stationLabel(station) {
     || station.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/**
+ * Where the forge WRITES a channel, relative to the output folder.
+ *
+ * Mirrors `forgeassembler_core.channels.funscript_relpath`. The Forge tab
+ * used to build this itself as `<stem>.<key>.funscript`, where the key is
+ * station-qualified -- so it advertised
+ *
+ *     OurDream AI-Generated PMV 1.tcode:main.funscript
+ *
+ * A colon cannot appear in a Windows filename; it is the key separator
+ * PRECISELY so that a key leaking into a path fails loudly. The panel was
+ * naming files that can never exist, and hiding the per-device folders the
+ * forge really writes.
+ */
+export function funscriptRelPath(key, stem) {
+  if (key === 'main') return `${stem}.funscript`;
+  const channel = channelName(key);
+  const station = channelStation(key);
+  // A station's own stroke track keeps the suffix-less spelling.
+  const name = channel === 'main' ? `${stem}.funscript` : `${stem}.${channel}.funscript`;
+  return station ? `${stationLabel(station)}/${name}` : name;
+}
+
+// The name a rendered size goes by in a filename. Mirrors
+// `forgeassembler_core.project.RESOLUTION_FILENAME_LABEL` -- spelled out
+// rather than derived, because dropping the underscores turned `9_16_hd`
+// into `916hd`, which reads as a number.
+const RESOLUTION_FILENAME_LABEL = {
+  '1080p': '1080p', '1440p': '1440p', '4k': '4k',
+  uw_1080p: 'uw1080p', uw_1440p: 'uw1440p',
+  '4_3_hd': '4x3hd', '3_4_hd': '3x4hd', '9_16_hd': '9x16hd',
+};
+
+/**
+ * The `1080p30` / `4k60` tag the forge puts before the `.mp4`, or null when
+ * it cannot be known yet.
+ *
+ * `source` for either setting means the value is probed off the first
+ * segment at forge time, so the UI genuinely does not know it. Returning
+ * null lets the caller say so instead of printing a filename that turns out
+ * to be wrong -- which is the whole reason this tag exists.
+ */
+export function renderTag(resolution, frameRate) {
+  const label = RESOLUTION_FILENAME_LABEL[resolution];
+  if (!label) return null;                       // 'source', or unknown
+  const fps = Number.parseInt(frameRate, 10);
+  return Number.isFinite(fps) ? `${label}${fps}` : null;
+}
+
+/** What the forged video will be called, or null when the tag is unknown. */
+export function renderedVideoName(project) {
+  const tag = renderTag(project?.output?.resolution, project?.output?.frameRate);
+  return tag ? `${project.name}.${tag}.mp4` : null;
+}
+
 export function channelGroup(key) {
   const channel = channelName(key);
   if (channel === 'main') return 'main';

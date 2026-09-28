@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  funscriptRelPath, renderTag, renderedVideoName,
   toForgeProject, fromForgeProject, fromDetected, fromForgeBundleSegment,
   msToTimecode, timecodeToMs, segmentHasChannel,
   effectiveDurMs, projectDurationMs,
@@ -1039,5 +1040,59 @@ describe("the compilation's title page", () => {
     expect(back.output.openingJoiner.kind).toBe('title_card');
     expect(back.output.openingJoiner.title).toBe('MY COMPILATION');
     expect(back.output.openingJoiner.holdS).toBe(5);
+  });
+});
+
+describe('funscriptRelPath', () => {
+  it('writes a station channel into that device folder', () => {
+    // The bug it replaces: the Forge tab printed the station-qualified KEY
+    // as a filename — `Scene.tcode:main.funscript`. A colon cannot appear in
+    // a Windows filename; it is the key separator precisely so a key leaking
+    // into a path fails loudly.
+    expect(funscriptRelPath('tcode:main', 'Scene')).toBe('MultiFunPlayer/Scene.funscript');
+    expect(funscriptRelPath('tcode:surge', 'Scene')).toBe('MultiFunPlayer/Scene.surge.funscript');
+    expect(funscriptRelPath('estim3p:alpha', 'Scene')).toBe('E-Stim/Scene.alpha.funscript');
+  });
+
+  it('keeps the universal stroke track at the top', () => {
+    expect(funscriptRelPath('main', 'Scene')).toBe('Scene.funscript');
+  });
+
+  it('leaves an unattributed channel beside it', () => {
+    expect(funscriptRelPath('alpha', 'Scene')).toBe('Scene.alpha.funscript');
+  });
+
+  it('never produces a colon', () => {
+    for (const key of ['tcode:main', 'estim3p:volume-prostate', 'focstim4p:e1']) {
+      expect(funscriptRelPath(key, 'Scene')).not.toContain(':');
+    }
+  });
+});
+
+describe('renderTag', () => {
+  it('names the size and rate', () => {
+    expect(renderTag('1080p', '30')).toBe('1080p30');
+    expect(renderTag('4k', '60')).toBe('4k60');
+    expect(renderTag('9_16_hd', '30')).toBe('9x16hd30');
+  });
+
+  it('is null when either value is probed at forge time', () => {
+    // Printing `Scene.source.mp4` would be worse than admitting we do not
+    // know yet — the tag exists so two renders can coexist, and a wrong one
+    // defeats that.
+    expect(renderTag('source', '30')).toBeNull();
+    expect(renderTag('1080p', 'source')).toBeNull();
+  });
+});
+
+describe('renderedVideoName', () => {
+  it('puts the tag just before the extension', () => {
+    expect(renderedVideoName({ name: 'Best Of', output: { resolution: '4k', frameRate: '60' } }))
+      .toBe('Best Of.4k60.mp4');
+  });
+
+  it('returns null rather than guessing', () => {
+    expect(renderedVideoName({ name: 'Best Of', output: { resolution: 'source', frameRate: 'source' } }))
+      .toBeNull();
   });
 });

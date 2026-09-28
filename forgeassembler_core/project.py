@@ -78,6 +78,48 @@ RESOLUTION_PIXELS: dict[str, Optional[tuple[int, int]]] = {
     "source": None,
 }
 
+# The name a rendered size goes by in a filename: `1080p30`, `4k60`.
+#
+# A compilation gets rendered more than once -- 1080p for the phone, 4k for
+# the TV -- and without this in the name the second render silently replaces
+# the first. Built from the RESOLVED size and rate, not from the settings, so
+# `source` resolves to what was actually encoded rather than the word
+# "source".
+# Spelled out rather than derived from the key. A rule that just dropped the
+# underscores turned `9_16_hd` into `916hd`, which reads as a number.
+RESOLUTION_FILENAME_LABEL: dict[str, str] = {
+    "1080p": "1080p",
+    "1440p": "1440p",
+    "4k": "4k",
+    "uw_1080p": "uw1080p",
+    "uw_1440p": "uw1440p",
+    "4_3_hd": "4x3hd",
+    "3_4_hd": "3x4hd",
+    "9_16_hd": "9x16hd",
+}
+
+_RESOLUTION_LABEL: dict[tuple[int, int], str] = {
+    px: RESOLUTION_FILENAME_LABEL.get(key, key)
+    for key, px in RESOLUTION_PIXELS.items() if px is not None
+}
+
+
+def render_tag(width: int, height: int, fps: float | int | None) -> str:
+    """`1080p30`, `4k60`, `uw1440p24`, or `2436p30` for a size with no name."""
+    label = _RESOLUTION_LABEL.get((int(width), int(height))) or f"{int(height)}p"
+    if not fps:
+        return label
+    rate = int(round(float(fps)))
+    return f"{label}{rate}"
+
+
+def video_filename(basename: str, width: int, height: int,
+                   fps: float | int | None) -> str:
+    """`<basename>.<tag>.mp4` -- the tag sits just before the extension."""
+    tag = render_tag(width, height, fps)
+    return f"{basename}.{tag}.mp4" if tag else f"{basename}.mp4"
+
+
 STILL_IMAGE_EXTENSIONS: frozenset[str] = frozenset({
     ".png", ".jpg", ".jpeg", ".webp",
 })

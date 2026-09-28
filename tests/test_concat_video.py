@@ -89,12 +89,39 @@ def test_source_resolution_honours_override(tmp_path: Path):
     assert "1280:720" in cmd.filter_complex
 
 
-def test_output_path_derived_from_project(tmp_path: Path):
+def test_output_path_carries_the_rendered_size(tmp_path: Path):
+    """A compilation gets rendered more than once -- 1080p for the phone, 4k
+    for the TV. Without the size in the name the second render silently
+    replaces the first."""
     v = _mp4(tmp_path, "a")
     p = _project(tmp_path, Segment(id="s1", video=str(v)))
     layout = lay_out(p, probe=lambda _p: 1000)
     cmd = build_ffmpeg_command(p, layout)
-    assert cmd.output_path == str(tmp_path / "out" / "combined.mp4")
+    assert cmd.output_path == str(tmp_path / "out" / "combined.1080p30.mp4")
+
+
+def test_output_path_names_the_size_actually_encoded(tmp_path: Path):
+    """Not the setting. `resolution='source'` must not produce a file called
+    `combined.source.mp4` -- the tag reports what came out."""
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)))
+    p.output.resolution = "source"
+    p.output.frame_rate = "source"
+    layout = lay_out(p, probe=lambda _p: 1000)
+    cmd = build_ffmpeg_command(p, layout,
+                               resolution_override=(3840, 2160),
+                               frame_rate_override=60)
+    assert cmd.output_path == str(tmp_path / "out" / "combined.4k60.mp4")
+
+
+def test_an_explicit_output_path_is_left_exactly_as_given(tmp_path: Path):
+    """The caller named the file; adding to it would be a surprise."""
+    v = _mp4(tmp_path, "a")
+    p = _project(tmp_path, Segment(id="s1", video=str(v)))
+    layout = lay_out(p, probe=lambda _p: 1000)
+    want = str(tmp_path / "chosen.mp4")
+    cmd = build_ffmpeg_command(p, layout, output_path=want)
+    assert cmd.output_path == want
 
 
 def test_output_path_override(tmp_path: Path):
