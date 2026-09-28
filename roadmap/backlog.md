@@ -31,3 +31,32 @@
 - [ ] Section preview panel/popup — thumbnail strip + duration timeline of a section, possibly with overlays drawn on it. Render preview without a full ffmpeg pass.
 - [ ] Text-card-as-section helper — atomically create a section with a black-background placeholder + text overlay (currently requires manually dropping a black PNG and adding a text overlay).
 - [ ] text of the font and color actually being rendered in the text box
+
+## Next — after v0.1.0-alpha
+
+- [ ] **Mark a compilation complete.** The Viewer (stage 04) ends the chain,
+  and a chain that ends with nothing to press just trails off. FunscriptForge's
+  Viewer has a red accept/checkmark whose whole value is marking the moment.
+  Record it in the `.forge` as `completion: {state, at, by}` and show it on the
+  Home screen's recents, so a finished compilation looks finished next session.
+  It must gate nothing. Spec:
+  `funscriptforge/internal/DESIGN_forge_bundle_renditions_and_completion.md`.
+- [ ] **Renditions in the `.forge`.** One compilation, several video files
+  (`Best Of.4k25.mp4`, `Best Of.1080p25.mp4`). The filename tag already lets
+  them coexist on disk; the bundle should list them so ForgePlayer can offer a
+  quality picker. A sibling of `media`, never a retype of it, and a list of
+  candidates rather than promises — ship the 1080p to someone and their bundle
+  names a 4K they do not have. Same spec file.
+- [ ] **`--resolution` / `--frame-rate` overrides on `cli.py forge`.** Makes a
+  scripted second render possible without hand-editing the project JSON, which
+  is what the docs page currently has to leave out. No render QUEUE: that was
+  considered and cut — it saves ~30s of clicking on a 20-minute job.
+- [ ] **Name the gap fix for what it does.** A scene missing a channel needs
+  one of two different things, and the app can already tell which: if the
+  channel is in the project's `polish/` folder but not the bundle, the bundle
+  is stale and FSF `refresh` fixes it; if it is absent from the project too
+  (`surge`/`sway` depend on the multi-axis style the author chose) only FSF
+  can, and that is an authoring decision. Offer "Re-export scene" or "Open in
+  FunscriptForge" accordingly — never a hopeful "Fixme".
+- [ ] **Show which bundle version a scene is on** — filename, date, channel
+  count, and a note when a newer sibling sits beside it.
