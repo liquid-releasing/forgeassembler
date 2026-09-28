@@ -7,7 +7,7 @@ import { MediaViewer, TrackStack } from 'forgemoment';
 import { toMediaUrl } from './lib/mediaUrl';
 import { pickFile, readSidecar } from './api/forge';
 import { toAudioWaveform, toBeats, toFunscript } from './lib/sidecars';
-import { channelGroup, CHANNEL_GROUPS, NEUTRAL_KELVIN,
+import { channelGapsFor, channelGroup, CHANNEL_GROUPS, NEUTRAL_KELVIN,
          msToTimecode, timecodeToMs } from './lib/projectAdapter';
 import { Button, Field, Icon, Segmented, Slider, TextInput } from './primitives';
 
@@ -21,9 +21,10 @@ const { useState: insState } = React;
 // One scene at a time. The bed inspector went with cross-clip audio beds
 // (nothing in the engine ever read them) and the multi-select inspector
 // went with the multi-clip section, which no longer exists.
-function Inspector({ segs, onClose, onUpdate }) {
+function Inspector({ segs, project, onClose, onUpdate }) {
   if (!segs || segs.length === 0) return <InspectorEmpty />;
-  return <ClipInspector seg={segs[0]} onClose={onClose} onUpdate={onUpdate} />;
+  return <ClipInspector seg={segs[0]} project={project}
+                         onClose={onClose} onUpdate={onUpdate} />;
 }
 
 function InspectorEmpty() {
@@ -52,7 +53,7 @@ function InspectorEmpty() {
 }
 
 // ── Clip inspector ────────────────────────────────────────────────
-function ClipInspector({ seg, onClose, onUpdate }) {
+function ClipInspector({ seg, project, onClose, onUpdate }) {
   const [tab, setTab] = insState("source");
   // No Overlays tab: the only thing that added one was the title editor,
   // and titles are a later release. A project that already carries
@@ -118,7 +119,7 @@ function ClipInspector({ seg, onClose, onUpdate }) {
         {tab === "source"   && <SourcePane seg={seg} onUpdate={onUpdate} />}
         {tab === "audio"    && <AudioPane seg={seg} onUpdate={onUpdate} />}
         {tab === "color"    && <ColorPane seg={seg} onUpdate={onUpdate} />}
-        {tab === "fs"       && <FunscriptPane seg={seg} />}
+        {tab === "fs"       && <FunscriptPane seg={seg} project={project} />}
       </div>
     </aside>
   );
@@ -701,8 +702,13 @@ function ColorPane({ seg, onUpdate }) {
 // most of them device and restim-parameter tracks that no fixed menu
 // lists. The old version checked `channels.includes(uiCategoryId)`, which
 // only ever matched "main", so a 20-channel scene reported one.
-function FunscriptPane({ seg }) {
+function FunscriptPane({ seg, project }) {
   const detected = seg.channels || [];
+  // The same comparison the scene row's amber badge makes: channels the OTHER
+  // scenes in this compilation have and this one does not. The row warned
+  // about them; the panel that lists channels said nothing, which is the one
+  // place you go to find out WHICH.
+  const gaps = channelGapsFor(seg, project);
   const byGroup = new Map();
   for (const ch of [...detected].sort()) {
     const g = channelGroup(ch);
@@ -750,6 +756,29 @@ function FunscriptPane({ seg }) {
           </div>
         )}
       </PaneSection>
+
+      {gaps.length > 0 && (
+        <PaneSection
+          title={`Not in this scene (${gaps.length})`}
+          hint="Channels the OTHER scenes carry. Wherever they play, this stretch of the combined script holds its last position.">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {gaps.map(ch => (
+              <span key={ch} className="mono" style={{
+                fontSize: 10.5, padding: "2px 7px", borderRadius: 5,
+                background: "rgba(255,181,71,0.08)",
+                border: "1px solid rgba(255,181,71,0.30)",
+                color: "var(--accent-warm)",
+              }}>{ch}</span>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+            A difference, not a fault — whoever made this scene chose which
+            devices to generate for, and scenes made at different times
+            legitimately differ. It matters when it is a whole device you
+            use: that device sits still for this scene's whole length.
+          </div>
+        </PaneSection>
+      )}
 
       {seg.bundleLean && (
         <PaneSection title="Analysis">

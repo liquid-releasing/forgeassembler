@@ -100,8 +100,45 @@ lacks a channel its neighbours have, that stretch of the combined script is
 that *are* present stay in lockstep with the video.
 
 Nothing is synthesised to fill a gap. The Build tab flags the affected clips
-with a **gaps** badge naming exactly which channels they're missing, so you can
-see it before you forge rather than during playback.
+with a **gaps** badge, and the Inspector's Funscripts tab names exactly which
+channels are missing — so you can see it before you forge rather than during
+playback.
+
+### A gap is a difference, not a fault
+
+The badge compares each scene against the **other scenes in this
+compilation**. It does not mean anything is broken, and most gaps need no
+action at all.
+
+When a scene was created in FunscriptForge, its author chose which devices and
+stations to generate for. Two scenes made months apart, or made for different
+devices, legitimately carry different channel sets — and every one of those
+differences shows up here as a gap.
+
+What matters is **which** channel is missing:
+
+| The gap | What it usually means | Worth acting on? |
+| ------- | --------------------- | ---------------- |
+| A multi-axis channel (`surge`, `sway`, `roll`, `pitch`, `twist`) | The scene was generated with a different multi-axis style. Those axes were never meant to exist for it. | Rarely. The axes present still play. |
+| A whole device you use — the FOC-Stim set, say | That scene will be **silent on that device** for its whole length while the others drive it. | Yes. This is the one that spoils a session. |
+| A parameter channel (`pulse_rise_time`, `frequency`) | The scene predates that parameter, or its station did not emit it. | Sometimes — the device falls back to its own default. |
+
+So read the badge as *"this scene is the odd one out, here is how"* rather than
+as an error. A compilation where every scene is missing the same thing has no
+gaps at all, and is perfectly fine.
+
+### Closing a gap
+
+ForgeAssembler does not generate channels — it joins what exists. To fill a
+real gap, open that scene in FunscriptForge and generate the station you want,
+then re-export it. Two things worth knowing first:
+
+- If the channel already exists in the scene's project but not in its `.forge`,
+  the bundle is simply **older than the project**. Re-exporting is enough; no
+  regeneration needed.
+- If it does not exist in the project either, it has to be generated, and that
+  is an authoring decision — the multi-axis style, the stations — not something
+  that can be filled in mechanically.
 
 ## Haptic-estim audio (per-channel WAVs)
 

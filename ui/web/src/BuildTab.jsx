@@ -498,9 +498,19 @@ function SceneRow({ section, seg, idx, chapterStartMs, selected,
 // that a joiner joins two scenes and the first one joins nothing, which
 // left the opening title unreachable even though the engine would have
 // rendered it.
+// The words on a title card, for showing on the row that opens its editor.
+// Rendered in their own span because the row is `text-transform: uppercase`,
+// and the reason to show a title here is to check it against the scene it
+// introduces -- which needs the case it was actually written in.
+function joinerTitleText(joiner) {
+  if (!joiner || joiner.kind !== "title_card") return "";
+  return String(joiner.title || "").trim();
+}
+
 function JoinerRow({ joiner, onClick, isOpening = false }) {
   const isCut = joiner.kind === "none";
   const label = FA_DATA.joinerShortLabel(joiner);
+  const cardTitle = joinerTitleText(joiner);
   // A bare "cut" reads as noise at the top of the list, where there is
   // nothing above to cut from. Say what the row is FOR instead, so an
   // empty opening invites a title rather than looking like a setting
@@ -526,6 +536,14 @@ function JoinerRow({ joiner, onClick, isOpening = false }) {
                                       color: isCut ? "var(--text-dim)" : "var(--accent-warm)" }}>
         {text}
       </span>
+      {cardTitle && (
+        <span style={{
+          fontSize: 11, color: "var(--text-muted)", maxWidth: 320,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          “{cardTitle}”
+        </span>
+      )}
       <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
     </button>
   );
