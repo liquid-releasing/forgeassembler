@@ -262,6 +262,9 @@ export function effectiveDurMs(seg) {
 export function projectDurationMs(project, joinerAddedMs) {
   if (!project?.sections) return 0;
   let total = 0;
+  // The compilation's title page comes before everything.
+  const opening = project.output?.openingJoiner;
+  if (opening && joinerAddedMs) total += joinerAddedMs(opening);
   project.sections.forEach((sec) => {
     if (sec.joiner && joinerAddedMs) total += joinerAddedMs(sec.joiner);
     total += sec.segments.reduce((a, s) => a + effectiveDurMs(s), 0);
@@ -589,6 +592,11 @@ export function toForgeProject(vm, { folder = null } = {}) {
       ...(vm.output?.bug ? { bug: vm.output.bug } : {}),
       ...(vm.output?.metadata ? { metadata: vm.output.metadata } : {}),
       ...(vm.output?.closingJoiner ? { closing_joiner: vm.output.closingJoiner } : {}),
+      // The compilation's own title page. Written only when it is
+      // something, so a project without one round-trips unchanged.
+      ...(vm.output?.openingJoiner && vm.output.openingJoiner.kind !== 'none'
+        ? { opening_joiner: joinerToReal(vm.output.openingJoiner) }
+        : {}),
     },
     audio_beds: vm.audioBeds || [],
   };
@@ -627,6 +635,7 @@ export function fromForgeProject(json) {
       ...(json.output?.bug ? { bug: json.output.bug } : {}),
       ...(json.output?.metadata ? { metadata: json.output.metadata } : {}),
       ...(json.output?.closing_joiner ? { closingJoiner: json.output.closing_joiner } : {}),
+      openingJoiner: joinerFromReal(json.output?.opening_joiner),
     },
     channels,
     sections: (Array.isArray(json.sections)

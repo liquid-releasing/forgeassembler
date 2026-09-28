@@ -484,11 +484,14 @@ function JoinerRow({ joiner, onClick, isOpening = false }) {
   // nothing above to cut from. Say what the row is FOR instead, so an
   // empty opening invites a title rather than looking like a setting
   // someone already made.
+  // The first row is how the FIRST CHAPTER begins. The compilation's own
+  // title page is a separate row above this one \u2014 they are different
+  // things, and saying "opening" here made them look like one.
   const text = isOpening
-    ? (isCut ? "add an opening title" : `opening \u00b7 ${label}`)
+    ? (isCut ? "add a title for this chapter" : `chapter one \u00b7 ${label}`)
     : `\u21b3 ${label}`;
   const tip = isOpening
-    ? "Click to open the compilation with a title card or a fade up"
+    ? "Click to title the first chapter, or fade up into it"
     : "Click to set the transition between these two scenes";
 
   return (
@@ -507,9 +510,42 @@ function JoinerRow({ joiner, onClick, isOpening = false }) {
   );
 }
 
+// The compilation's OWN title page, above everything.
+//
+// Deliberately not a JoinerRow: it does not join two scenes, so the
+// hairlines-either-side treatment would be a lie about what it is. It is
+// the front of the production, and it reads as a card of its own.
+function TitlePageRow({ joiner, onClick }) {
+  const isSet = joiner && joiner.kind !== "none";
+  const label = isSet ? FA_DATA.joinerShortLabel(joiner) : null;
+  return (
+    <button onClick={(e) => onClick(e.currentTarget.getBoundingClientRect())}
+             title="A title page for the whole compilation, before any scene"
+             style={{
+      display: "flex", alignItems: "center", gap: 10, width: "100%",
+      padding: "9px 14px", marginBottom: 2,
+      background: isSet ? "rgba(255,140,66,0.06)" : "transparent",
+      border: `1px dashed ${isSet ? "var(--accent-warm)" : "var(--border)"}`,
+      borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+      color: isSet ? "var(--text)" : "var(--text-dim)",
+    }}>
+      <Icon name="type" size={13}
+             style={{ color: isSet ? "var(--accent-warm)" : "var(--text-dim)" }} />
+      <span style={{ fontSize: 12, fontWeight: 600 }}>
+        {isSet ? (joiner.title || "Title page") : "Add a title page"}
+      </span>
+      <span style={{ flex: 1 }} />
+      <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)",
+                                       letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        {isSet ? label : "the whole compilation"}
+      </span>
+    </button>
+  );
+}
+
 // ── The scene list ────────────────────────────────────────────────
 function SceneList({ project, selectedIds, onSelect, onEditJoiner, onRenameSection,
-                     onRemoveSection, onEditClip, onAddForgeScene }) {
+                     onRemoveSection, onEditClip, onAddForgeScene, onEditTitlePage }) {
   // Each scene's chapter start: the scenes before it, plus the joiners
   // between them (a joiner's bridge adds real time to the output).
   // ⚠ A section's own LEADING joiner comes before it, so the clock moves
@@ -517,7 +553,10 @@ function SceneList({ project, selectedIds, onSelect, onEditJoiner, onRenameSecti
   // whose joiner is the compilation's opening card. Reading the NEXT
   // section's joiner instead happened to give the same answer only while
   // the first section could not have one.
-  let cursor = 0;
+  // The title page is in front of every scene, so the chapter clock
+  // starts after it — the same arithmetic the engine does by putting it
+  // first in `Project.items`.
+  let cursor = FA_DATA.joinerAddedMs(project.output?.openingJoiner || { kind: "none" });
   const starts = {};
   for (let i = 0; i < project.sections.length; i++) {
     const sec = project.sections[i];
@@ -535,6 +574,8 @@ function SceneList({ project, selectedIds, onSelect, onEditJoiner, onRenameSecti
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <TitlePageRow joiner={project.output?.openingJoiner}
+                     onClick={(rect) => onEditTitlePage?.(rect)} />
       {scenes.map(({ sec, seg }, i) => (
         <React.Fragment key={sec.id}>
           <JoinerRow joiner={sec.joiner} isOpening={i === 0}
@@ -730,5 +771,5 @@ Object.assign(window, { BuildTab });
 
 
 export { AudioModeBadge, BuildTab, ClipEditor, ClipThumb, DevicePills,
-         Divider, EmptyCanvas, JoinerRow, NewSceneJoinerPicker, ROW,
+         Divider, EmptyCanvas, JoinerRow, NewSceneJoinerPicker, ROW, TitlePageRow,
          SceneList, SceneRow, StatItem };

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Liquid Releasing. Licensed under the MIT License.
 
 import { describe, expect, it } from 'vitest';
-import { parseProgressLine, stageProgress } from './forgeProgress';
+import { parseProgressLine, stageProgress, makeStageTracker } from './forgeProgress';
 
 describe('parseProgressLine', () => {
   it('reads duration and stage count off a meta line', () => {
@@ -115,5 +115,51 @@ describe('stageProgress', () => {
   it('fills the whole bar when only one stage runs', () => {
     expect(stageProgress({ stage: 1, stageCount: 1, weights: [1], frac: 0.5 }))
       .toBeCloseTo(0.5, 6);
+  });
+});
+
+
+describe('makeStageTracker', () => {
+  const VIDEO = 'forging video at 4k (GPU)';
+  const SCRIPTS = 'forging funscripts';
+  const ESTIM = 'forging haptic-estim audio';
+
+  it('advances once per distinct stage', () => {
+    const t = makeStageTracker();
+    expect(t.saw(VIDEO)).toBe(1);
+    expect(t.saw(SCRIPTS)).toBe(2);
+    expect(t.saw(ESTIM)).toBe(3);
+  });
+
+  it('IGNORES a stage it has already seen', () => {
+    // The bug this exists for: every forge emits into one `fa:progress`
+    // channel, and a double-click started two of them. The handler
+    // counted stage lines, so two producers ran the counter to the end
+    // of the list within a second and parked the bar near the top --
+    // reported live as "a ribbon at like 90% in the first instant".
+    const t = makeStageTracker();
+    t.saw(VIDEO);
+    t.saw(VIDEO);
+    t.saw(VIDEO);
+    expect(t.stage).toBe(1);
+  });
+
+  it('keeps two interleaved runs from running the bar to the end', () => {
+    const t = makeStageTracker();
+    // Forge A and forge B, a second apart, reporting the same stages.
+    for (const line of [VIDEO, VIDEO, SCRIPTS, SCRIPTS]) t.saw(line);
+    expect(t.stage).toBe(2);
+    // With a 4-stage plan weighted 0.8 to the video, the bar is where
+    // the second stage starts -- not five sixths of the way along.
+    const at = stageProgress({
+      stage: t.stage, stageCount: 4, weights: [0.8, 0.02, 0.1, 0.08], frac: 0,
+    });
+    expect(at).toBeCloseTo(0.8, 5);
+  });
+
+  it('survives a stage with no text', () => {
+    const t = makeStageTracker();
+    expect(t.saw(undefined)).toBe(1);
+    expect(t.saw(null)).toBe(1);
   });
 });

@@ -40,6 +40,17 @@ export function buildCues(project, joinerAddedMs) {
   let t = 0;
   const sections = project?.sections || [];
 
+  // The compilation's own title page, before any section.
+  const opening = project?.output?.openingJoiner;
+  const openingMs = opening && joinerAddedMs ? joinerAddedMs(opening) : 0;
+  if (openingMs > 0) {
+    cues.push({
+      kind: 'hold', startMs: 0, endMs: openingMs,
+      sectionId: null, joiner: opening,
+    });
+    t += openingMs;
+  }
+
   sections.forEach((sec) => {
     // The first section's joiner counts too — it is the compilation's
     // opening card, and the engine lays it down before any footage.

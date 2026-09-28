@@ -16,7 +16,7 @@ import { loadProject, saveProject, pickFolder, pickFile, detectForgeFolder, prob
          importForgeBundle, extractThumbnail, thumbnailPathFor } from './api/forge';
 import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
          projectDurationMs, projectSignature } from './lib/projectAdapter';
-import { parseProgressLine, stageProgress } from './lib/forgeProgress';
+import { parseProgressLine, stageProgress, makeStageTracker } from './lib/forgeProgress';
 import { markForgedGate } from './lib/forgeGate';
 import { DragDropProvider, reorderSectionInProject } from './dragdrop';
 import { lastFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
@@ -172,6 +172,13 @@ function App() {
   function reorderSection(sectionId, anchorSectionId, position) {
     setProject(p => reorderSectionInProject(p, sectionId, anchorSectionId, position));
     markDirty();
+  }
+
+  // The compilation's title page, open in the joiner editor.
+  const [editingTitlePage, setEditingTitlePage] = useState(null);
+  function updateTitlePage(next) {
+    setProject(p => ({ ...p, output: { ...p.output, openingJoiner: next } }));
+    setDirty(true);
   }
 
   // { sectionId, title } while the removal is being confirmed.
@@ -760,8 +767,30 @@ function App() {
 
   // Real forge: ensure the project is saved to disk, subscribe to the
   // `fa:progress` stream, run `forge`, then reveal the output.
+  // ⚠ A ref, not the `forging` state.
+  //
+  // The guard below used to read `forging`, and `setForging(true)` is
+  // eleven lines and two awaits further down — so a second click during
+  // the pre-save or the validation walked straight past it, and React
+  // would not have updated the state within one tick anyway. Measured on
+  // a real double-click: two CLI children a second apart, both ffmpegs
+  // writing `-y` to the SAME output path. Two writers on one file is how
+  // you get an unplayable render.
+  //
+  // A ref changes synchronously, so the second click sees it.
+  const forgingRef = useRef(false);
+
   async function startForge() {
-    if (forging) return; // no mid-run cancel yet — button is disabled while forging
+    if (forgingRef.current) return;
+    forgingRef.current = true;
+    try {
+      await runForge();
+    } finally {
+      forgingRef.current = false;
+    }
+  }
+
+  async function runForge() {
     let path = savedPath;
     if (!path) { setIoError('Save the project before forging.'); setIoDialog('save'); return; }
     if (dirty) {
@@ -803,6 +832,10 @@ function App() {
       (project.output?.funscripts !== false ? 1 : 0) +
       (project.channels?.audio_estim ? 1 : 0) +
       (project.output?.forgeBundle !== false ? 1 : 0));
+    // Stage identity, not a count — see makeStageTracker. Two forges
+    // sharing the `fa:progress` channel used to drive this to the end of
+    // the list in the first second.
+    const stages = makeStageTracker();
     let stage = 0;          // 1-based index of the stage in flight
     let durationMs = 0;     // output length, from the CLI's `meta:` line
     let shown = 0;          // last value pushed — the bar never walks back
@@ -836,7 +869,7 @@ function App() {
           return;
         }
         if (ev.kind === 'stage') {
-          stage = Math.min(stageCount, stage + 1);
+          stage = Math.min(stageCount, stages.saw(ev.text));
           advance(0);
           setForgeStage(ev.text);
           return;
@@ -894,6 +927,7 @@ function App() {
                 selectedIds={selectedIds}
                 onSelect={selectClip}
                 onEditJoiner={(sectionId, anchorRect) => setEditingJoiner({ sectionId, anchorRect })}
+                onEditTitlePage={(anchorRect) => setEditingTitlePage({ anchorRect })}
                 onRenameSection={renameSection}
                 onAddForgeFolder={handleAddForgeFolder}
                 newSceneJoinerKind={newSceneJoinerKind}
@@ -961,6 +995,18 @@ function App() {
       <FAStatusBar activeTab={tab} chainFile={acceptKey ? pipeline[acceptKey].chainFile : null} />
 
       {/* ── Joiner editor overlay ── */}
+      {/* The compilation's own title page — the same editor, with no
+          scene either side of it, because there is none. */}
+      {editingTitlePage && (
+        <JoinerEditor
+          joiner={project.output?.openingJoiner || { kind: 'none' }}
+          prevClip={null}
+          nextClip={project.sections?.[0]?.segments?.[0] || null}
+          anchorRect={editingTitlePage.anchorRect}
+          onChange={updateTitlePage}
+          onClose={() => setEditingTitlePage(null)} />
+      )}
+
       {editingJoiner && (() => {
         const sIdx = project.sections.findIndex(s => s.id === editingJoiner.sectionId);
         const sec = project.sections[sIdx];
