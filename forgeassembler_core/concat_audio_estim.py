@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from .channels import audio_relpath
 from .concat_video import FfmpegCommand, FfmpegInput
 
 if TYPE_CHECKING:
@@ -354,7 +355,13 @@ def forge_audio_estim(
         #   "alpha-prostate.mp3"        → out: <stem>.alpha-prostate.mp3
         #   "stereostim.wav"            → out: <stem>.stereostim.wav
         #   "prostate.stereostim.wav"   → out: <stem>.prostate.stereostim.wav
-        out_path = folder / f"{stem}.{channel_key}"
+        #
+        # The grouped layout puts all of them under `sound/` — they are the
+        # files you can play, which is what that folder means.
+        out_path = folder / audio_relpath(
+            channel_key, stem, project.output.folder_layout,
+        )
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         cmd = build_audio_estim_command(
             project, layout, channel_key, str(out_path),
         )

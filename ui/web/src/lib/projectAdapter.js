@@ -639,6 +639,11 @@ export function toForgeProject(vm, { folder = null } = {}) {
       produce_audio_estim: vch.audio_estim ?? true,
       produce_forge_bundle: vm.output?.forgeBundle ?? true,
       produce_forge_bundle_media: vm.output?.forgeBundleMedia ?? false,
+      // How the output FOLDER is arranged. Written only when grouped, because
+      // the engine omits it at its own default -- so a project made before
+      // layouts existed still round-trips byte-identically through here.
+      ...(vm.output?.folderLayout === 'grouped'
+        ? { folder_layout: 'grouped' } : {}),
       // Schema fields with no UI yet. They're optional in Output.to_dict
       // (emitted only when set), so a GUI-made project never has them —
       // but a CLI-made or hand-edited one does, and loading then saving
@@ -705,6 +710,10 @@ export function fromForgeProject(json) {
       funscripts: json.output?.produce_funscripts ?? true,
       forgeBundle: json.output?.produce_forge_bundle ?? true,
       forgeBundleMedia: json.output?.produce_forge_bundle_media ?? false,
+      // Falls back to 'flat', NOT to the new-project default: opening an old
+      // project must never rearrange the folder it already produced. New
+      // projects start grouped -- that lives in `emptyProject`.
+      folderLayout: json.output?.folder_layout === 'grouped' ? 'grouped' : 'flat',
       // Passthrough — see toForgeProject.
       ...(json.output?.bug ? { bug: json.output.bug } : {}),
       ...(json.output?.metadata ? { metadata: json.output.metadata } : {}),

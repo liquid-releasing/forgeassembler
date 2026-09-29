@@ -32,7 +32,16 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
-from .channels import MAIN, STATION_FOLDER, station_folder, with_station
+from .channels import (
+    ART_FOLDER,
+    DEFAULT_GROUP,
+    MAIN,
+    SOUND_FOLDER,
+    STATION_FOLDER,
+    STATION_GROUP,
+    station_folder,
+    with_station,
+)
 from .project import RESOLUTION_FILENAME_LABEL
 
 # Ordered, unlike `_MEDIA_EXTS` below: this drives which extension wins when a
@@ -111,8 +120,18 @@ __all__ = [
 STROKE_DEVICE = "Stroke"
 
 # Folder names that are output, not devices. `thumbnails/` is the forge's own;
-# `audio/` holds the rendered estim WAV/MP3s, which are not funscripts anyway.
-_NON_DEVICE_DIRS = {"thumbnails", "audio", "preview", "__pycache__"}
+# `audio/` and `sound/` hold rendered WAV/MP3s and `art/` the heatmaps, none of
+# which are funscripts anyway.
+_NON_DEVICE_DIRS = {
+    "thumbnails", "audio", "preview", "__pycache__",
+    SOUND_FOLDER, ART_FOLDER,
+}
+
+# The grouped layout's device folders sit one level down: `estim/E-Stim/…`,
+# `haptic/OSR2/…`. These are the only names we descend into, rather than
+# walking the whole tree -- an output folder can contain anything, and a
+# recursive scan would pull in the user's own subfolders.
+_GROUP_DIRS = set(STATION_GROUP.values()) | {DEFAULT_GROUP}
 
 _MEDIA_EXTS = {".mp4", ".mkv", ".mov", ".m4v", ".webm", ".avi", ".wmv"}
 
@@ -319,6 +338,7 @@ def _from_folder(folder: Path, stem: str, max_points: int) -> dict:
     Handles BOTH shapes a forge has written, because both are on real disks:
 
       foldered  <stem>.funscript  +  E-Stim/<stem>.alpha.funscript
+      grouped   <stem>.funscript  +  estim/E-Stim/<stem>.alpha.funscript
       flat      <stem>.funscript  +  <stem>.alpha.funscript
 
     The flat one is what forges wrote before station folders landed, and it is
@@ -363,13 +383,25 @@ def _from_folder(folder: Path, stem: str, max_points: int) -> dict:
         device = station_folder(station) if station else STROKE_DEVICE
         by_device.setdefault(device, []).append(ch)
 
-    for d in sorted(folder.iterdir(), key=lambda x: x.name):
-        if not d.is_dir() or d.name.lower() in _NON_DEVICE_DIRS:
-            continue
+    def read_device_dir(d: Path) -> None:
         for f in sorted(d.glob("*.funscript")):
             ch = read(f)
             if ch:
                 by_device.setdefault(d.name, []).append(ch)
+
+    for d in sorted(folder.iterdir(), key=lambda x: x.name):
+        if not d.is_dir() or d.name.lower() in _NON_DEVICE_DIRS:
+            continue
+        # A group folder holds device folders, not funscripts. The device keeps
+        # its own name either way, so the SAME output reads identically whether
+        # it was written flat or grouped -- which is the whole point of reading
+        # both: a person can regroup an old forge and not lose the Viewer.
+        if d.name.lower() in _GROUP_DIRS:
+            for sub in sorted(d.iterdir(), key=lambda x: x.name):
+                if sub.is_dir():
+                    read_device_dir(sub)
+            continue
+        read_device_dir(d)
 
     devices = []
     for name, chans in by_device.items():

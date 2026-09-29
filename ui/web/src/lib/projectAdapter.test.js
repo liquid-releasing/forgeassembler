@@ -1165,3 +1165,43 @@ describe('compilation overlays round-trip', () => {
       .output.overlays).toEqual([]);
   });
 });
+
+describe('output folder layout', () => {
+  it('defaults a project with no layout field to flat', () => {
+    // Opening an old project must never rearrange the folder it already
+    // produced. `grouped` is the NEW-project default, set in emptyProject.
+    const vm = fromForgeProject({ version: '2.0', sections: [], output: {} });
+    expect(vm.output.folderLayout).toBe('flat');
+  });
+
+  it('reads grouped back out', () => {
+    const vm = fromForgeProject({
+      version: '2.0', sections: [], output: { folder_layout: 'grouped' },
+    });
+    expect(vm.output.folderLayout).toBe('grouped');
+  });
+
+  it('omits the field entirely when flat, so old projects round-trip', () => {
+    const real = toForgeProject({ name: 'c', sections: [], output: { folderLayout: 'flat' } });
+    expect('folder_layout' in real.output).toBe(false);
+  });
+
+  it('writes the field when grouped', () => {
+    const real = toForgeProject({ name: 'c', sections: [], output: { folderLayout: 'grouped' } });
+    expect(real.output.folder_layout).toBe('grouped');
+  });
+
+  it('survives a round trip both ways', () => {
+    for (const layout of ['flat', 'grouped']) {
+      const real = toForgeProject({ name: 'c', sections: [], output: { folderLayout: layout } });
+      expect(fromForgeProject(real).output.folderLayout).toBe(layout);
+    }
+  });
+
+  it('treats an unknown layout as flat rather than passing it to the engine', () => {
+    const vm = fromForgeProject({
+      version: '2.0', sections: [], output: { folder_layout: 'nested' },
+    });
+    expect(vm.output.folderLayout).toBe('flat');
+  });
+});

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional
 
-from .channels import funscript_relpath
+from .channels import funscript_relpath, heatmap_relpath
 
 if TYPE_CHECKING:  # avoid circular at runtime
     from .layout import Layout
@@ -423,14 +423,19 @@ def forge_funscripts_map(
         # One folder per device, mirroring a FunscriptForge loose export —
         # `E-Stim/`, `FOC-Stim/`, `MultiFunPlayer/` — with the universal
         # stroke script at the top. Flat names cannot hold this any more:
-        # three stations write `alpha`.
-        out_path = folder / funscript_relpath(channel, stem)
+        # three stations write `alpha`. The grouped layout tucks those device
+        # folders under `estim/` and `haptic/`; `funscript_relpath` owns both.
+        # NOT `layout` -- that name is taken here by the TIMELINE layout.
+        folder_layout = project.output.folder_layout
+        out_path = folder / funscript_relpath(channel, stem, folder_layout)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         write_funscript(out_path, combined)
         written[channel] = out_path
 
-        # Companion heatmap beside its funscript, same stem.
-        heatmap_path = out_path.with_name(f"{out_path.stem}.heatmap.png")
+        # Companion heatmap beside its funscript — except the main one, which
+        # grouped sends to `art/`.
+        heatmap_path = folder / heatmap_relpath(channel, stem, folder_layout)
+        heatmap_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             write_heatmap(
                 combined.get("actions") or [],

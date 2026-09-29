@@ -271,3 +271,62 @@ def test_forge_funscripts_heatmap_failure_does_not_break_funscript_write(tmp_pat
     assert written == [out_folder / "x.funscript"]
     # But no heatmap file (because render failed and we swallow)
     assert not (out_folder / "x.heatmap.png").exists()
+
+
+def test_a_grouped_forge_writes_the_whole_tree_in_its_new_places(tmp_path: Path):
+    """End to end, not just path arithmetic: forge the same project grouped
+    and assert every file landed where the layout says."""
+    import json
+
+    from forgeassembler_core.concat_funscript import forge_funscripts
+    from forgeassembler_core.layout import lay_out
+    from forgeassembler_core.project import (
+        Output,
+        OutputChannels,
+        Project,
+        Segment,
+    )
+
+    clip_dir = tmp_path / "clip"
+    clip_dir.mkdir()
+    video = clip_dir / "c.mp4"
+    video.write_bytes(b"")
+    (clip_dir / "c.funscript").write_text(
+        json.dumps({"actions": [{"at": 0, "pos": 0}, {"at": 500, "pos": 100}]}),
+        encoding="utf-8",
+    )
+    (clip_dir / "c.pitch.funscript").write_text(
+        json.dumps({"actions": [{"at": 0, "pos": 50}, {"at": 400, "pos": 90}]}),
+        encoding="utf-8",
+    )
+    (clip_dir / "c.alpha.funscript").write_text(
+        json.dumps({"actions": [{"at": 0, "pos": 10}, {"at": 400, "pos": 80}]}),
+        encoding="utf-8",
+    )
+
+    out_folder = tmp_path / "out"
+    p = Project(
+        items=[Segment(id="s1", video=str(video))],
+        output=Output(folder=str(out_folder), basename="x",
+                      folder_layout="grouped"),
+        output_channels=OutputChannels(main=True, multi_axis=True,
+                                       three_phase_estim=True),
+    )
+    written = forge_funscripts(p, lay_out(p, probe=lambda _p: 1000))
+
+    assert sorted(f.relative_to(out_folder).as_posix() for f in written) == [
+        "estim/E-Stim/x.alpha.funscript",
+        "haptic/MultiFunPlayer/x.pitch.funscript",
+        "x.funscript",
+    ]
+    # The universal stroke script stays at the top; only ITS heatmap moves.
+    assert (out_folder / "x.funscript").is_file()
+    assert (out_folder / "art" / "x.heatmap.png").is_file()
+    assert not (out_folder / "x.heatmap.png").exists()
+    # A channel's own heatmap stays beside its funscript, in both layouts.
+    assert (out_folder / "estim" / "E-Stim" / "x.alpha.heatmap.png").is_file()
+    assert (out_folder / "haptic" / "MultiFunPlayer"
+            / "x.pitch.heatmap.png").is_file()
+    # Nothing left behind in the flat places.
+    assert not (out_folder / "E-Stim").exists()
+    assert not (out_folder / "MultiFunPlayer").exists()

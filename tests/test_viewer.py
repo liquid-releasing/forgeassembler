@@ -380,3 +380,79 @@ def test_a_station_main_never_falls_back_to_the_universal_track(flat_output):
     res = load_single_channel(str(flat_output), "E-Stim", "main")
     assert res["available"] is False
     assert res["actions"] == []
+
+
+# ── The grouped output layout ──────────────────────────────────────────
+
+def _both_layouts(tmp_path):
+    """The SAME output written flat and grouped, for comparison."""
+    flat = tmp_path / "flat"
+    _funscript(flat / "Comp.funscript", _ramp())
+    _funscript(flat / "E-Stim" / "Comp.alpha.funscript", _ramp())
+    _funscript(flat / "E-Stim" / "Comp.beta.funscript", _ramp())
+    _funscript(flat / "FOC-Stim 4-phase" / "Comp.e1.funscript", _ramp())
+    _funscript(flat / "MultiFunPlayer" / "Comp.surge.funscript", _ramp())
+    _funscript(flat / "Handy" / "Comp.handy.funscript", _ramp())
+
+    grouped = tmp_path / "grouped"
+    _funscript(grouped / "Comp.funscript", _ramp())
+    _funscript(grouped / "estim" / "E-Stim" / "Comp.alpha.funscript", _ramp())
+    _funscript(grouped / "estim" / "E-Stim" / "Comp.beta.funscript", _ramp())
+    _funscript(
+        grouped / "estim" / "FOC-Stim 4-phase" / "Comp.e1.funscript", _ramp())
+    _funscript(
+        grouped / "haptic" / "MultiFunPlayer" / "Comp.surge.funscript", _ramp())
+    _funscript(grouped / "haptic" / "Handy" / "Comp.handy.funscript", _ramp())
+    return flat, grouped
+
+
+def _shape(folder):
+    data = load_output(str(folder), max_points=200)
+    return {d["name"]: sorted(c["name"] for c in d["channels"])
+            for d in data["devices"]}
+
+
+def test_a_grouped_folder_reads_exactly_like_the_flat_one(tmp_path):
+    """The device keeps its own name in both, so regrouping an output must
+    not change a single thing the Viewer shows. Verified against a real
+    12-device / 49-channel forge before it was written down here."""
+    flat, grouped = _both_layouts(tmp_path)
+    assert _shape(grouped) == _shape(flat)
+    assert set(_shape(grouped)) == {
+        STROKE_DEVICE, "E-Stim", "FOC-Stim 4-phase", "MultiFunPlayer", "Handy",
+    }
+
+
+def test_the_group_folders_are_not_mistaken_for_devices(tmp_path):
+    """`estim/` and `haptic/` hold device folders. Reading them as devices
+    would produce two empty ones and lose every channel inside."""
+    _, grouped = _both_layouts(tmp_path)
+    assert "estim" not in _shape(grouped)
+    assert "haptic" not in _shape(grouped)
+
+
+def test_sound_and_art_are_not_devices(tmp_path):
+    """They hold audio and PNGs. A stray funscript dropped in one is not a
+    device either — the folder says what it is."""
+    _, grouped = _both_layouts(tmp_path)
+    (grouped / "sound").mkdir()
+    (grouped / "sound" / "Comp.mp3").write_bytes(b"")
+    (grouped / "art").mkdir()
+    (grouped / "art" / "Comp.heatmap.png").write_bytes(b"")
+    _funscript(grouped / "art" / "Comp.stray.funscript", _ramp())
+
+    shape = _shape(grouped)
+    assert "sound" not in shape
+    assert "art" not in shape
+
+
+def test_a_folder_holding_BOTH_layouts_does_not_double_up(tmp_path):
+    """Re-forging grouped into a folder that already had a flat forge leaves
+    both on disk. The Viewer must show one of each channel, not two."""
+    out = tmp_path / "out"
+    _funscript(out / "Comp.funscript", _ramp())
+    _funscript(out / "E-Stim" / "Comp.alpha.funscript", _ramp())
+    _funscript(out / "estim" / "E-Stim" / "Comp.alpha.funscript", _ramp())
+
+    shape = _shape(out)
+    assert shape["E-Stim"] == ["alpha"]

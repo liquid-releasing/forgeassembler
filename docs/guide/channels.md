@@ -34,6 +34,48 @@ Bass Shaker/combined.shaker.funscript
 Point restim at the folder for the device you actually own; point
 MultiFunPlayer at `MultiFunPlayer/`. A heatmap sits beside each funscript.
 
+### Grouping the folders
+
+Eleven device folders and five audio files in one folder bury the three
+artifacts you actually open. **Folder layout** in the Output tab offers a
+second arrangement:
+
+```text
+combined.forge
+combined.1080p30.mp4
+combined.funscript                      # universal stroke, still at the top
+art/combined.heatmap.png
+sound/combined.mp3
+sound/combined.stereostim.wav
+estim/E-Stim/combined.alpha.funscript
+estim/FOC-Stim/combined.alpha.funscript
+estim/FOC-Stim 4-phase/combined.e1.funscript
+haptic/MultiFunPlayer/combined.surge.funscript
+haptic/Handy/combined.handy.funscript
+```
+
+The device folders keep their own names and their own contents — they just
+move one level down, under `estim/` or `haptic/`. Every audio file goes to
+`sound/`, including the e-stim WAVs: they are files you can play, which is
+what that folder means, while `estim/` holds scripts a device reads.
+
+Each channel's own heatmap **stays beside its funscript**. Thirty heatmaps in
+one folder tell you nothing about which script each belongs to; next to it,
+the pairing is the filename. Only the top-level one moves, to `art/`.
+
+New projects start grouped. A project saved before this setting existed stays
+flat, so re-forging something you already publish from cannot rearrange it —
+switch it over yourself when you want to.
+
+!!! warning "Switching layout leaves the old files behind"
+
+    A forge writes; it does not tidy up. Re-forging a flat output as grouped
+    writes the new tree and leaves the old folders where they were, so you get
+    both. Delete the old ones, or forge into an empty folder.
+
+Both layouts are read back by the Viewer, by ForgePlayer and by FunscriptForge
+— regrouping an output does not change a thing any of them shows.
+
 A funscript that arrives with no station — a loose `<stem>.alpha.funscript`
 sitting next to a video, where nothing on disk says which device it was
 clamped for — is filed under the station that owns that channel, and it feeds
@@ -231,6 +273,9 @@ Every funscript written gets a companion `.heatmap.png` beside it, in the
 same folder — `combined.heatmap.png` at the top, `E-Stim/combined.alpha.heatmap.png`
 next to that station's alpha, and so on. They come with the **funscripts**,
 not the video, so a funscripts-only forge still produces them.
+
+In the grouped layout the per-channel heatmaps stay exactly where they are,
+beside their funscripts; only the top-level one moves to `art/`.
 
 Each is a density map of that channel across the whole combined output — a
 quick read of pacing: dense stretches, quiet stretches, spikes, and the blank

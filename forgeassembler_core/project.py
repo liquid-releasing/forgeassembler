@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional
 
+from .channels import FLAT, LAYOUTS
+
 PROJECT_VERSION = "2.0"
 
 AudioMode = Literal["keep", "replace", "silence"]
@@ -397,6 +399,15 @@ class Output:
     # compilation is measured in gigabytes, and the consumer that wants it
     # almost always has it already.
     produce_forge_bundle_media: bool = False
+    # How the output FOLDER is arranged: "flat" or "grouped". See
+    # `channels.FLAT` / `channels.GROUPED` for what each writes.
+    #
+    # Defaults to "flat" on purpose. A project saved before this field existed
+    # re-forges into the folder it already produced, instead of scattering a
+    # second copy of everything into art/ sound/ estim/ haptic/ beside the
+    # first. New projects start grouped -- that choice lives in the UI's new
+    # project, not here, so opening an old file can never change its shape.
+    folder_layout: str = FLAT
     bug: Optional[BugOverlay] = None
     metadata: Metadata = field(default_factory=Metadata)
     # Optional studio branding at each end of the compilation, imported from
@@ -476,6 +487,10 @@ class Output:
             "produce_forge_bundle": self.produce_forge_bundle,
             "produce_forge_bundle_media": self.produce_forge_bundle_media,
         }
+        # Omitted at the default, so every project written before layouts
+        # existed round-trips byte-identically.
+        if self.folder_layout != FLAT:
+            d["folder_layout"] = self.folder_layout
         if self.bug is not None:
             d["bug"] = self.bug.to_dict()
         md = self.metadata.to_dict()
@@ -515,6 +530,10 @@ class Output:
             produce_forge_bundle=bool(d.get("produce_forge_bundle", True)),
             produce_forge_bundle_media=bool(
                 d.get("produce_forge_bundle_media", False)),
+            folder_layout=(
+                d["folder_layout"]
+                if d.get("folder_layout") in LAYOUTS else FLAT
+            ),
             bug=BugOverlay.from_dict(bug_dict) if bug_dict else None,
             metadata=Metadata.from_dict(d.get("metadata")),
             closing_joiner=(

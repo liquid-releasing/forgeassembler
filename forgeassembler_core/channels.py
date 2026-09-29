@@ -42,16 +42,26 @@ from pathlib import Path
 from typing import Optional
 
 __all__ = [
+    "ART_FOLDER",
+    "DEFAULT_GROUP",
     "DEFAULT_STATION",
+    "FLAT",
+    "GROUPED",
+    "LAYOUTS",
     "MAIN",
+    "SOUND_FOLDER",
     "STATION_FOLDER",
+    "STATION_GROUP",
     "STATION_SEP",
+    "audio_relpath",
     "bundle_relpath",
     "channel_of",
     "funscript_relpath",
+    "heatmap_relpath",
     "make_key",
     "parse_key",
     "station_folder",
+    "station_group",
     "station_of",
     "with_station",
 ]
@@ -118,6 +128,74 @@ DEFAULT_STATION: dict[str, str] = {
 }
 
 
+# ── Output folder layouts ──────────────────────────────────────────────
+#
+# "flat" is what every forge before this wrote: station folders sitting in the
+# output folder beside the video, the audio and the heatmap. It is kept
+# because it is what existing outputs look like, and re-forging a project
+# should not quietly rearrange a folder someone already publishes from.
+#
+# "grouped" answers the thing that actually goes wrong with "flat": eleven
+# station folders and five audio files bury the three artifacts anyone
+# actually opens. Grouped leaves the top level as the forge file, the videos,
+# the universal funscript and four folders.
+#
+#   <stem>.forge  <stem>.4k30.mp4  <stem>.funscript
+#   art/     — the main heatmap, title cards, anything else rendered
+#   sound/   — every audio file, the e-stim WAVs included
+#   estim/   — E-Stim, FOC-Stim, FOC-Stim 4-phase
+#   haptic/  — Handy, OSR2, SR6, MultiFunPlayer, Lovense, …
+#
+# A per-channel heatmap stays BESIDE its funscript in both layouts. Thirty of
+# them in one art/ folder tells you nothing about which script each belongs
+# to; next to it, the pairing is the filename.
+FLAT = "flat"
+GROUPED = "grouped"
+LAYOUTS: tuple[str, ...] = (FLAT, GROUPED)
+
+SOUND_FOLDER = "sound"
+ART_FOLDER = "art"
+
+# Which top-level group a station sits under when grouped.
+STATION_GROUP: dict[str, str] = {
+    "estim3p": "estim",
+    "focstim": "estim",
+    "focstim4p": "estim",
+    "handy": "haptic",
+    "tcode": "haptic",
+    "osr2": "haptic",
+    "sr6": "haptic",
+    "lovense": "haptic",
+    "vacuglide": "haptic",
+    "ossm": "haptic",
+    "shaker": "haptic",
+}
+
+# An unknown station drives something -- that is what a station IS. Guessing
+# "haptic" puts a newly-supported device beside its peers instead of alone at
+# the top level, and being wrong costs one folder.
+DEFAULT_GROUP = "haptic"
+
+
+def station_group(station: str) -> str:
+    """The top-level group folder `station` belongs to when grouped."""
+    return STATION_GROUP.get(station, DEFAULT_GROUP)
+
+
+def _check_layout(layout: str) -> str:
+    """Normalise a layout name, refusing one we do not write.
+
+    Loudly: a typo here would silently produce the flat layout, and the
+    symptom -- files in the wrong place -- looks like the feature never
+    landed rather than like a bad argument.
+    """
+    if layout not in LAYOUTS:
+        raise ValueError(
+            f"unknown output layout {layout!r}; expected one of {LAYOUTS}",
+        )
+    return layout
+
+
 def make_key(station: Optional[str], channel: str) -> str:
     """Build a channel key. With no station the channel stands alone.
 
@@ -170,18 +248,54 @@ def station_folder(station: str) -> str:
     return STATION_FOLDER.get(station) or station.replace("_", " ").title()
 
 
-def funscript_relpath(key: str, stem: str) -> Path:
+def funscript_relpath(key: str, stem: str, layout: str = FLAT) -> Path:
     """Where `key` is written inside a forge's output FOLDER.
 
     Main rides at the top as `<stem>.funscript` — the universal stroke script
-    most players want, exactly as FunscriptForge places it. Everything else
-    goes in its device folder.
+    most players want, exactly as FunscriptForge places it, and it stays there
+    in BOTH layouts. Everything else goes in its device folder, which the
+    grouped layout tucks under `estim/` or `haptic/`.
     """
+    _check_layout(layout)
     if key == MAIN:
         return Path(f"{stem}.funscript")
     station, channel = with_station(key)
     name = f"{stem}.funscript" if channel == MAIN else f"{stem}.{channel}.funscript"
-    return Path(station_folder(station)) / name if station else Path(name)
+    if not station:
+        return Path(name)
+    folder = Path(station_folder(station))
+    if layout == GROUPED:
+        folder = Path(station_group(station)) / folder
+    return folder / name
+
+
+def heatmap_relpath(key: str, stem: str, layout: str = FLAT) -> Path:
+    """Where `key`'s companion heatmap PNG goes.
+
+    Beside its funscript, so the pairing is the filename — except the main
+    one, which grouped moves to `art/`. That single PNG is the only heatmap
+    that sits at the top level, and the top level is what grouping is for.
+    """
+    _check_layout(layout)
+    if key == MAIN and layout == GROUPED:
+        return Path(ART_FOLDER) / f"{stem}.heatmap.png"
+    script = funscript_relpath(key, stem, layout)
+    return script.with_name(f"{script.stem}.heatmap.png")
+
+
+def audio_relpath(channel_key: str, stem: str, layout: str = FLAT) -> Path:
+    """Where a concatenated audio/e-stim channel is written.
+
+    `channel_key` already carries the extension — "mp3", "prostate.mp3",
+    "stereostim.wav" — so the name is just `<stem>.<channel_key>`.
+
+    The e-stim WAVs live here with the rest of the audio rather than under
+    `estim/` with the e-stim funscripts. They are the same kind of thing as
+    the MP3s: a file you can play. `estim/` holds scripts a device reads.
+    """
+    _check_layout(layout)
+    name = f"{stem}.{channel_key}"
+    return Path(SOUND_FOLDER) / name if layout == GROUPED else Path(name)
 
 
 def bundle_relpath(key: str, stem: str) -> str:
