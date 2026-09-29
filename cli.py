@@ -120,7 +120,7 @@ def cmd_list_fonts(args: argparse.Namespace) -> int:
     whatever fontconfig picks first -- reported from a real forge as a
     "weird font", and the reason this is exposed at all.
     """
-    from forgeassembler_core.fonts import list_fonts
+    from forgeassembler_core.fonts import list_fonts, preferred_font_stem
 
     fonts = list_fonts()
     if getattr(args, "format", "text") == "json":
@@ -132,25 +132,6 @@ def cmd_list_fonts(args: argparse.Namespace) -> int:
     for stem, _path in fonts:
         print(stem)
     return 0
-
-
-# Tried in order. These are the stems Windows and most Linux installs use
-# for a plain, readable sans -- the sort of thing credits are set in. The
-# first that exists becomes the default for a new text overlay, so nobody
-# has to know what "AGENCYB" is to get something legible.
-_PREFERRED_FONTS = (
-    "arial", "Arial", "segoeui", "SegoeUI", "calibri", "Calibri",
-    "verdana", "Verdana", "tahoma", "Tahoma",
-    "DejaVuSans", "LiberationSans-Regular", "NotoSans-Regular",
-)
-
-
-def preferred_font_stem(fonts: list) -> Optional[str]:
-    have = {s for s, _ in fonts}
-    for want in _PREFERRED_FONTS:
-        if want in have:
-            return want
-    return fonts[0][0] if fonts else None
 
 
 def cmd_list_joiners(args: argparse.Namespace) -> int:

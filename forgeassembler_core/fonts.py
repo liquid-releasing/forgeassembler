@@ -84,13 +84,71 @@ def list_fonts() -> list[tuple[str, str]]:
     return sorted(seen.items())
 
 
-def resolve_font_path(stem: str) -> str | None:
+def resolve_font_path(
+    stem: str, fonts: list[tuple[str, str]] | None = None
+) -> str | None:
     """Return the full filesystem path for a font stem, or None when
     no such font is installed on this machine.
+
+    The match is case-insensitive on the second pass. `arial.ttf` gives the
+    stem "arial", but a project may perfectly reasonably say "Arial" -- and
+    that used to resolve to None and fall through to the fallback font with
+    nothing said about it.
     """
     if not stem:
         return None
-    for candidate_stem, path in list_fonts():
+    installed = list_fonts() if fonts is None else fonts
+    for candidate_stem, path in installed:
+        if candidate_stem == stem:
+            return path
+    want = stem.casefold()
+    for candidate_stem, path in installed:
+        if candidate_stem.casefold() == want:
+            return path
+    return None
+
+
+# Tried in order. These are the stems Windows and most Linux installs use for
+# a plain, readable sans -- the sort of thing credits are set in.
+#
+# This lives HERE rather than in cli.py because the ENGINE needs it too. The
+# forge-time fallback for an overlay with no font used to be `list_fonts()[0]`,
+# which is alphabetical: on Windows that is AGENCYB (Agency FB Bold), a narrow
+# condensed face. It is what actually rendered a real credits roll, reported
+# as "the selection of arial didn't take -- this isn't arial".
+PREFERRED_FONTS: tuple[str, ...] = (
+    "arial", "Arial", "segoeui", "SegoeUI", "calibri", "Calibri",
+    "verdana", "Verdana", "tahoma", "Tahoma",
+    "DejaVuSans", "LiberationSans-Regular", "NotoSans-Regular",
+)
+
+
+def preferred_font_stem(
+    fonts: list[tuple[str, str]] | None = None
+) -> str | None:
+    """The stem to default a new text overlay to, or None with no fonts."""
+    installed = list_fonts() if fonts is None else fonts
+    have = {s for s, _ in installed}
+    for want in PREFERRED_FONTS:
+        if want in have:
+            return want
+    return installed[0][0] if installed else None
+
+
+def fallback_font_path(
+    fonts: list[tuple[str, str]] | None = None
+) -> str | None:
+    """The font file to draw with when the overlay names none we can find.
+
+    Never "whatever sorts first" -- see PREFERRED_FONTS.
+    """
+    installed = list_fonts() if fonts is None else fonts
+    stem = preferred_font_stem(installed)
+    if stem is None:
+        return None
+    # Scanned here rather than delegated to `resolve_font_path`: the stem came
+    # OUT of this same list, so a second lookup can only disagree with it.
+    for candidate_stem, path in installed:
         if candidate_stem == stem:
             return path
     return None

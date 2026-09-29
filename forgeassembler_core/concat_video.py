@@ -801,19 +801,18 @@ def build_ffmpeg_command(
             if abs_end_s <= abs_start_s:
                 continue
 
-            # Resolve the font stem to a full path. When the stem
-            # doesn't match any installed font (font was set on a
-            # different machine, user hasn't picked one yet), fall
-            # back to the first available system font so the text
-            # still renders. If no fonts are installed at all, skip
-            # the overlay with no filter emitted.
-            from .fonts import list_fonts, resolve_font_path
+            # Resolve the font stem to a full path. When the stem doesn't
+            # match any installed font (set on a different machine, or never
+            # chosen), fall back to a PLAIN READABLE SANS -- not to whatever
+            # sorts first, which on Windows is AGENCYB (Agency FB Bold) and
+            # is what a real credits roll came out in. If no fonts are
+            # installed at all, skip the overlay with no filter emitted.
+            from .fonts import fallback_font_path, resolve_font_path
             fontfile = resolve_font_path(ov.font_family) if ov.font_family else None
             if fontfile is None:
-                all_fonts = list_fonts()
-                if not all_fonts:
+                fontfile = fallback_font_path()
+                if fontfile is None:
                     continue  # no fonts on this machine
-                fontfile = all_fonts[0][1]
 
             out_label = f"v_sectx{text_overlay_count}"
             # Prefer the pre-written textfile when available (runtime

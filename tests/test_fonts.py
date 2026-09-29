@@ -69,3 +69,64 @@ def test_list_fonts_recurses_into_subdirectories(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(fonts_mod, "_candidate_dirs", lambda: [d])
     fonts = fonts_mod.list_fonts()
     assert ("NotoSans" in [s for s, _ in fonts])
+
+
+def test_resolve_font_path_is_case_insensitive(tmp_path: Path, monkeypatch):
+    """`arial.ttf` gives the stem "arial", but a project may well say
+    "Arial" — which used to resolve to None and silently fall through to
+    the fallback font."""
+    d = tmp_path / "fonts"
+    d.mkdir()
+    (d / "arial.ttf").write_bytes(b"")
+    monkeypatch.setattr(fonts_mod, "_candidate_dirs", lambda: [d])
+
+    for spelling in ("arial", "Arial", "ARIAL", "ArIaL"):
+        assert fonts_mod.resolve_font_path(spelling) is not None, spelling
+    assert fonts_mod.resolve_font_path("Helvetica") is None
+
+
+def test_resolve_font_path_prefers_an_exact_match(tmp_path: Path, monkeypatch):
+    """Two fonts differing only in case: the exact spelling wins, so a
+    deliberate choice is never folded into its neighbour."""
+    d = tmp_path / "fonts"
+    d.mkdir()
+    (d / "CASED.ttf").write_bytes(b"")
+    (d / "cased.otf").write_bytes(b"")
+    monkeypatch.setattr(fonts_mod, "_candidate_dirs", lambda: [d])
+
+    assert fonts_mod.resolve_font_path("cased").endswith("cased.otf")
+    assert fonts_mod.resolve_font_path("CASED").endswith("CASED.ttf")
+
+
+def test_fallback_is_a_readable_sans_not_the_first_alphabetically(
+    tmp_path: Path, monkeypatch,
+):
+    """The regression this exists for: the old fallback was
+    `list_fonts()[0]`, which on Windows is AGENCYB (Agency FB Bold) — a
+    narrow condensed face that rendered a real credits roll."""
+    d = tmp_path / "fonts"
+    d.mkdir()
+    (d / "AGENCYB.ttf").write_bytes(b"")
+    (d / "arial.ttf").write_bytes(b"")
+    (d / "Wingdings.ttf").write_bytes(b"")
+    monkeypatch.setattr(fonts_mod, "_candidate_dirs", lambda: [d])
+
+    assert fonts_mod.preferred_font_stem() == "arial"
+    assert fonts_mod.fallback_font_path().endswith("arial.ttf")
+
+
+def test_fallback_settles_for_what_there_is(tmp_path: Path, monkeypatch):
+    """With none of the preferred faces installed, take the first rather
+    than render nothing — but say so by ordering, not by accident."""
+    d = tmp_path / "fonts"
+    d.mkdir()
+    (d / "Obscure.ttf").write_bytes(b"")
+    monkeypatch.setattr(fonts_mod, "_candidate_dirs", lambda: [d])
+    assert fonts_mod.preferred_font_stem() == "Obscure"
+    assert fonts_mod.fallback_font_path().endswith("Obscure.ttf")
+
+
+def test_fallback_with_no_fonts_at_all(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(fonts_mod, "_candidate_dirs", lambda: [])
+    assert fonts_mod.preferred_font_stem() is None
+    assert fonts_mod.fallback_font_path() is None
