@@ -1,10 +1,9 @@
 /* @esm-converted */
 import React from 'react';
-import { FASectionLabel } from './AppShell';
 import { Button, Field, Icon, TextInput, useBackdropDismiss } from './primitives';
 import { pickFile, pickFolder } from './api/forge';
 import { lastFolder, rememberFolder, rememberFileFolder } from './lib/lastFolders';
-import { PROJECT_EXT, PROJECT_FILTERS, projectFileName } from './lib/projectFile';
+import { PROJECT_FILTERS, projectFileName } from './lib/projectFile';
 
 // ProjectIO — Save / Open / Unsaved-changes dialogs.
 //
@@ -18,18 +17,6 @@ import { PROJECT_EXT, PROJECT_FILTERS, projectFileName } from './lib/projectFile
 //   • <UnsavedChangesDialog> — confirm before discarding edits.
 
 const { useState: ioState, useEffect: ioUseEffect, useRef: ioRef } = React;
-
-// ── A few mock recents shown in OpenProjectDialog ────────────────
-const PIO_RECENTS = [
-  { path: `C:/Users/bruce/Videos/forgeassembler/vol_03_compilation.${PROJECT_EXT}`,
-    name: "vol_03_compilation", when: "today · 14:22", segs: 8, dur: "8:46", res: "1080p" },
-  { path: `C:/Users/bruce/Videos/forgeassembler/longform_session_aug.${PROJECT_EXT}`,
-    name: "longform_session_aug", when: "yesterday · 23:51", segs: 14, dur: "20:52", res: "1440p" },
-  { path: `C:/Users/bruce/Videos/forgeassembler/lqr_marketing.${PROJECT_EXT}`,
-    name: "lqr_marketing", when: "Aug 12 · 19:00", segs: 4, dur: "0:48", res: "1080p" },
-  { path: "C:/Users/bruce/Videos/forgeassembler/draft_test.forgeproject.json",
-    name: "draft_test", when: "Aug 11 · 09:42", segs: 6, dur: "5:11", res: "1080p" },
-];
 
 // ── Save As dialog ───────────────────────────────────────────────
 function SaveAsDialog({ project, defaultFolder, onCancel, onSave }) {
@@ -99,10 +86,10 @@ function SaveAsDialog({ project, defaultFolder, onCancel, onSave }) {
 // ── Open Project dialog ──────────────────────────────────────────
 function OpenProjectDialog({ onCancel, onOpen }) {
   return (
-    <Modal onClose={onCancel} width={580}
+    <Modal onClose={onCancel} width={520}
             title="Open project"
             icon="folder-open"
-            subtitle="Pick a .forgeproject.json from disk, or click any recent below.">
+            subtitle="Pick a .forgeproject.json from disk. Recent projects are on the Home screen.">
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Browse from disk */}
         <div style={{
@@ -135,44 +122,6 @@ function OpenProjectDialog({ onCancel, onOpen }) {
                    }}>
             Browse…
           </Button>
-        </div>
-
-        {/* Recents */}
-        <div>
-          <FASectionLabel right={<Button kind="ghost" size="sm">Clear list</Button>}>
-            Recent projects
-          </FASectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4,
-                          maxHeight: 280, overflow: "auto" }}>
-            {PIO_RECENTS.map((r) => (
-              <button key={r.path}
-                       onClick={() => onOpen({ path: r.path, name: r.name })}
-                       style={{
-                         display: "flex", alignItems: "center", gap: 12,
-                         padding: "8px 10px", border: "1px solid var(--border)",
-                         background: "transparent", borderRadius: 6,
-                         color: "var(--text)", cursor: "pointer",
-                         fontFamily: "inherit", textAlign: "left",
-                       }}>
-                <Icon name="file-json-2" size={14} style={{ color: "var(--text-muted)" }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="mono" style={{ fontSize: 12, fontWeight: 600,
-                                                    overflow: "hidden", textOverflow: "ellipsis",
-                                                    whiteSpace: "nowrap" }}>{r.name}.forgeproject.json</div>
-                  <div className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)",
-                                                   overflow: "hidden", textOverflow: "ellipsis",
-                                                   whiteSpace: "nowrap" }}>{r.path}</div>
-                </div>
-                <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{r.when}</span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)", width: 50, textAlign: "right" }}>
-                  {r.segs} clips
-                </span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)", width: 50, textAlign: "right" }}>
-                  {r.dur}
-                </span>
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -270,4 +219,4 @@ function slug(s) { return (s || "untitled").toLowerCase().replace(/\s+/g, "-").r
 Object.assign(window, { SaveAsDialog, OpenProjectDialog, UnsavedChangesDialog });
 
 
-export { Modal, ModalFooter, OpenProjectDialog, PIO_RECENTS, SaveAsDialog, UnsavedChangesDialog, slug };
+export { Modal, ModalFooter, OpenProjectDialog, SaveAsDialog, UnsavedChangesDialog, slug };

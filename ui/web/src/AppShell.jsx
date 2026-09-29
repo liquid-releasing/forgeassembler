@@ -101,6 +101,8 @@ function FATopBar({ project, totalMs, sceneCount,
         <Button kind="ghost" size="icon" title="Undo"><Icon name="undo-2" size={14} /></Button>
         <Button kind="ghost" size="icon" title="Redo"><Icon name="redo-2" size={14} /></Button>
         <div style={{ width: 1, height: 22, background: "var(--border)", margin: "0 6px" }} />
+        <Button kind="ghost" size="sm" icon="house" onClick={onHome}
+                title="Home — recent projects">Home</Button>
         <Button kind="ghost" size="sm" icon="file-plus" onClick={onNew}
                 title="Start an empty project">New</Button>
         <Button kind="secondary" size="sm" icon="folder-open" onClick={onOpen}>Open project…</Button>
