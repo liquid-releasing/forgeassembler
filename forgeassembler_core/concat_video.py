@@ -217,6 +217,27 @@ def _section_time_windows(project: Project, layout: Layout) -> list[tuple]:
     return out
 
 
+def _overlay_windows(project: Project, layout: Layout) -> list[tuple]:
+    """`[(overlays, window_start_ms, window_end_ms), ...]` — every overlay
+    owner with the absolute window its times are measured from.
+
+    Sections first, then the compilation's own overlays over the whole
+    output. The compilation window is the only one that reaches the branding
+    at either end, because branding belongs to no Section.
+
+    Returning windows rather than owners is what lets the image and text
+    stages treat both the same: a compilation overlay is a section overlay
+    whose section happens to be the entire timeline.
+    """
+    out: list[tuple] = [
+        (sec.overlays, start, end)
+        for sec, start, end in _section_time_windows(project, layout)
+    ]
+    if project.output.overlays:
+        out.append((project.output.overlays, 0, layout.total_duration_ms))
+    return out
+
+
 def _fade_color(joiner: Optional[ProjectJoiner]) -> str:
     """The colour a neighbouring segment should fade to, or from.
 
@@ -679,8 +700,8 @@ def build_ffmpeg_command(
     # final timeline, then applied on top of the concat'd video before
     # the project-level bug lands on top of everything.
     section_overlay_count = 0
-    for sec, sec_start_ms, sec_end_ms in _section_time_windows(project, layout):
-        for ov in sec.overlays:
+    for ov_list, sec_start_ms, sec_end_ms in _overlay_windows(project, layout):
+        for ov in ov_list:
             if ov.kind != "image":
                 continue  # audio overlays land in the audio pipeline (future)
             abs_start_s = (sec_start_ms / 1000.0) + float(ov.start_s)
@@ -744,8 +765,8 @@ def build_ffmpeg_command(
     # Rendered AFTER image overlays so text can sit on top of a logo
     # or banner. Same absolute-time enable window as images.
     text_overlay_count = 0
-    for sec, sec_start_ms, sec_end_ms in _section_time_windows(project, layout):
-        for ov in sec.overlays:
+    for ov_list, sec_start_ms, sec_end_ms in _overlay_windows(project, layout):
+        for ov in ov_list:
             if ov.kind != "text":
                 continue
             if not ov.text:
@@ -806,8 +827,8 @@ def build_ffmpeg_command(
     # plays); then amix the two streams with duration=first so the
     # main audio's length governs the output.
     audio_overlay_count = 0
-    for sec, sec_start_ms, sec_end_ms in _section_time_windows(project, layout):
-        for ov in sec.overlays:
+    for ov_list, sec_start_ms, sec_end_ms in _overlay_windows(project, layout):
+        for ov in ov_list:
             if ov.kind != "audio":
                 continue
             abs_start_s = (sec_start_ms / 1000.0) + float(ov.start_s)

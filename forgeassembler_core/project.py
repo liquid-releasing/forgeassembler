@@ -410,6 +410,17 @@ class Output:
     # forge` (and anything scripted on top of it) would silently drop the
     # branding.
     #
+    # Overlays over the WHOLE compilation, branding included -- a logo that
+    # appears for a while, credits over the closing bumper. Timed in absolute
+    # seconds from the start of the output.
+    #
+    # Same type as a Section's overlays, which is the point: position, fades,
+    # opacity, colour and font all come for free, "two sets of credits" is
+    # two entries, and the renderer needed one extra window rather than a
+    # second kind of overlay. A Section overlay is timed from ITS section;
+    # these are the only ones that can reach the branding at either end,
+    # because branding belongs to no Section.
+    overlays: list["SectionOverlay"] = field(default_factory=list)
     # Neither is a Section, but they are treated differently in the chapter
     # list -- see `build_chapters`. The intro gets no marker: chapter 01 is
     # the first real scene, and a viewer skipping to it lands on content.
@@ -476,6 +487,8 @@ class Output:
         # page round-trips byte-identically.
         if self.opening_joiner.joiner_type != "none":
             d["opening_joiner"] = self.opening_joiner.to_dict()
+        if self.overlays:
+            d["overlays"] = [o.to_dict() for o in self.overlays]
         if self.branding_intro is not None:
             d["branding_intro"] = self.branding_intro.to_dict()
         if self.branding_outro is not None:
@@ -512,6 +525,9 @@ class Output:
                 Joiner.from_dict(opening_dict) if opening_dict
                 else Joiner(id="join-open", joiner_type="none")
             ),
+            overlays=[
+                SectionOverlay.from_dict(o) for o in (d.get("overlays") or [])
+            ],
             branding_intro=(
                 Segment.from_dict(d["branding_intro"])
                 if d.get("branding_intro") else None
