@@ -42,6 +42,7 @@ pub fn run() {
             commands::pick_file,
             commands::pick_save_path,
             commands::reveal_path,
+            commands::open_path,
             commands::open_external,
         ])
         .run(tauri::generate_context!())

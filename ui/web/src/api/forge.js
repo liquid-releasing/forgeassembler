@@ -216,6 +216,20 @@ export function saveProject(path, project) {
   return call('save_project', { path, project }, () => Promise.resolve());
 }
 
+// Read / write any JSON document beside a project -- today, branding presets.
+//
+// These are `load_project` and `save_project`: both commands are generic JSON
+// IO wearing a project's name, and the writer publishes atomically. A second
+// pair of Rust commands doing byte-identical work would be a second place to
+// get that wrong, so the honest names live here instead of there.
+export function readJsonFile(path) {
+  if (!path) return Promise.resolve(null);
+  return call('load_project', { path }, () => Promise.resolve(null));
+}
+export function writeJsonFile(path, doc) {
+  return call('save_project', { path, project: doc }, () => Promise.resolve());
+}
+
 // Forge streams `fa:progress` events; subscribe with onForgeProgress() before
 // calling. Resolves with the CLI's JSON summary string when the run completes.
 export function forgeProject(projectPath, { output = null, basename = null } = {}) {
@@ -271,4 +285,13 @@ export function revealPath(path) {
 }
 export function openExternal(url) {
   return call('open_external', { url }, () => Promise.resolve());
+}
+// Hand a file (or folder) to whatever the OS has registered for it -- how the
+// Viewer's provenance strip opens a `.forge` scene in ForgePlayer. Separate
+// from `openExternal`, which refuses anything that is not http(s): a path and
+// a URL want opposite checks, and one function doing both would have to drop
+// the one that matters.
+export function openPath(path) {
+  if (!path) return Promise.resolve();
+  return call('open_path', { path }, () => Promise.resolve());
 }

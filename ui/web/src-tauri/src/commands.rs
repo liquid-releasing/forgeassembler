@@ -540,7 +540,17 @@ pub async fn read_sidecar(path: String) -> Result<Option<Value>, String> {
         .map_err(|e| format!("parse sidecar {}: {}", path, e))
 }
 
-/// Write a project object to disk as pretty-printed JSON.
+/// Write a JSON object to disk, pretty-printed and ATOMICALLY.
+///
+/// Also the writer for branding presets -- same operation, and a second copy
+/// of it would be a second chance to get the atomicity wrong.
+///
+/// Written to a pid-suffixed temp and renamed into place, never straight over
+/// the target. A crash, a full disk or a pulled drive partway through
+/// `write()` leaves a TRUNCATED project where the user's work used to be, and
+/// the file it destroys is the only copy. `rename` on Windows replaces an
+/// existing file (MoveFileEx with REPLACE_EXISTING), so the target is either
+/// the old contents or the new ones and never half of either.
 #[tauri::command]
 pub async fn save_project(path: String, project: Value) -> Result<(), String> {
     let text =
@@ -548,9 +558,17 @@ pub async fn save_project(path: String, project: Value) -> Result<(), String> {
     if let Some(parent) = Path::new(&path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    tokio::fs::write(&path, text)
+    let tmp = format!("{}.tmp.{}", path, std::process::id());
+    tokio::fs::write(&tmp, text)
         .await
-        .map_err(|e| format!("write {}: {}", path, e))
+        .map_err(|e| format!("write {}: {}", tmp, e))?;
+    if let Err(e) = tokio::fs::rename(&tmp, &path).await {
+        // Leave nothing behind on the way out -- a stray `.tmp.1234` beside
+        // the project is one more thing for someone to wonder about.
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(format!("publish {}: {}", path, e));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -687,6 +705,49 @@ pub async fn reveal_path(path: String) -> Result<(), String> {
             .arg(&target)
             .spawn()
             .map_err(|e| format!("reveal {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// Open a file or folder with whatever the OS has registered for it.
+///
+/// This is how the Viewer's provenance strip hands a `.forge` scene to
+/// ForgePlayer: the association belongs to the user, and asking the shell is
+/// the only way to honour it.
+///
+/// Unlike `open_external` this takes a PATH, never a URL, and it refuses one
+/// that does not exist -- the shell's "no application is associated" dialog
+/// is a worse answer than an error the caller can show in place.
+#[tauri::command]
+pub async fn open_path(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("no such path: {}", path));
+    }
+    #[cfg(windows)]
+    {
+        // FileProtocolHandler, not `cmd /C start`: `start` reads its first
+        // quoted argument as a window title, and Rust's own argument quoting
+        // makes that impossible to get right from here.
+        let _ = std::process::Command::new("rundll32")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("open {}: {}", path, e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("open {}: {}", path, e))?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("open {}: {}", path, e))?;
     }
     Ok(())
 }

@@ -4,7 +4,7 @@ const { useCallback, useEffect, useState } = React;
 import { ViewerPanel } from 'forgemoment';
 import { FATabBody, FATabHeader } from './AppShell';
 import { Button } from './primitives';
-import { pickFile, revealPath, viewerLoad } from './api/forge';
+import { openPath, pickFile, revealPath, viewerLoad } from './api/forge';
 import { toMediaUrl } from './lib/mediaUrl';
 import { lastFolder, rememberFileFolder } from './lib/lastFolders';
 import { PROJECT_EXT } from './lib/projectFile';
@@ -144,6 +144,16 @@ export function ViewerTab({ project, forgedPath = null }) {
         label: data.source === 'forge' ? 'Scene' : 'Output',
         name: data.sourceName,
         path: data.sourcePath,
+        // The strip named the artifact but did nothing with it. A `.forge`
+        // scene is registered to ForgePlayer, so opening it is one click from
+        // reviewing it -- and the box-and-arrow goes to the folder, which is
+        // where the funscripts and station folders are.
+        onOpen: data.sourcePath
+          ? () => { openPath(data.sourcePath).catch(() => {}); }
+          : null,
+        onReveal: data.sourcePath
+          ? () => { revealPath(data.sourcePath).catch(() => {}); }
+          : null,
       }}
     />
   );
