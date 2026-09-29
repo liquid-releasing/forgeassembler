@@ -200,6 +200,15 @@ function Segmented({ options, value, onChange, disabled = false }) {
       {options.map((opt) => {
         const v = typeof opt === "string" ? opt : opt.value;
         const lbl = typeof opt === "string" ? opt : opt.label;
+        // An option whose value is undefined produces a dead control: no
+        // key, onChange fires with undefined, nothing ever highlights. It
+        // surfaces only as React's "unique key" warning, which names the
+        // symptom and not the cause -- so say the cause.
+        if (v === undefined) {
+          console.warn('[Segmented] option has no `value` (got keys: '
+            + `${Object.keys(opt || {}).join(', ') || 'none'}). `
+            + 'This button will not work.', opt);
+        }
         const active = v === value;
         return (
           <button key={v} disabled={disabled} onClick={() => onChange?.(v)} style={{

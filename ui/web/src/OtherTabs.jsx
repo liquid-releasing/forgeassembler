@@ -769,16 +769,20 @@ function ForgePanel({ project, onForge, onCancelForge, cancelling,
 // position stays valid if an overlay is switched between image and text.
 // The filters accept longhand spellings too ("bottom-center"); the short
 // ones are what we write.
+// `value`, not `v`: Segmented reads `opt.value`. Spelling it `v` gave every
+// option an undefined key, fired onChange with undefined, and left nothing
+// ever highlighted -- the React key warning was the visible end of a picker
+// that did not work at all.
 const OVERLAY_POSITIONS = [
-  { v: "tl", label: "Top left" },
-  { v: "tc", label: "Top" },
-  { v: "tr", label: "Top right" },
-  { v: "ml", label: "Left" },
-  { v: "center", label: "Centre" },
-  { v: "mr", label: "Right" },
-  { v: "bl", label: "Bottom left" },
-  { v: "bc", label: "Bottom" },
-  { v: "br", label: "Bottom right" },
+  { value: "tl", label: "Top left" },
+  { value: "tc", label: "Top" },
+  { value: "tr", label: "Top right" },
+  { value: "ml", label: "Left" },
+  { value: "center", label: "Centre" },
+  { value: "mr", label: "Right" },
+  { value: "bl", label: "Bottom left" },
+  { value: "bc", label: "Bottom" },
+  { value: "br", label: "Bottom right" },
 ];
 
 const fmtSecs = (s) => {
@@ -827,7 +831,7 @@ function OverlaysCard({ overlays = [], onAdd, onEdit, onRemove }) {
             </div>
             <div className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>
               {overlayWindowLabel(ov)} · {
-                (OVERLAY_POSITIONS.find(p => p.v === ov.position) || {}).label || ov.position
+                (OVERLAY_POSITIONS.find(p => p.value === ov.position) || {}).label || ov.position
               }
             </div>
           </div>
@@ -915,7 +919,7 @@ function OverlayDialog({ overlay, onSave, onClose }) {
       </div>
 
       <Field label="Position">
-        <Segmented options={OVERLAY_POSITIONS.map(p => ({ v: p.v, label: p.label }))}
+        <Segmented options={OVERLAY_POSITIONS}
                    value={d.position || "center"}
                    onChange={(v) => set({ position: v })} />
       </Field>
