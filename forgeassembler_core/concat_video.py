@@ -233,8 +233,29 @@ def _overlay_windows(project: Project, layout: Layout) -> list[tuple]:
         (sec.overlays, start, end)
         for sec, start, end in _section_time_windows(project, layout)
     ]
-    if project.output.overlays:
-        out.append((project.output.overlays, 0, layout.total_duration_ms))
+    # The compilation's own overlays, split by what their times are measured
+    # from. Anchoring is the whole reason this is two windows and not one:
+    # credits belong to the closing bumper, and nobody can write their
+    # absolute start time because the total duration is not known until every
+    # clip has been probed at forge time.
+    outro = project.output.branding_outro
+    outro_start: Optional[int] = None
+    if outro is not None:
+        for li in layout.items:
+            if isinstance(li.item, Segment) and li.item.id == outro.id:
+                outro_start = li.start_ms
+                break
+
+    from_start = [o for o in project.output.overlays
+                  if getattr(o, "anchor", "start") != "outro" or outro_start is None]
+    from_outro = [o for o in project.output.overlays
+                  if getattr(o, "anchor", "start") == "outro" and outro_start is not None]
+
+    if from_start:
+        out.append((from_start, 0, layout.total_duration_ms))
+    if from_outro:
+        # Ends at the end of the output, which IS the end of the outro.
+        out.append((from_outro, outro_start, layout.total_duration_ms))
     return out
 
 

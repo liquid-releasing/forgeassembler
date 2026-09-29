@@ -780,6 +780,22 @@ class SectionOverlay:
     # a full .ttf/.otf/.ttc path at forge time. Ignored when kind !=
     # "text". Empty string means "let ffmpeg pick a default font".
     font_family: str = ""
+    # WHERE `start_s` is measured from. Only meaningful on
+    # `Output.overlays` -- a Section's overlays are always relative to their
+    # own section, which is the only anchor they sensibly have.
+    #
+    #   "start" : the beginning of the output (the default)
+    #   "outro" : the beginning of the closing branding
+    #
+    # "outro" exists because credits are placed relative to the bumper they
+    # sit on, and the author CANNOT know the absolute time: the total
+    # duration is only settled at forge time, once every clip has been
+    # probed. Asking for `total - outro + offset` is asking for arithmetic
+    # that cannot be done until the thing has already been rendered.
+    #
+    # Falls back to "start" when the project has no closing branding, so a
+    # project that loses its bumper still forges instead of refusing.
+    anchor: str = "start"
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {
@@ -791,6 +807,10 @@ class SectionOverlay:
             "fade_in_s": self.fade_in_s,
             "fade_out_s": self.fade_out_s,
         }
+        # Omitted when it is the default, so every project written before
+        # anchors existed round-trips byte-identically.
+        if self.anchor != "start":
+            d["anchor"] = self.anchor
         if self.kind == "image":
             d["position"] = self.position
             d["opacity"] = self.opacity
@@ -824,6 +844,7 @@ class SectionOverlay:
             text_color=d.get("text_color", "#ffffff"),
             font_size=int(d.get("font_size", 48)),
             font_family=d.get("font_family", ""),
+            anchor=d.get("anchor", "start"),
         )
 
 

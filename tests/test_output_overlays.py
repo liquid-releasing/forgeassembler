@@ -136,3 +136,70 @@ def test_overlays_round_trip_through_the_project_file(tmp_path):
 def test_a_project_without_them_writes_no_overlays_key(tmp_path):
     """Every project that predates the feature round-trips byte-identically."""
     assert "overlays" not in _project(tmp_path).output.to_dict()
+
+
+# ── where the clock starts ───────────────────────────────────────────
+# Credits belong to the bumper they sit on. Their absolute start cannot be
+# written down: the total duration is only settled at forge time, once every
+# clip has been probed. `anchor="outro"` measures from the closing branding.
+def test_an_outro_anchored_overlay_starts_at_the_bumper(tmp_path):
+    p = _project(tmp_path)
+    p.output.branding_outro = Segment(id="outro", video=_file(tmp_path, "outro.mp4"))
+    p.output.overlays = [SectionOverlay(
+        id="ov", kind="text", file="", text="Credits",
+        start_s=2.0, duration_s=4.0, anchor="outro",
+    )]
+    # 10 + 10 content, outro starts at 20s. 2s in means 22s absolute.
+    fc = _cmd(p).filter_complex.replace(" ", "")
+    assert "between(t,22,26)" in fc
+
+
+def test_the_same_overlay_unanchored_starts_at_the_beginning(tmp_path):
+    """The contrast that makes the setting worth having."""
+    p = _project(tmp_path)
+    p.output.branding_outro = Segment(id="outro", video=_file(tmp_path, "outro.mp4"))
+    p.output.overlays = [SectionOverlay(
+        id="ov", kind="text", file="", text="Credits",
+        start_s=2.0, duration_s=4.0, anchor="start",
+    )]
+    assert "between(t,2,6)" in _cmd(p).filter_complex.replace(" ", "")
+
+
+def test_an_outro_anchor_falls_back_when_there_is_no_bumper(tmp_path):
+    """Removing the branding must not make the project refuse to forge."""
+    p = _project(tmp_path)
+    p.output.overlays = [SectionOverlay(
+        id="ov", kind="text", file="", text="Credits",
+        start_s=2.0, duration_s=4.0, anchor="outro",
+    )]
+    assert "between(t,2,6)" in _cmd(p).filter_complex.replace(" ", "")
+
+
+def test_both_anchors_can_be_used_at_once(tmp_path):
+    p = _project(tmp_path)
+    p.output.branding_outro = Segment(id="outro", video=_file(tmp_path, "outro.mp4"))
+    p.output.overlays = [
+        SectionOverlay(id="a", kind="text", file="", text="Opening",
+                       start_s=1.0, duration_s=2.0, anchor="start"),
+        SectionOverlay(id="b", kind="text", file="", text="Credits",
+                       start_s=1.0, duration_s=2.0, anchor="outro"),
+    ]
+    fc = _cmd(p).filter_complex.replace(" ", "")
+    assert "between(t,1,3)" in fc
+    assert "between(t,21,23)" in fc
+
+
+def test_the_anchor_round_trips_and_is_omitted_when_default(tmp_path):
+    p = _project(tmp_path)
+    p.output.branding_outro = Segment(id="outro", video=_file(tmp_path, "outro.mp4"))
+    p.output.overlays = [
+        SectionOverlay(id="a", kind="text", file="", text="x", anchor="outro"),
+        SectionOverlay(id="b", kind="text", file="", text="y"),
+    ]
+    path = tmp_path / "p.forgeproject"
+    p.save(path)
+    import json
+    raw = json.loads(path.read_text(encoding="utf-8"))["output"]["overlays"]
+    assert raw[0]["anchor"] == "outro"
+    assert "anchor" not in raw[1], "default must not be written"
+    assert [o.anchor for o in Project.load(path).output.overlays] == ["outro", "start"]

@@ -170,6 +170,7 @@ function OutputTab({ project, onSetOutput, onSetChannels,
       {editing && (
         <OverlayDialog
           overlay={editing.draft}
+          hasOutro={!!project.output?.brandingOutro}
           onClose={() => setEditing(null)}
           onSave={(next) => {
             const list = [...(project.output?.overlays || [])];
@@ -830,7 +831,7 @@ function OverlaysCard({ overlays = [], onAdd, onEdit, onRemove }) {
                 : fileNameOf(ov.file) || "(no file)"}
             </div>
             <div className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>
-              {overlayWindowLabel(ov)} · {
+              {ov.anchor === "outro" ? "outro " : ""}{overlayWindowLabel(ov)} · {
                 (OVERLAY_POSITIONS.find(p => p.value === ov.position) || {}).label || ov.position
               }
             </div>
@@ -854,22 +855,56 @@ function OverlaysCard({ overlays = [], onAdd, onEdit, onRemove }) {
 // The editor. Edits a COPY and only calls back on Save, so Cancel really
 // does discard -- editing the project in place would leave a half-typed
 // start time behind after a cancel.
-function OverlayDialog({ overlay, onSave, onClose }) {
+function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
   const [d, setD] = useState(() => ({ ...overlay }));
   const set = (patch) => setD((prev) => ({ ...prev, ...patch }));
   const isText = d.kind === "text";
+  const anchored = d.anchor === "outro" && hasOutro;
 
   // Stop time, not duration. The engine stores a duration, but "when does
   // it go away" is the question someone actually has in mind, and making
   // them subtract is how off-by-a-second mistakes happen.
   const startS = Number(d.start_s) || 0;
-  const openEnded = !d.duration_s || Number(d.duration_s) <= 0;
-  const stopS = openEnded ? "" : startS + Number(d.duration_s);
 
-  const setStop = (raw) => {
-    const v = raw === "" ? null : Number(raw);
-    if (v == null || !Number.isFinite(v)) { set({ duration_s: 0 }); return; }
-    set({ duration_s: Math.max(0, v - startS) });
+  // Both boxes keep their own TEXT while you type, and only convert to the
+  // model on blur.
+  //
+  // Deriving the stop box from `duration_s` on every keystroke made it
+  // impossible to fill in. With a start of 5, typing "10" begins with "1":
+  // that computed a duration of max(0, 1 - 5) = 0, which means "run to the
+  // end", which re-rendered the box as empty -- so the second keystroke had
+  // nothing to follow and the field could never hold a number larger than
+  // one digit. Reported as "would not let me put in the stop time".
+  //
+  // The same trap applies to start: clearing it to retype would snap to 0.
+  const [startText, setStartText] = useState(() => String(Number(overlay.start_s) || 0));
+  const [stopText, setStopText] = useState(() => {
+    const dur = Number(overlay.duration_s) || 0;
+    return dur > 0 ? String((Number(overlay.start_s) || 0) + dur) : "";
+  });
+
+  const commitStart = () => {
+    const v = Number(startText);
+    const next = Number.isFinite(v) && v > 0 ? v : 0;
+    setStartText(String(next));
+    // A stop already typed keeps its meaning: it is an absolute time, so
+    // moving the start changes the duration, not where it ends.
+    const stop = Number(stopText);
+    const patch = { start_s: next };
+    if (stopText.trim() !== "" && Number.isFinite(stop)) {
+      patch.duration_s = Math.max(0, stop - next);
+    }
+    set(patch);
+  };
+
+  const commitStop = () => {
+    if (stopText.trim() === "") { set({ duration_s: 0 }); return; }
+    const v = Number(stopText);
+    if (!Number.isFinite(v)) { setStopText(""); set({ duration_s: 0 }); return; }
+    // A stop at or before the start would render nothing at all. Say so by
+    // snapping it back rather than silently keeping an empty window.
+    if (v <= startS) { setStopText(""); set({ duration_s: 0 }); return; }
+    set({ duration_s: v - startS });
   };
 
   async function pickImage() {
@@ -907,18 +942,40 @@ function OverlayDialog({ overlay, onSave, onClose }) {
         </Field>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Start (seconds)">
-          <TextInput mono value={String(startS)}
-                     onChange={(v) => set({ start_s: Math.max(0, Number(v) || 0) })} />
+      {/* Credits are placed relative to the bumper they sit on, and their
+          absolute time cannot be known: the total duration is only settled
+          at forge time once every clip has been probed. */}
+      {hasOutro && (
+        <Field label="Timed from"
+               hint={anchored
+                 ? "0 is the first frame of the closing branding."
+                 : "0 is the first frame of the whole compilation."}>
+          <Segmented value={d.anchor === "outro" ? "outro" : "start"}
+                     onChange={(v) => set({ anchor: v })}
+                     options={[
+                       { value: "start", label: "Start of compilation" },
+                       { value: "outro", label: "Closing branding" },
+                     ]} />
         </Field>
-        <Field label="Stop (seconds)" hint={openEnded ? "blank = run to the end" : null}>
-          <TextInput mono value={stopS === "" ? "" : String(stopS)}
-                     placeholder="end" onChange={setStop} />
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label={anchored ? "Start (seconds into the bumper)" : "Start (seconds)"}>
+          <TextInput mono value={startText} onChange={setStartText}
+                     onBlur={commitStart} />
+        </Field>
+        <Field label="Stop (seconds)" hint="blank = run to the end">
+          <TextInput mono value={stopText} onChange={setStopText}
+                     placeholder="end" onBlur={commitStop} />
         </Field>
       </div>
 
-      <Field label="Position">
+      {/* Multi-line text takes its left/centre/right alignment FROM the
+          position -- bl aligns left, bc centre, br right. That is the
+          engine's rule, not a separate control, and worth saying so rather
+          than leaving someone hunting for an alignment picker. */}
+      <Field label="Position"
+             hint={isText ? "Also sets how multiple lines align to each other." : null}>
         <Segmented options={OVERLAY_POSITIONS}
                    value={d.position || "center"}
                    onChange={(v) => set({ position: v })} />
