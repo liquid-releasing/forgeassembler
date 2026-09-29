@@ -78,6 +78,15 @@ export function probeDuration(path) {
     call('probe_duration', { path }, () => Promise.resolve(0)));
 }
 
+// Duration AND frame rate: { duration_ms, fps } -- `fps` is null for a file
+// with no video stream. Used to resolve a project set to `source`, so the
+// Forge summary can name the file the forge will really write.
+export function probeMedia(path) {
+  if (!path) return Promise.resolve(null);
+  return dedupedCall(`probe_media::${path}`, () =>
+    call('probe_media', { path }, () => Promise.resolve({ duration_ms: 0, fps: null })));
+}
+
 // Where a generated thumbnail lives.
 //
 // Thumbnails are derived data, so they go in the OS cache directory

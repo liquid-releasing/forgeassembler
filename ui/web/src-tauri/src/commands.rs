@@ -363,6 +363,16 @@ pub async fn probe_duration(path: String) -> Result<i64, String> {
         .map_err(|e| format!("probe parse failed for {}: {}", path, e))
 }
 
+/// Duration AND frame rate: `{"duration_ms": N, "fps": F|null}`.
+///
+/// The Forge summary needs the frame rate to resolve a project set to
+/// `source`, so it can name the file the forge will actually write rather
+/// than one without a render tag.
+#[tauri::command]
+pub async fn probe_media(path: String) -> Result<Value, String> {
+    run_cli_json(&["probe", &path, "--format", "json"]).await
+}
+
 /// Read back what a forge WROTE, for the Viewer tab (`cli.py viewer-load`).
 /// `input` is whatever the user opened: the forged video, its `.forge`
 /// bundle, the `.forgeproject`, or the output folder. With `channel` set to

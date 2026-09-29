@@ -4,10 +4,10 @@ const { useState, useEffect } = React;
 import { FASectionLabel, FATabBody, FATabHeader, fmtTotal } from './AppShell';
 import { ParamControl, TimingVisual } from './JoinerEditor';
 import { FA_DATA } from './data';
-import { pickFile, videoEncoder } from './api/forge';
+import { pickFile, probeMedia, videoEncoder } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
 import { effectiveDurMs, funscriptRelPath, projectChannelCoverage,
-         renderedVideoName, segmentHasChannel } from './lib/projectAdapter';
+         renderTag, renderedVideoName, segmentHasChannel } from './lib/projectAdapter';
 import { projectFileName } from './lib/projectFile';
 
 // Sketched other pipeline tabs. Intentionally light — the Build tab is
@@ -399,6 +399,11 @@ function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
   // What the forge will write, counted the same way the engine counts it.
   const flat = project.sections.flatMap(s => s.segments);
   const cov = projectChannelCoverage(project);
+  // Resolve `source` rather than repeat it back, so the rows below can name
+  // a real frame rate and a real filename.
+  const { fps, source: fpsFromSource } = useEffectiveFps(project);
+  const tag = fps == null ? null : renderTag(project.output?.resolution, fps);
+  const videoName = tag ? `${project.name}.${tag}.mp4` : null;
 
   return (
     <FATabBody>
@@ -417,17 +422,18 @@ function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
                 ["Chapters",      flat.length],
                 ["Total duration", fmtTotal(totalMs)],
                 ["Resolution",    project.output.resolution],
-                ["Frame rate",    project.output.frameRate === "source"
-                                    ? "source (read off your first clip)"
-                                    : `${project.output.frameRate} fps`],
+                // Always a number when we can get one. "source" answers a
+                // different question than "what am I about to render".
+                ["Frame rate",    fps == null
+                                    ? "source — reading it off your first clip…"
+                                    : `${fps} fps${fpsFromSource ? " (from your first clip)" : ""}`],
                 // The name the render will carry. Both settings above feed
                 // the tag, so seeing the filename is the quickest check that
                 // this run will not overwrite the last one -- worth knowing
                 // BEFORE committing two hours to it.
                 ["Video file",    project.output.video === false
                                     ? "not this run"
-                                    : (renderedVideoName(project)
-                                       || `${project.name}.mp4`)],
+                                    : (videoName || "naming it once the frame rate is known…")],
                 ["Loudness",      project.output.normalizeAudio ? "−16 LUFS" : "off"],
                 ["Funscripts",    cov.detected
                                     ? `${cov.detected} channel${cov.detected === 1 ? "" : "s"} · `
@@ -457,7 +463,7 @@ function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
               // either setting on `source` the value is probed at forge time,
               // so the tag genuinely is not known yet -- say that rather than
               // print a name that turns out to be wrong.
-              { f: renderedVideoName(project) || `${project.name}.<size>.mp4`,
+              { f: videoName || `${project.name}.<size>.mp4`,
                 on: project.output.video },
               // One row per channel the engine will actually forge, named
               // the way it names them: main is the bare .funscript, every
@@ -488,7 +494,7 @@ function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
       </div>
 
       <div style={{ marginTop: 18 }}>
-        <ChapterMarkersCard project={project} />
+        <ChapterMarkersCard project={project} videoName={videoName} />
       </div>
 
       <div style={{ marginTop: 18 }}>
@@ -504,7 +510,7 @@ function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
 // Every section becomes a chapter in the output MP4 (and a chapter
 // marker in the output funscript). This card shows the list explicitly
 // so the user can see what's written before they forge.
-function ChapterMarkersCard({ project }) {
+function ChapterMarkersCard({ project, videoName }) {
   // Compute each section's start time (sum of preceding section
   // durations + their leading joiner totals).
   let cursor = 0;
@@ -573,7 +579,7 @@ function ChapterMarkersCard({ project }) {
         marginTop: 12, fontSize: 10.5, color: "var(--text-dim)",
       }}>
         written to <span style={{ color: "var(--text-muted)" }}>
-          {renderedVideoName(project) || `${project.name}.<size>.mp4`}</span>
+          {videoName || renderedVideoName(project) || `${project.name}.<size>.mp4`}</span>
         {" "}as MOV/MP4 chapter atoms · also embedded in
         <span style={{ color: "var(--text-muted)" }}> {project.name}.funscript</span> metadata
       </div>
@@ -586,6 +592,41 @@ function ChapterMarkersCard({ project }) {
 // realtime guess that ignored both the encoder and the resolution it
 // claimed to account for, so a GPU box was quoted 27 minutes for a job
 // that took two.
+// The frame rate the forge will ACTUALLY use.
+//
+// `source` is a legitimate setting -- match the first clip -- but it is not
+// an answer to "what am I about to render". Worse, it left the summary
+// naming a file that would never exist: `renderTag` needs a number, so a
+// project on `source` fell back to `<name>.mp4` while the forge wrote
+// `<name>.1080p25.mp4`. The engine resolves this by probing the first real
+// video segment at forge time; this does the same, up front.
+//
+// Returns { fps, source } -- `source` true when it came from a probe.
+function useEffectiveFps(project) {
+  const set = Number.parseInt(project.output?.frameRate, 10);
+  const explicit = Number.isFinite(set) ? set : null;
+  // The same segment the engine picks: the first that is not a still.
+  const firstVideo = project.sections
+    ?.flatMap((s) => s.segments)
+    ?.find((s) => s.file && s.kind !== 'still')?.file || null;
+
+  const [probed, setProbed] = useState(null);
+  useEffect(() => {
+    if (explicit !== null || !firstVideo) { setProbed(null); return undefined; }
+    let cancelled = false;
+    probeMedia(firstVideo)
+      .then((r) => {
+        if (cancelled || !r || r.fps == null) return;
+        setProbed(Math.round(r.fps));
+      })
+      .catch(() => { /* leave it unresolved rather than guess */ });
+    return () => { cancelled = true; };
+  }, [explicit, firstVideo]);
+
+  if (explicit !== null) return { fps: explicit, source: false };
+  return { fps: probed, source: true };
+}
+
 function useForgeEstimate(project, totalMs) {
   const [enc, setEnc] = useState(null);
   useEffect(() => {

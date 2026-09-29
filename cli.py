@@ -489,7 +489,16 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_probe(args: argparse.Namespace) -> int:
-    """Print a media file's duration in milliseconds (one integer to stdout)."""
+    """Print a media file's duration in milliseconds (one integer to stdout).
+
+    With `--format json`, print `{"duration_ms": N, "fps": F}` instead. The
+    bare integer stays the default because the app's existing duration probe
+    parses exactly that, and changing what a caller already reads is how you
+    break one silently.
+
+    `fps` is null for a file with no video stream, which is not an error --
+    an audio-only segment has no frame rate to report.
+    """
     path = Path(args.video)
     if not path.is_file():
         print(f"ERROR: file not found: {path}", file=sys.stderr)
@@ -500,6 +509,19 @@ def cmd_probe(args: argparse.Namespace) -> int:
     except RuntimeError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 3
+
+    if getattr(args, "format", "int") == "json":
+        from forgeassembler_core.probe import probe_frame_rate_fps
+        try:
+            fps: Optional[float] = probe_frame_rate_fps(path, ffmpeg_exe)
+        except RuntimeError:
+            fps = None
+        print(json.dumps({
+            "duration_ms": int(ms),
+            "fps": round(fps, 3) if fps is not None else None,
+        }))
+        return 0
+
     print(int(ms))
     return 0
 
@@ -1206,6 +1228,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_probe = sub.add_parser("probe", help="print a media file's duration in ms")
     p_probe.add_argument("video", help="path to a video/audio file")
+    p_probe.add_argument("--format", choices=["int", "json"], default="int",
+                         help="'int' (default) prints duration_ms alone; "
+                              "'json' adds the frame rate")
     p_probe.set_defaults(func=cmd_probe)
 
     p_thumb = sub.add_parser("thumbnail", help="extract one frame to a PNG")
