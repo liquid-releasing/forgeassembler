@@ -73,6 +73,18 @@ export function validateProject(path) {
       Promise.resolve({ ok: true, errors: [], warnings: [] })));
 }
 
+// Which of `paths` are still on disk, in the order given.
+//
+// One call for the whole project, not one per clip: a forty-scene
+// compilation must not cost forty round trips -- and asking `probe` instead
+// would have cost forty ffprobe spawns to answer a question `stat` answers.
+export function pathsExist(paths) {
+  const list = (paths || []).filter((p) => typeof p === 'string');
+  if (!list.length) return Promise.resolve([]);
+  return call('paths_exist', { paths: list },
+              () => Promise.resolve(list.map(() => true)));
+}
+
 export function probeDuration(path) {
   return dedupedCall(`probe_duration::${path}`, () =>
     call('probe_duration', { path }, () => Promise.resolve(0)));

@@ -41,6 +41,7 @@ pub fn run() {
             commands::pick_folder,
             commands::pick_file,
             commands::pick_save_path,
+            commands::paths_exist,
             commands::reveal_path,
             commands::open_path,
             commands::open_external,

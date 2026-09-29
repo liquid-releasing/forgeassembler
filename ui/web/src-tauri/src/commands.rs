@@ -670,6 +670,24 @@ pub async fn pick_save_path(
 // Shell helpers
 // ---------------------------------------------------------------------------
 
+/// Which of `paths` are still on disk, in the order given.
+///
+/// One call for the whole project rather than one per clip: opening a
+/// compilation of forty scenes must not cost forty round trips, and it must
+/// not cost forty ffprobe spawns either -- which is what asking `probe` would
+/// have meant. This is a stat and nothing more.
+///
+/// An empty path is `false` rather than an error. A segment with no video is
+/// a different problem, and failing the whole check because of one would tell
+/// the user nothing about the thirty-nine files that ARE fine.
+#[tauri::command]
+pub async fn paths_exist(paths: Vec<String>) -> Result<Vec<bool>, String> {
+    Ok(paths
+        .iter()
+        .map(|p| !p.is_empty() && Path::new(p).exists())
+        .collect())
+}
+
 /// Reveal a file (selected) or a folder in the OS file manager.
 #[tauri::command]
 pub async fn reveal_path(path: String) -> Result<(), String> {
