@@ -1131,3 +1131,37 @@ describe('branding round-trip', () => {
     expect(back.output.brandingOutro).toBeNull();
   });
 });
+
+describe('compilation overlays round-trip', () => {
+  const base = () => ({
+    name: 'Comp',
+    output: { resolution: '1080p', frameRate: '30' },
+    channels: {},
+    sections: [{ id: 's1', joiner: { kind: 'none' }, segments: [], overlays: [] }],
+  });
+  const OV = {
+    id: 'ov1', kind: 'text', file: '', text: 'Directed by Someone',
+    start_s: 6.5, duration_s: 2, position: 'bc', fade_in_s: 0.5,
+    fade_out_s: 0.5, text_color: '#ffffff', font_size: 36,
+    opacity: 1, scale_pct: 100,
+  };
+
+  it('survives the trip to the engine shape and back', () => {
+    const vm = { ...base(), output: { ...base().output, overlays: [OV] } };
+    const real = toForgeProject(vm, { folder: 'D:/out' });
+    expect(real.output.overlays).toEqual([OV]);
+    expect(fromForgeProject(real).output.overlays).toEqual([OV]);
+  });
+
+  it('writes no overlays key when there are none', () => {
+    // Every project that predates the feature must round-trip unchanged.
+    const real = toForgeProject(base(), { folder: 'D:/out' });
+    expect('overlays' in real.output).toBe(false);
+  });
+
+  it('reads a project that has none as an empty list, never undefined', () => {
+    // The Output tab maps over this on every render.
+    expect(fromForgeProject({ version: '2.0', sections: [], output: {} })
+      .output.overlays).toEqual([]);
+  });
+});

@@ -719,6 +719,14 @@ function App() {
     markDirty();
   }
 
+  // Overlays over the whole compilation. One list, replaced wholesale --
+  // the dialog hands back the finished array, so there is no add/edit/remove
+  // branching here to drift out of step with it.
+  function setOverlays(list) {
+    setProject(p => ({ ...p, output: { ...p.output, overlays: list } }));
+    markDirty();
+  }
+
   async function handleAddForgeScene() {
     setIoError(null);
     const bundle = await pickFile({
@@ -1070,7 +1078,8 @@ function App() {
                        onSetOutput={setOutput}
                        onSetChannels={setChannels}
                        onPickBranding={handlePickBranding}
-                       onClearBranding={(which) => setBranding(which, null)} />;
+                       onClearBranding={(which) => setBranding(which, null)}
+                       onSetOverlays={setOverlays} />;
     acceptKey = "output";
     acceptSummary = `Resolution ${project.output.resolution} · loudness ${project.output.normalizeAudio ? "−16 LUFS" : "off"}.`;
   } else if (tab === "viewer") {

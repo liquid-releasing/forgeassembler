@@ -661,6 +661,12 @@ export function toForgeProject(vm, { folder = null } = {}) {
       // offers it for the next compilation, but `cli.py forge` cannot read
       // that memory -- so anything scripted would drop the branding without
       // saying a word if the file did not carry it.
+      // Overlays over the WHOLE compilation -- a logo, a credits roll.
+      // Passed straight through: the editor already speaks the engine's
+      // shape, and re-spelling it here would be one more place to drift.
+      // Omitted when empty so a project without any round-trips unchanged.
+      ...(vm.output?.overlays?.length
+        ? { overlays: vm.output.overlays } : {}),
       ...(vm.output?.brandingIntro
         ? { branding_intro: segToReal(vm.output.brandingIntro) } : {}),
       ...(vm.output?.brandingOutro
@@ -704,6 +710,7 @@ export function fromForgeProject(json) {
       ...(json.output?.metadata ? { metadata: json.output.metadata } : {}),
       ...(json.output?.closing_joiner ? { closingJoiner: json.output.closing_joiner } : {}),
       openingJoiner: joinerFromReal(json.output?.opening_joiner),
+      overlays: Array.isArray(json.output?.overlays) ? json.output.overlays : [],
       brandingIntro: json.output?.branding_intro
         ? segFromReal(json.output.branding_intro) : null,
       brandingOutro: json.output?.branding_outro

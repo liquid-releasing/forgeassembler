@@ -6,6 +6,7 @@ import { ParamControl, TimingVisual } from './JoinerEditor';
 import { FA_DATA } from './data';
 import { pickFile, probeMedia, videoEncoder } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
+import { Modal, ModalFooter } from './ProjectIO';
 import { effectiveDurMs, funscriptRelPath, projectChannelCoverage,
          renderTag, renderedVideoName, segmentHasChannel } from './lib/projectAdapter';
 import { projectFileName } from './lib/projectFile';
@@ -26,10 +27,33 @@ import { projectFileName } from './lib/projectFile';
 // here only ever SUBTRACT a group from that. Gaps (a channel one clip
 // lacks) are left blank — the engine has no fallback synthesis, and the
 // picker that used to offer one wasn't wired to anything.
+// A new overlay's resting state. The engine's own defaults, spelled out
+// here because a form with empty boxes is worse than one with sane values
+// -- and `duration_s: 0` is meaningful: run to the end.
+function newOverlay(kind) {
+  return {
+    id: `ov-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    kind,
+    file: "",
+    start_s: 0,
+    duration_s: 0,
+    fade_in_s: 0,
+    fade_out_s: 0,
+    position: kind === "text" ? "bc" : "br",
+    opacity: 1.0,
+    scale_pct: 100,
+    text: "",
+    text_color: "#ffffff",
+    font_size: 48,
+  };
+}
+
 function OutputTab({ project, onSetOutput, onSetChannels,
-                     onPickBranding, onClearBranding }) {
+                     onPickBranding, onClearBranding, onSetOverlays }) {
   const out = project.output || {};
   const chans = project.channels || {};
+  // { index, draft } while the dialog is open; index -1 means "new".
+  const [editing, setEditing] = useState(null);
   return (
     <FATabBody>
       <FATabHeader
@@ -89,6 +113,11 @@ function OutputTab({ project, onSetOutput, onSetChannels,
                          seg={project.output?.brandingOutro}
                          onPick={onPickBranding} onClear={onClearBranding} />
         </Card>
+        <OverlaysCard overlays={project.output?.overlays || []}
+                      onAdd={(kind) => setEditing({ index: -1, draft: newOverlay(kind) })}
+                      onEdit={(i) => setEditing({ index: i, draft: (project.output.overlays || [])[i] })}
+                      onRemove={(i) => onSetOverlays?.(
+                        (project.output?.overlays || []).filter((_, j) => j !== i))} />
         <Card>
           <FASectionLabel>Resolution</FASectionLabel>
           <ResolutionPicker value={project.output.resolution}
@@ -137,6 +166,19 @@ function OutputTab({ project, onSetOutput, onSetChannels,
       <div style={{ marginTop: 20 }}>
         <OutputChannelsCard project={project} onSetChannels={onSetChannels} />
       </div>
+
+      {editing && (
+        <OverlayDialog
+          overlay={editing.draft}
+          onClose={() => setEditing(null)}
+          onSave={(next) => {
+            const list = [...(project.output?.overlays || [])];
+            if (editing.index < 0) list.push(next);
+            else list[editing.index] = next;
+            onSetOverlays?.(list);
+            setEditing(null);
+          }} />
+      )}
     </FATabBody>
   );
 }
@@ -717,6 +759,205 @@ function ForgePanel({ project, onForge, onCancelForge, cancelling,
   );
 }
 
+// ── Overlays over the whole compilation ──────────────────────────
+// A logo that appears for a while, a credits roll over the closing
+// bumper. Timed in absolute seconds from the start of the output, which
+// is what lets them reach the branding at either end -- a Section's own
+// overlays are timed from that section and cannot leave it.
+
+// The nine both `_POSITION_EXPRS` and `_TEXT_POSITION_EXPRS` share, so a
+// position stays valid if an overlay is switched between image and text.
+// The filters accept longhand spellings too ("bottom-center"); the short
+// ones are what we write.
+const OVERLAY_POSITIONS = [
+  { v: "tl", label: "Top left" },
+  { v: "tc", label: "Top" },
+  { v: "tr", label: "Top right" },
+  { v: "ml", label: "Left" },
+  { v: "center", label: "Centre" },
+  { v: "mr", label: "Right" },
+  { v: "bl", label: "Bottom left" },
+  { v: "bc", label: "Bottom" },
+  { v: "br", label: "Bottom right" },
+];
+
+const fmtSecs = (s) => {
+  const n = Math.max(0, Math.round(Number(s) || 0));
+  return `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+};
+
+// `duration_s === 0` means "run to the end" in the engine, so the UI has
+// to say that rather than print a stop time of 00:00.
+function overlayWindowLabel(ov) {
+  const start = fmtSecs(ov.start_s);
+  if (!ov.duration_s || Number(ov.duration_s) <= 0) return `${start} → end`;
+  return `${start} → ${fmtSecs(Number(ov.start_s || 0) + Number(ov.duration_s))}`;
+}
+
+function OverlaysCard({ overlays = [], onAdd, onEdit, onRemove }) {
+  return (
+    <Card>
+      <FASectionLabel>Overlays</FASectionLabel>
+      <div style={{ marginBottom: 10, fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+        A logo or a line of text laid over the finished compilation, timed in
+        seconds from the very start. These are the only overlays that reach
+        the branding at either end, so closing credits go here.
+      </div>
+
+      {overlays.length === 0 ? (
+        <div style={{
+          border: "1px dashed var(--border)", borderRadius: 8,
+          padding: "12px 14px", fontSize: 11.5, color: "var(--text-dim)",
+        }}>
+          None. The compilation plays as-is.
+        </div>
+      ) : overlays.map((ov, i) => (
+        <div key={ov.id || i} style={{
+          display: "flex", alignItems: "center", gap: 10, marginBottom: 6,
+          border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px",
+        }}>
+          <Icon name={ov.kind === "text" ? "type" : "image"} size={14}
+                style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden",
+                           textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {ov.kind === "text"
+                ? (ov.text || "").split("\n")[0] || "(empty text)"
+                : fileNameOf(ov.file) || "(no file)"}
+            </div>
+            <div className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>
+              {overlayWindowLabel(ov)} · {
+                (OVERLAY_POSITIONS.find(p => p.v === ov.position) || {}).label || ov.position
+              }
+            </div>
+          </div>
+          <Button kind="ghost" size="sm" onClick={() => onEdit?.(i)}>Edit</Button>
+          <Button kind="ghost" size="icon" title="Remove this overlay"
+                  onClick={() => onRemove?.(i)}><Icon name="x" size={13} /></Button>
+        </div>
+      ))}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <Button kind="secondary" size="sm" icon="image"
+                onClick={() => onAdd?.("image")}>Add image&#8230;</Button>
+        <Button kind="secondary" size="sm" icon="type"
+                onClick={() => onAdd?.("text")}>Add text&#8230;</Button>
+      </div>
+    </Card>
+  );
+}
+
+// The editor. Edits a COPY and only calls back on Save, so Cancel really
+// does discard -- editing the project in place would leave a half-typed
+// start time behind after a cancel.
+function OverlayDialog({ overlay, onSave, onClose }) {
+  const [d, setD] = useState(() => ({ ...overlay }));
+  const set = (patch) => setD((prev) => ({ ...prev, ...patch }));
+  const isText = d.kind === "text";
+
+  // Stop time, not duration. The engine stores a duration, but "when does
+  // it go away" is the question someone actually has in mind, and making
+  // them subtract is how off-by-a-second mistakes happen.
+  const startS = Number(d.start_s) || 0;
+  const openEnded = !d.duration_s || Number(d.duration_s) <= 0;
+  const stopS = openEnded ? "" : startS + Number(d.duration_s);
+
+  const setStop = (raw) => {
+    const v = raw === "" ? null : Number(raw);
+    if (v == null || !Number.isFinite(v)) { set({ duration_s: 0 }); return; }
+    set({ duration_s: Math.max(0, v - startS) });
+  };
+
+  async function pickImage() {
+    const f = await pickFile({
+      title: "Select an overlay image",
+      filterName: "Image", extensions: ["png", "jpg", "jpeg", "webp"],
+    });
+    if (f) set({ file: f });
+  }
+
+  const canSave = isText ? !!(d.text || "").trim() : !!d.file;
+
+  return (
+    <Modal title={isText ? "Text overlay" : "Image overlay"}
+           icon={isText ? "type" : "image"} width={520} onClose={onClose}
+           subtitle="Timed in seconds from the start of the whole compilation, branding included.">
+      {isText ? (
+        <Field label="Text" hint="One line per line. Blank lines are kept.">
+          <textarea value={d.text || ""} onChange={(e) => set({ text: e.target.value })}
+                    rows={4} spellCheck={false}
+                    style={{ width: "100%", resize: "vertical", padding: "8px 10px",
+                             background: "var(--surface-2, var(--surface))",
+                             color: "var(--text)", fontFamily: "inherit", fontSize: 12.5,
+                             border: "1px solid var(--border)", borderRadius: 8 }} />
+        </Field>
+      ) : (
+        <Field label="Image" hint="PNG with transparency keeps its alpha.">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="mono" style={{
+              flex: 1, minWidth: 0, fontSize: 11.5, color: "var(--text-muted)",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{d.file || "no file chosen"}</div>
+            <Button kind="secondary" size="sm" onClick={pickImage}>Choose&#8230;</Button>
+          </div>
+        </Field>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Start (seconds)">
+          <TextInput mono value={String(startS)}
+                     onChange={(v) => set({ start_s: Math.max(0, Number(v) || 0) })} />
+        </Field>
+        <Field label="Stop (seconds)" hint={openEnded ? "blank = run to the end" : null}>
+          <TextInput mono value={stopS === "" ? "" : String(stopS)}
+                     placeholder="end" onChange={setStop} />
+        </Field>
+      </div>
+
+      <Field label="Position">
+        <Segmented options={OVERLAY_POSITIONS.map(p => ({ v: p.v, label: p.label }))}
+                   value={d.position || "center"}
+                   onChange={(v) => set({ position: v })} />
+      </Field>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Fade in (seconds)">
+          <TextInput mono value={String(Number(d.fade_in_s) || 0)}
+                     onChange={(v) => set({ fade_in_s: Math.max(0, Number(v) || 0) })} />
+        </Field>
+        <Field label="Fade out (seconds)">
+          <TextInput mono value={String(Number(d.fade_out_s) || 0)}
+                     onChange={(v) => set({ fade_out_s: Math.max(0, Number(v) || 0) })} />
+        </Field>
+      </div>
+
+      {isText ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Colour">
+            <TextInput mono value={d.text_color || "#ffffff"}
+                       onChange={(v) => set({ text_color: v })} />
+          </Field>
+          <Field label="Size">
+            <TextInput mono value={String(Number(d.font_size) || 48)}
+                       onChange={(v) => set({ font_size: Math.max(1, Number(v) || 48) })} />
+          </Field>
+        </div>
+      ) : (
+        <Field label="Scale (%)" hint="100 is the image's own size.">
+          <TextInput mono value={String(Number(d.scale_pct) || 100)}
+                     onChange={(v) => set({ scale_pct: Math.max(1, Number(v) || 100) })} />
+        </Field>
+      )}
+
+      <ModalFooter>
+        <Button kind="ghost" size="sm" onClick={onClose}>Cancel</Button>
+        <Button kind="primary" size="sm" disabled={!canSave}
+                onClick={() => onSave?.(d)}>Save</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
 // One branding slot. Empty is the resting state and looks like it: a
 // dashed placeholder, not a control someone already set.
 function BrandingSlot({ which, label, seg, onPick, onClear }) {
@@ -780,5 +1021,5 @@ function Toggle({ label, checked, disabled, onChange }) {
 Object.assign(window, { OutputTab, ForgeTab, Toggle });
 
 
-export { BrandingSlot, ChapterMarkersCard, ForgePanel, ForgeTab, OutputChannelsCard,
+export { BrandingSlot, ChapterMarkersCard, ForgePanel, ForgeTab, OverlayDialog, OverlaysCard, OutputChannelsCard,
          OutputTab, ResolutionPicker, Toggle };
