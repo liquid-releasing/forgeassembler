@@ -363,6 +363,14 @@ pub async fn probe_duration(path: String) -> Result<i64, String> {
         .map_err(|e| format!("probe parse failed for {}: {}", path, e))
 }
 
+/// Fonts a text overlay can be drawn in (`cli.py list-fonts --format json`).
+/// Returns `{fonts: [{stem, path}], default}`. An empty `font_family` lets
+/// ffmpeg choose, which is how a credits roll ends up in a font nobody picked.
+#[tauri::command]
+pub async fn list_fonts() -> Result<Value, String> {
+    run_cli_json(&["list-fonts", "--format", "json"]).await
+}
+
 /// Duration AND frame rate: `{"duration_ms": N, "fps": F|null}`.
 ///
 /// The Forge summary needs the frame rate to resolve a project set to

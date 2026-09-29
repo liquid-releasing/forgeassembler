@@ -232,6 +232,14 @@ export function cancelForge() {
   return call('cancel_forge', {}, () => Promise.resolve(false));
 }
 
+// Fonts for text overlays: { fonts: [{stem, path}], default }. Cached for
+// the session -- enumerating a few hundred font files is not free, and the
+// set does not change while the app is open.
+export function listFonts() {
+  return dedupedCall('list_fonts', () =>
+    call('list_fonts', {}, () => Promise.resolve({ fonts: [], default: null })));
+}
+
 export async function onForgeProgress(handler) {
   if (!isTauri()) return () => {};
   const { listen } = await import('@tauri-apps/api/event');

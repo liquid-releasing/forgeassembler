@@ -111,6 +111,48 @@ def cmd_version(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_list_fonts(args: argparse.Namespace) -> int:
+    """List the fonts a text overlay can be drawn in.
+
+    Stems, because that is what `SectionOverlay.font_family` stores and what
+    `resolve_font_path` turns back into a file at forge time. An empty
+    `font_family` means "let ffmpeg choose", which on Windows lands on
+    whatever fontconfig picks first -- reported from a real forge as a
+    "weird font", and the reason this is exposed at all.
+    """
+    from forgeassembler_core.fonts import list_fonts
+
+    fonts = list_fonts()
+    if getattr(args, "format", "text") == "json":
+        print(json.dumps({
+            "fonts": [{"stem": s, "path": p} for s, p in fonts],
+            "default": preferred_font_stem(fonts),
+        }))
+        return 0
+    for stem, _path in fonts:
+        print(stem)
+    return 0
+
+
+# Tried in order. These are the stems Windows and most Linux installs use
+# for a plain, readable sans -- the sort of thing credits are set in. The
+# first that exists becomes the default for a new text overlay, so nobody
+# has to know what "AGENCYB" is to get something legible.
+_PREFERRED_FONTS = (
+    "arial", "Arial", "segoeui", "SegoeUI", "calibri", "Calibri",
+    "verdana", "Verdana", "tahoma", "Tahoma",
+    "DejaVuSans", "LiberationSans-Regular", "NotoSans-Regular",
+)
+
+
+def preferred_font_stem(fonts: list) -> Optional[str]:
+    have = {s for s, _ in fonts}
+    for want in _PREFERRED_FONTS:
+        if want in have:
+            return want
+    return fonts[0][0] if fonts else None
+
+
 def cmd_list_joiners(args: argparse.Namespace) -> int:
     if getattr(args, "format", "text") == "json":
         payload = {
@@ -1220,6 +1262,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_validate.add_argument("--format", choices=("text", "json"), default="text",
                             help="json: emit an {ok, errors, warnings} object")
     p_validate.set_defaults(func=cmd_validate)
+
+    p_fonts = sub.add_parser("list-fonts", help="list fonts available for text overlays")
+    p_fonts.add_argument("--format", choices=("text", "json"), default="text",
+                         help="json: emit a {fonts:[...], default:...} object")
+    p_fonts.set_defaults(func=cmd_list_fonts)
 
     p_list = sub.add_parser("list-joiners", help="list available joiner types")
     p_list.add_argument("--format", choices=("text", "json"), default="text",

@@ -4,7 +4,7 @@ const { useState, useEffect } = React;
 import { FASectionLabel, FATabBody, FATabHeader, fmtTotal } from './AppShell';
 import { ParamControl, TimingVisual } from './JoinerEditor';
 import { FA_DATA } from './data';
-import { pickFile, probeMedia, videoEncoder } from './api/forge';
+import { listFonts, pickFile, probeMedia, videoEncoder } from './api/forge';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
 import { Modal, ModalFooter } from './ProjectIO';
 import { effectiveDurMs, funscriptRelPath, projectChannelCoverage,
@@ -861,6 +861,25 @@ function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
   const isText = d.kind === "text";
   const anchored = d.anchor === "outro" && hasOutro;
 
+  // Fonts, and a legible default. An empty `font_family` means "let ffmpeg
+  // choose", which on this machine lands on whatever fontconfig finds first
+  // -- reported from a real forge as a credits roll "in a weird font".
+  const [fonts, setFonts] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    listFonts()
+      .then((r) => {
+        if (cancelled || !r) return;
+        setFonts(r.fonts || []);
+        // Only fill an EMPTY font in, so editing an existing overlay never
+        // silently restyles it.
+        setD((prev) => (prev.font_family ? prev
+          : { ...prev, font_family: r.default || "" }));
+      })
+      .catch(() => { /* leave it to ffmpeg rather than guess a name */ });
+    return () => { cancelled = true; };
+  }, []);
+
   // Stop time, not duration. The engine stores a duration, but "when does
   // it go away" is the question someone actually has in mind, and making
   // them subtract is how off-by-a-second mistakes happen.
@@ -992,7 +1011,7 @@ function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
         </Field>
       </div>
 
-      {isText ? (
+      {isText && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Field label="Colour">
             <TextInput mono value={d.text_color || "#ffffff"}
@@ -1003,7 +1022,26 @@ function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
                        onChange={(v) => set({ font_size: Math.max(1, Number(v) || 48) })} />
           </Field>
         </div>
-      ) : (
+      )}
+
+      {isText && (
+        <Field label="Font"
+               hint={fonts.length ? null : "Reading the fonts on this machine…"}>
+          <select value={d.font_family || ""}
+                  onChange={(e) => set({ font_family: e.target.value })}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 6,
+                           background: "var(--surface-2)", color: "var(--text)",
+                           border: "1px solid var(--border)", fontFamily: "inherit",
+                           fontSize: 13 }}>
+            <option value="">Let ffmpeg choose</option>
+            {fonts.map((f) => (
+              <option key={f.stem} value={f.stem}>{f.stem}</option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {!isText && (
         <Field label="Scale (%)" hint="100 is the image's own size.">
           <TextInput mono value={String(Number(d.scale_pct) || 100)}
                      onChange={(v) => set({ scale_pct: Math.max(1, Number(v) || 100) })} />
