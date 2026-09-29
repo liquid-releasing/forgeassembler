@@ -203,3 +203,43 @@ def test_the_anchor_round_trips_and_is_omitted_when_default(tmp_path):
     assert raw[0]["anchor"] == "outro"
     assert "anchor" not in raw[1], "default must not be written"
     assert [o.anchor for o in Project.load(path).output.overlays] == ["outro", "start"]
+
+
+# ── multi-line text ──────────────────────────────────────────────────
+def test_a_multiline_credit_gets_its_own_textfile(tmp_path):
+    """Four lines rendered as one on a real forge. `_build_text_files`
+    walked only the sections, so a compilation overlay got no textfile and
+    fell through to the inline `text=` path, where the newlines collapse."""
+    from forgeassembler_core.concat_video import _build_text_files
+    p = _project(tmp_path)
+    p.output.overlays = [SectionOverlay(
+        id="credits", kind="text", file="",
+        text="Thanks\n\nPMVHaven.com\nMilovana.com",
+    )]
+    files = _build_text_files(p, tmp_path)
+    assert "credits" in files, "no textfile written for a compilation overlay"
+    written = Path(files["credits"]).read_bytes().decode("utf-8")
+    assert written.count("\n") == 3
+    assert written.splitlines() == ["Thanks", "", "PMVHaven.com", "Milovana.com"]
+
+
+def test_section_text_still_gets_one(tmp_path):
+    from forgeassembler_core.concat_video import _build_text_files
+    p = _project(tmp_path)
+    p.sections[0].overlays = [SectionOverlay(
+        id="secov", kind="text", file="", text="One\nTwo")]
+    assert "secov" in _build_text_files(p, tmp_path)
+
+
+def test_the_forge_uses_the_textfile_rather_than_inline_text(tmp_path):
+    """The whole point of the textfile: real newlines survive, and
+    apostrophes need no escaping at the filter_complex layer."""
+    from forgeassembler_core.concat_video import _build_text_files
+    p = _project(tmp_path)
+    p.output.overlays = [SectionOverlay(
+        id="credits", kind="text", file="", text="Thanks\nMore",
+        start_s=1.0, duration_s=2.0)]
+    files = _build_text_files(p, tmp_path)
+    layout = lay_out(p, probe=lambda _q: 10_000)
+    fc = build_ffmpeg_command(p, layout, text_files=files).filter_complex
+    assert "textfile=" in fc

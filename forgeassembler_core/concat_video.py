@@ -1349,12 +1349,19 @@ def _build_text_files(
     colons / percents need no escaping at the filter_complex layer.
     """
     files: dict[str, str] = {}
-    for sec in project.sections:
-        # NOTE: title cards used to write a textfile here too, to
-        # keep apostrophes and colons out of filter_complex syntax.
-        # They are pictures now, so the escaping problem goes away with
-        # the drawtext call — see `_build_title_cards`.
-        for ov in sec.overlays:
+    # NOTE: title cards used to write a textfile here too, to keep
+    # apostrophes and colons out of filter_complex syntax. They are
+    # pictures now, so the escaping problem goes away with the drawtext
+    # call — see `_build_title_cards`.
+    #
+    # Sections AND the compilation's own overlays. Walking only the
+    # sections meant a credits roll on `Output.overlays` never got a
+    # textfile, silently fell back to the inline `text=` path, and
+    # rendered four lines as one — reported from a real forge.
+    owners: list = [sec.overlays for sec in project.sections]
+    owners.append(project.output.overlays)
+    for ov_list in owners:
+        for ov in ov_list:
             if ov.kind != "text":
                 continue
             if not ov.text:
