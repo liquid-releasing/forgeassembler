@@ -1077,17 +1077,25 @@ def test_section_image_overlay_adds_input(tmp_path: Path):
     assert matches, "overlay PNG should be registered as a looped input"
 
 
-def test_section_image_overlay_input_lives_until_enable_window_ends(
+def test_section_image_overlay_input_covers_its_enable_window(
     tmp_path: Path,
 ):
-    """Regression: the image input's `-t` must cover [0, abs_end_s],
-    not just [0, effective_dur]. Otherwise, for any section that isn't
-    the first, the looped image stream ends long before the overlay's
-    enable window opens and the image never appears.
+    """The image stream must carry the ABSOLUTE timestamps its enable
+    window and its alpha fades are written in — but it must not be
+    GENERATED from t=0 to get them.
+
+    Two bugs live at this line. Capping the read at `effective_dur` alone
+    made the stream end long before `enable` opened, because its timestamps
+    started at zero and the window is measured from the start of the output.
+    Fixing that with `-t abs_end_s` made a credits logo ending at 59 minutes
+    a 4K still looped for 59 minutes — measured at 4.4 GB of the 14.2 GB a
+    real 4K forge needed, for an overlay enabled for five seconds of it.
+
+    `-itsoffset` gives both, so this asserts the WINDOW rather than either
+    spelling of it.
 
     Section 1 = 0..2s, Section 2 = 2..4s. Overlay on sec 2 with
-    start_s=0.5, duration_s=1.0 → abs_end_s = 3.5. The input's `-t`
-    must be 3.5, not 1.0.
+    start_s=0.5, duration_s=1.0 → visible 2.5..3.5 on the output.
     """
     p, _v1, _v2 = _section_project(tmp_path)
     logo = tmp_path / "logo.png"
@@ -1103,12 +1111,19 @@ def test_section_image_overlay_input_lives_until_enable_window_ends(
         if inp.path == str(logo) and "-loop" in inp.pre_args
     ]
     assert matches, "overlay PNG should be registered as a looped input"
-    # pre_args is ["-loop", "1", "-t", "<value>"]
-    t_idx = matches[0].pre_args.index("-t")
-    t_value = float(matches[0].pre_args[t_idx + 1])
-    assert t_value == 3.5, (
-        f"expected -t 3.5 (abs_end_s) so the image stream is alive when "
-        f"enable opens at abs_start_s=2.5; got {t_value}"
+    args = matches[0].pre_args
+    offset = float(args[args.index("-itsoffset") + 1])
+    read = float(args[args.index("-t") + 1])
+
+    assert offset == pytest.approx(2.5), (
+        f"the stream must LAND at abs_start_s=2.5; got -itsoffset {offset}"
+    )
+    assert read == pytest.approx(1.0), (
+        f"only the window itself should be read; got -t {read}"
+    )
+    # The invariant both spellings exist to satisfy.
+    assert offset + read == pytest.approx(3.5), (
+        "the image must still be alive when the enable window closes"
     )
 
 

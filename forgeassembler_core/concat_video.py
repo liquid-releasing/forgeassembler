@@ -737,15 +737,24 @@ def build_ffmpeg_command(
                 continue
 
             ov_input_idx = len(inputs)
-            # -t runs from the start of the input (t=0 of the concat'd
-            # timeline) through abs_end_s so the looped image is still
-            # alive when the enable window opens at abs_start_s. Using
-            # `effective_dur` here was the old bug: the image stream
-            # ended at t=effective_dur, which for any later section is
-            # long before enable activates.
+            # The looped image has to carry the ABSOLUTE timestamps the
+            # enable window and the alpha fades are written in, but it must
+            # not be GENERATED from t=0 to get them.
+            #
+            # `-t abs_end_s` alone did that: a credits logo ending at 59
+            # minutes became a 4K still looped for 59 minutes -- roughly
+            # 100,000 rgba frames, most of them for an overlay that is
+            # enabled for five seconds. (Capping at `effective_dur` was the
+            # bug before that: the stream then ended long before `enable`
+            # opened, because its timestamps started at zero.)
+            #
+            # `-itsoffset` gives both: read only the window, and have it
+            # land at the right place on the timeline.
             inputs.append(FfmpegInput(
                 path=ov.file,
-                pre_args=["-loop", "1", "-t", f"{abs_end_s:g}"],
+                pre_args=["-loop", "1",
+                          "-t", f"{effective_dur:g}",
+                          "-itsoffset", f"{abs_start_s:g}"],
             ))
             # Pre-scale the image at scale_pct before feeding it into
             # the overlay helper. 100 = native; anything else gets a
