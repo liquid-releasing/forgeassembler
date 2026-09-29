@@ -5,7 +5,8 @@ import {
   msToTimecode, timecodeToMs, segmentHasChannel,
   effectiveDurMs, projectDurationMs,
   channelGroup, projectChannelCoverage, channelGapsFor, NEUTRAL_KELVIN,
-  channelName, channelStation, stationLabel,
+  channelName, channelStation, stationLabel, stationGroup,
+  audioRelPath, mainHeatmapRelPath,
   joinerToReal, joinerFromReal, ENGINE_JOINER_TYPES,
 } from './projectAdapter.js';
 
@@ -1203,5 +1204,40 @@ describe('output folder layout', () => {
       version: '2.0', sections: [], output: { folder_layout: 'nested' },
     });
     expect(vm.output.folderLayout).toBe('flat');
+  });
+});
+
+describe('funscriptRelPath honours the output layout', () => {
+  it('nests device folders under their group when grouped', () => {
+    // The Forge tab promised `MultiFunPlayer/...` for a project set to write
+    // `haptic/MultiFunPlayer/...` -- a list of files that would not be there,
+    // which is the one thing that card exists not to do.
+    expect(funscriptRelPath('tcode:surge', 'AJ', 'grouped'))
+      .toBe('haptic/MultiFunPlayer/AJ.surge.funscript');
+    expect(funscriptRelPath('estim3p:alpha', 'AJ', 'grouped'))
+      .toBe('estim/E-Stim/AJ.alpha.funscript');
+  });
+
+  it('is unchanged when flat, which is still the default', () => {
+    expect(funscriptRelPath('tcode:surge', 'AJ')).toBe('MultiFunPlayer/AJ.surge.funscript');
+    expect(funscriptRelPath('tcode:surge', 'AJ', 'flat'))
+      .toBe('MultiFunPlayer/AJ.surge.funscript');
+  });
+
+  it('keeps the universal stroke script at the top in both', () => {
+    for (const layout of ['flat', 'grouped']) {
+      expect(funscriptRelPath('main', 'AJ', layout)).toBe('AJ.funscript');
+    }
+  });
+
+  it('assumes an unknown station is haptic, as the engine does', () => {
+    expect(stationGroup('some_new_toy')).toBe('haptic');
+  });
+
+  it('agrees with the engine about where audio and the heatmap go', () => {
+    expect(audioRelPath('mp3', 'AJ', 'grouped')).toBe('sound/AJ.mp3');
+    expect(audioRelPath('mp3', 'AJ', 'flat')).toBe('AJ.mp3');
+    expect(mainHeatmapRelPath('AJ', 'grouped')).toBe('art/AJ.heatmap.png');
+    expect(mainHeatmapRelPath('AJ', 'flat')).toBe('AJ.heatmap.png');
   });
 });

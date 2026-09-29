@@ -8,7 +8,8 @@ import { listFonts, pickFile, probeMedia, videoEncoder } from './api/forge';
 import { BRANDING_EXT } from './lib/branding';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
 import { Modal, ModalFooter } from './ProjectIO';
-import { effectiveDurMs, funscriptRelPath, projectChannelCoverage,
+import { effectiveDurMs, funscriptRelPath, mainHeatmapRelPath,
+         projectChannelCoverage,
          renderTag, renderedVideoName, segmentHasChannel } from './lib/projectAdapter';
 import { projectFileName } from './lib/projectFile';
 
@@ -508,7 +509,7 @@ function ResolutionPicker({ value, onChange }) {
 
 // ── Forge tab ─────────────────────────────────────────────────────
 function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
-                    forging, progress, forgeStage }) {
+                    forging, starting = false, progress, forgeStage }) {
   // What the forge will write, counted the same way the engine counts it.
   const flat = project.sections.flatMap(s => s.segments);
   const cov = projectChannelCoverage(project);
@@ -589,10 +590,20 @@ function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
                 // station-qualified (`tcode:main`) and a colon cannot be in a
                 // Windows filename -- this panel was advertising files that
                 // could never exist.
-                f: funscriptRelPath(c.id, project.name),
+                // WITH the layout. Without it this panel promised
+                // `MultiFunPlayer/…` while the forge wrote
+                // `haptic/MultiFunPlayer/…` -- a list of files that
+                // would not be there, which is the one thing this card
+                // exists not to do.
+                f: funscriptRelPath(c.id, project.name,
+                                    project.output.folderLayout),
                 on: project.output.funscripts !== false,
                 sub: c.id !== "main",
               }))),
+              // The heatmap rides with the funscripts, and grouped sends
+              // it to `art/`. It was never listed at all.
+              { f: mainHeatmapRelPath(project.name, project.output.folderLayout),
+                on: project.output.funscripts !== false },
               { f: projectFileName(project.name), on: true },
             ].filter(x => x.on).map((x, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8,
@@ -612,7 +623,8 @@ function ForgeTab({ project, totalMs, onForge, onCancelForge, cancelling,
 
       <div style={{ marginTop: 18 }}>
         <ForgePanel project={project} onForge={onForge} onCancelForge={onCancelForge}
-                    cancelling={cancelling} forging={forging} progress={progress}
+                    cancelling={cancelling} forging={forging} starting={starting}
+                    progress={progress}
                     forgeStage={forgeStage} totalMs={totalMs} />
       </div>
     </FATabBody>
@@ -764,7 +776,7 @@ function useForgeEstimate(project, totalMs) {
   return `Roughly ${pretty} on ${enc.label}.`;
 }
 
-function ForgePanel({ project, onForge, onCancelForge, cancelling,
+function ForgePanel({ project, onForge, onCancelForge, cancelling, starting = false,
                       forging, progress, forgeStage, totalMs }) {
   const estimate = useForgeEstimate(project, totalMs);
   return (
@@ -804,7 +816,8 @@ function ForgePanel({ project, onForge, onCancelForge, cancelling,
             {cancelling ? "Cancelling…" : "Cancel"}
           </Button>
         )}
-        <Button kind="primary" size="md" icon="hammer" onClick={onForge} disabled={forging}>
+        <Button kind="primary" size="md" icon="hammer" onClick={onForge}
+                disabled={forging || starting}>
           {forging ? "Forging…" : "Forge"}
         </Button>
       </div>
@@ -919,6 +932,56 @@ function OverlaysCard({ overlays = [], onAdd, onEdit, onRemove }) {
                 onClick={() => onAdd?.("text")}>Add text&#8230;</Button>
       </div>
     </Card>
+  );
+}
+
+// A number box you can clear and retype.
+//
+// The obvious spelling -- `value={String(Number(x) || fallback)}` with the
+// clamp in onChange -- cannot be edited, because the text is re-derived from
+// the model on every keystroke and the model refuses the intermediate states
+// typing goes through. Clear "100" to type "45" and the empty string becomes
+// `Number('') || 100`, which re-renders as "100" (or, with a `Math.max(1, …)`
+// in front, as "1"), so the field snaps back before the second character
+// arrives and 45 is unreachable.
+//
+// Reported twice from real use -- once on an overlay's stop time, once on an
+// image overlay's scale -- so it is a control now rather than a pattern to
+// remember. The text is local while you type; the model is updated on blur.
+function NumberField({ value, onCommit, min = 0, fallback = 0, suffix = null }) {
+  const [text, setText] = useState(() => String(value ?? fallback));
+  // Follow the model when it changes from OUTSIDE (a different overlay opened
+  // into the same dialog), but never while this box has focus -- that is the
+  // re-derivation this exists to avoid.
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) setText(String(value ?? fallback));
+  }, [value, focused, fallback]);
+
+  function commit() {
+    setFocused(false);
+    const raw = text.trim();
+    // An empty box means "the default", not "zero": clearing it to retype is
+    // the commonest thing anyone does here.
+    const n = raw === "" ? fallback : Number(raw);
+    const next = Number.isFinite(n) ? Math.max(min, n) : fallback;
+    setText(String(next));
+    onCommit(next);
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <TextInput mono value={text} onChange={setText}
+                 onFocus={() => setFocused(true)}
+                 onBlur={commit}
+                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                 style={{ flex: 1 }} />
+      {suffix && (
+        <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>
+          {suffix}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -1077,12 +1140,12 @@ function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Fade in (seconds)">
-          <TextInput mono value={String(Number(d.fade_in_s) || 0)}
-                     onChange={(v) => set({ fade_in_s: Math.max(0, Number(v) || 0) })} />
+          <NumberField value={Number(d.fade_in_s) || 0} min={0} fallback={0}
+                       onCommit={(v) => set({ fade_in_s: v })} />
         </Field>
         <Field label="Fade out (seconds)">
-          <TextInput mono value={String(Number(d.fade_out_s) || 0)}
-                     onChange={(v) => set({ fade_out_s: Math.max(0, Number(v) || 0) })} />
+          <NumberField value={Number(d.fade_out_s) || 0} min={0} fallback={0}
+                       onCommit={(v) => set({ fade_out_s: v })} />
         </Field>
       </div>
 
@@ -1093,8 +1156,8 @@ function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
                        onChange={(v) => set({ text_color: v })} />
           </Field>
           <Field label="Size">
-            <TextInput mono value={String(Number(d.font_size) || 48)}
-                       onChange={(v) => set({ font_size: Math.max(1, Number(v) || 48) })} />
+            <NumberField value={Number(d.font_size) || 48} min={1} fallback={48}
+                         onCommit={(v) => set({ font_size: v })} />
           </Field>
         </div>
       )}
@@ -1118,8 +1181,8 @@ function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
 
       {!isText && (
         <Field label="Scale (%)" hint="100 is the image's own size.">
-          <TextInput mono value={String(Number(d.scale_pct) || 100)}
-                     onChange={(v) => set({ scale_pct: Math.max(1, Number(v) || 100) })} />
+          <NumberField value={Number(d.scale_pct) || 100} min={1} fallback={100}
+                       suffix="%" onCommit={(v) => set({ scale_pct: v })} />
         </Field>
       )}
 

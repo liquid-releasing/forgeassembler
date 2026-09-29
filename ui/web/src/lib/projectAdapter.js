@@ -111,13 +111,44 @@ export function stationLabel(station) {
  * naming files that can never exist, and hiding the per-device folders the
  * forge really writes.
  */
-export function funscriptRelPath(key, stem) {
+export function funscriptRelPath(key, stem, layout = 'flat') {
   if (key === 'main') return `${stem}.funscript`;
   const channel = channelName(key);
   const station = channelStation(key);
   // A station's own stroke track keeps the suffix-less spelling.
   const name = channel === 'main' ? `${stem}.funscript` : `${stem}.${channel}.funscript`;
-  return station ? `${stationLabel(station)}/${name}` : name;
+  if (!station) return name;
+  const folder = stationLabel(station);
+  return layout === 'grouped'
+    ? `${stationGroup(station)}/${folder}/${name}`
+    : `${folder}/${name}`;
+}
+
+// Mirrors `forgeassembler_core/channels.py::STATION_GROUP`. A mirror is a
+// liability -- this one already shipped a panel promising `MultiFunPlayer/…`
+// for a project set to write `haptic/MultiFunPlayer/…` -- so it is kept
+// beside the function that reads it, spelled the same way, and an unknown
+// station falls back the same way the engine's does.
+const STATION_GROUP = {
+  estim3p: 'estim', focstim: 'estim', focstim4p: 'estim',
+  handy: 'haptic', tcode: 'haptic', osr2: 'haptic', sr6: 'haptic',
+  lovense: 'haptic', vacuglide: 'haptic', ossm: 'haptic', shaker: 'haptic',
+};
+
+/** The group folder a station sits in when the output is grouped. */
+export function stationGroup(station) {
+  return STATION_GROUP[station] || 'haptic';
+}
+
+/** Where a concatenated audio channel lands. Mirrors `channels.audio_relpath`. */
+export function audioRelPath(channelKey, stem, layout = 'flat') {
+  const name = `${stem}.${channelKey}`;
+  return layout === 'grouped' ? `sound/${name}` : name;
+}
+
+/** Where the main heatmap lands. Mirrors `channels.heatmap_relpath` for main. */
+export function mainHeatmapRelPath(stem, layout = 'flat') {
+  return layout === 'grouped' ? `art/${stem}.heatmap.png` : `${stem}.heatmap.png`;
 }
 
 // The name a rendered size goes by in a filename. Mirrors
