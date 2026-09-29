@@ -106,6 +106,34 @@ file and only takes the real name once the render is complete, so if anything
 goes wrong the previous render is still there. See
 [Stopping a forge](stopping-a-forge.md).
 
+### Save your branding once, reuse it everywhere
+
+Branding is the one part of a compilation that is the same every time you
+make one, and rebuilding it by hand for each project is how one release's
+credits quietly end up saying something different from the last one's.
+
+**Save branding…** on the Output tab writes a `.forgebranding` file holding
+
+- the compilation's own title page,
+- the `.forge` bumper at each end,
+- the closing transition,
+- and every compilation-level overlay — logo, credits, anchors and timing
+  included.
+
+**Load branding…** puts all of that into whatever project you have open. It
+carries nothing else: no resolution, no frame rate, no folder, no sections. A
+preset that silently reset your output resolution would be a trap, so it
+cannot.
+
+Loading **replaces** the branding that was there rather than merging with it.
+A new intro with the old credits still over it is the shape of a mistake
+nobody asks for, and nothing in the file could say which half you meant.
+
+!!! tip "Adding branding to an old project"
+    Open it, press **Load branding…**, forge. The render tag does not change,
+    so the new file takes the same name as the old one — see the rule above
+    about forging everything when the timeline moves.
+
 ## Which one to keep and which one to share
 
 !!! warning "Rendering at 4K does not add detail"

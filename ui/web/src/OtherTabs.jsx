@@ -5,6 +5,7 @@ import { FASectionLabel, FATabBody, FATabHeader, fmtTotal } from './AppShell';
 import { ParamControl, TimingVisual } from './JoinerEditor';
 import { FA_DATA } from './data';
 import { listFonts, pickFile, probeMedia, videoEncoder } from './api/forge';
+import { BRANDING_EXT } from './lib/branding';
 import { Button, Card, Field, Icon, Pill, Segmented, Slider, TextInput } from './primitives';
 import { Modal, ModalFooter } from './ProjectIO';
 import { effectiveDurMs, funscriptRelPath, projectChannelCoverage,
@@ -48,8 +49,17 @@ function newOverlay(kind) {
   };
 }
 
+// Where the forge puts things, not what it makes. Both are real: "flat" is
+// what every forge before this wrote and what existing published folders look
+// like, so re-forging one must not rearrange it.
+const FOLDER_LAYOUTS = [
+  { value: "flat",    label: "Flat" },
+  { value: "grouped", label: "Grouped" },
+];
+
 function OutputTab({ project, onSetOutput, onSetChannels,
-                     onPickBranding, onClearBranding, onSetOverlays }) {
+                     onPickBranding, onClearBranding, onSetOverlays,
+                     onSaveBranding, onLoadBranding, hasBranding = false }) {
   const out = project.output || {};
   const chans = project.channels || {};
   // { index, draft } while the dialog is open; index -1 means "new".
@@ -97,6 +107,35 @@ function OutputTab({ project, onSetOutput, onSetChannels,
               </>
             )}
           </div>
+
+          <div style={{ marginTop: 16 }}>
+            <FASectionLabel>Folder layout</FASectionLabel>
+            <Segmented options={FOLDER_LAYOUTS}
+                       value={out.folderLayout === "grouped" ? "grouped" : "flat"}
+                       onChange={(v) => onSetOutput?.({ folderLayout: v })} />
+            <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--surface-2)",
+                           border: "1px solid var(--border)", borderRadius: 6,
+                           fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
+              {out.folderLayout === "grouped" ? (
+                <>
+                  Device folders go under <span className="mono">estim/</span> and{" "}
+                  <span className="mono">haptic/</span>, every audio file under{" "}
+                  <span className="mono">sound/</span>, the heatmap under{" "}
+                  <span className="mono">art/</span>. The top level keeps the{" "}
+                  <span className="mono">.forge</span>, the videos and{" "}
+                  <span className="mono">{`${project.name || "combined"}.funscript`}</span>.
+                  <br />
+                  Each channel's own heatmap stays beside its funscript.
+                </>
+              ) : (
+                <>
+                  All eleven device folders sit in the output folder beside the
+                  videos, the audio and the heatmap — what every forge before
+                  this wrote. Re-forging an existing output keeps its shape.
+                </>
+              )}
+            </div>
+          </div>
         </Card>
         <Card>
           <FASectionLabel>Branding</FASectionLabel>
@@ -112,6 +151,37 @@ function OutputTab({ project, onSetOutput, onSetChannels,
           <BrandingSlot which="outro" label="After the compilation"
                          seg={project.output?.brandingOutro}
                          onPick={onPickBranding} onClear={onClearBranding} />
+
+          {/* Branding is the one part of a compilation that is the same every
+              time, and it was the one part you had to rebuild by hand. A
+              preset carries the title page, both bumpers, the closing
+              transition and every overlay -- and nothing else, so loading one
+              cannot quietly change your resolution. */}
+          <div style={{ marginTop: 14, paddingTop: 12,
+                         borderTop: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              <Button kind="secondary" size="sm" icon="save"
+                      disabled={!hasBranding}
+                      title={hasBranding
+                        ? "Save the title page, bumpers and overlays as a reusable preset"
+                        : "Nothing to save yet — add a title page, a bumper or an overlay"}
+                      onClick={() => onSaveBranding?.()}>
+                Save branding…
+              </Button>
+              <Button kind="ghost" size="sm" icon="folder-open"
+                      title="Replace this project's branding with a saved preset"
+                      onClick={() => onLoadBranding?.()}>
+                Load branding…
+              </Button>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)",
+                           lineHeight: 1.5 }}>
+              A <span className="mono">.{BRANDING_EXT}</span> file carries the
+              title page, both bumpers, the closing transition and every
+              overlay — reusable across every compilation you make. Loading one
+              REPLACES the branding here and leaves everything else alone.
+            </div>
+          </div>
         </Card>
         <OverlaysCard overlays={project.output?.overlays || []}
                       onAdd={(kind) => setEditing({ index: -1, draft: newOverlay(kind) })}
@@ -866,6 +936,11 @@ function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
   // -- reported from a real forge as a credits roll "in a weird font".
   const [fonts, setFonts] = useState([]);
   useEffect(() => {
+    // TEXT overlays only. Unguarded, this stamped `font_family` onto an image
+    // overlay -- where it does nothing -- so the picker looked like it had
+    // taken while the credits it was meant for still carried no font at all.
+    // That is what rendered as "the selection of arial didn't take".
+    if (overlay.kind !== "text") return undefined;
     let cancelled = false;
     listFonts()
       .then((r) => {
@@ -873,12 +948,12 @@ function OverlayDialog({ overlay, hasOutro, onSave, onClose }) {
         setFonts(r.fonts || []);
         // Only fill an EMPTY font in, so editing an existing overlay never
         // silently restyles it.
-        setD((prev) => (prev.font_family ? prev
+        setD((prev) => (prev.kind !== "text" || prev.font_family ? prev
           : { ...prev, font_family: r.default || "" }));
       })
       .catch(() => { /* leave it to ffmpeg rather than guess a name */ });
     return () => { cancelled = true; };
-  }, []);
+  }, [overlay.kind]);
 
   // Stop time, not duration. The engine stores a duration, but "when does
   // it go away" is the question someone actually has in mind, and making

@@ -12,10 +12,14 @@ import { CompilationPreview } from './CompilationPreview';
 import { Modal, ModalFooter, OpenProjectDialog, SaveAsDialog,
          UnsavedChangesDialog } from './ProjectIO';
 import { FA_DATA } from './data';
-import { loadProject, saveProject, pickFolder, pickFile, detectForgeFolder, probeDuration,
+import { loadProject, saveProject, pickFolder, pickFile, pickSavePath,
+         detectForgeFolder, probeDuration,
          forgeProject, onForgeProgress, revealPath, validateProject,
-         cancelForge, FORGE_CANCELLED,
+         cancelForge, FORGE_CANCELLED, readJsonFile, writeJsonFile,
          importForgeBundle, extractThumbnail, thumbnailPathFor } from './api/forge';
+import { BRANDING_FILTERS, applyBranding, brandingFileName, describeBranding,
+         extractBranding, hasBranding, isBrandingDoc } from './lib/branding';
+import { projectDisplayName } from './lib/projectFile';
 import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
          projectDurationMs, projectSignature } from './lib/projectAdapter';
 import { parseProgressLine, stageProgress, makeStageTracker } from './lib/forgeProgress';
@@ -31,8 +35,13 @@ const { useState, useEffect, useMemo, useRef } = React;
 function emptyProject() {
   return {
     name: 'untitled',
+    // `folderLayout: 'grouped'` here and nowhere else. A project LOADED
+    // without the field stays flat, so re-forging an old one cannot scatter a
+    // second copy of everything into art/ sound/ estim/ haptic/ beside the
+    // first. Only new work starts in the new shape.
     output: { folder: null, resolution: '1080p', quality: 'medium',
-              frameRate: 'source', normalizeAudio: true, video: true, funscripts: true },
+              frameRate: 'source', normalizeAudio: true, video: true,
+              funscripts: true, folderLayout: 'grouped' },
     // Channel flags are VETOES over what the clips actually carry, not an
     // allow-list — the engine forges every DETECTED channel and skips the
     // ones nothing carries. All-on is therefore the correct empty state;
@@ -719,6 +728,63 @@ function App() {
     markDirty();
   }
 
+  // ── Branding as a reusable PRESET ─────────────────────────────────
+  //
+  // The title page, the bumper at each end and the overlays over them are the
+  // one part of a compilation that is the same every time. Rebuilding them by
+  // hand per project is how one release's credits end up saying something
+  // slightly different from the last one's.
+  async function handleSaveBranding() {
+    setIoError(null);
+    if (!hasBranding(project)) {
+      setIoError('There is no branding in this project to save yet.');
+      return;
+    }
+    const path = await pickSavePath(brandingFileName(project.name), {
+      filters: BRANDING_FILTERS,
+      startDir: lastFolder('branding') || lastFolder('projectOpen'),
+    });
+    if (!path) return;
+    try {
+      await writeJsonFile(path, extractBranding(project, {
+        name: projectDisplayName(path),
+      }));
+      rememberFileFolder('branding', path);
+      flashSaved('Branding saved');
+    } catch (e) {
+      setIoError(`Could not save the branding: ${e?.message || e}`);
+    }
+  }
+
+  async function handleLoadBranding() {
+    setIoError(null);
+    const path = await pickFile({
+      title: 'Load branding into this project',
+      filters: BRANDING_FILTERS,
+      startDir: lastFolder('branding') || lastFolder('projectOpen'),
+    });
+    if (!path) return;
+    let doc;
+    try {
+      doc = await readJsonFile(path);
+    } catch (e) {
+      setIoError(`Could not read that file: ${e?.message || e}`);
+      return;
+    }
+    if (!isBrandingDoc(doc)) {
+      // Named, because "invalid file" leaves someone staring at a picker
+      // wondering which of four similar files they grabbed.
+      setIoError(`${projectDisplayName(path)} is not a branding file.`);
+      return;
+    }
+    rememberFileFolder('branding', path);
+    // REPLACES this project's branding -- see `applyBranding`. Everything
+    // else, including the sections, is untouched.
+    setProject(p => applyBranding(p, doc));
+    markDirty();
+    flashSaved(`Branding loaded · ${describeBranding(doc)}`);
+  }
+
   // Overlays over the whole compilation. One list, replaced wholesale --
   // the dialog hands back the finished array, so there is no add/edit/remove
   // branching here to drift out of step with it.
@@ -1079,6 +1145,9 @@ function App() {
                        onSetChannels={setChannels}
                        onPickBranding={handlePickBranding}
                        onClearBranding={(which) => setBranding(which, null)}
+                       onSaveBranding={handleSaveBranding}
+                       onLoadBranding={handleLoadBranding}
+                       hasBranding={hasBranding(project)}
                        onSetOverlays={setOverlays} />;
     acceptKey = "output";
     acceptSummary = `Resolution ${project.output.resolution} · loudness ${project.output.normalizeAudio ? "−16 LUFS" : "off"}.`;
