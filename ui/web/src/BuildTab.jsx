@@ -136,7 +136,12 @@ function AudioModeBadge({ mode }) {
 // error rather than as "no preview yet".
 const KIND_ICON = { video: "film", still: "image", audio: "audio-lines" };
 
-function ClipThumb({ seg, w }) {
+// `missing` is whether this clip's video is known to be absent, which is
+// NOT the same as having no thumbnail. A blank card used to mean four
+// different things at once -- not extracted yet, an unreadable codec, a
+// stale `.forge`, or the file genuinely gone -- so it told you nothing, and
+// the only real signal was five console warnings nobody was reading.
+function ClipThumb({ seg, w, missing = false }) {
   const h = Math.round(w * 9 / 16);
   const isTitle = !!seg.titleCard;
   // A `.forge` bundle ships its own hero still; the adapter records the
@@ -144,12 +149,21 @@ function ClipThumb({ seg, w }) {
   // Tauri import, so it can be unit-tested).
   const src = seg.thumb || (seg.thumbPath ? toMediaUrl(seg.thumbPath) : null);
   return (
-    <div style={{
+    <div title={missing ? `File not found: ${seg.file}` : undefined}
+         style={{
       position: "relative", width: w, height: h, flexShrink: 0,
-      borderRadius: 6, overflow: "hidden", background: "var(--surface-2)",
-      border: "1px solid var(--border)",
+      borderRadius: 6, overflow: "hidden",
+      background: missing ? "rgba(255,181,71,0.10)" : "var(--surface-2)",
+      border: `1px solid ${missing ? "var(--warn)" : "var(--border)"}`,
     }}>
-      {src ? (
+      {missing ? (
+        // Its own state, with its own icon and colour. A clip whose file is
+        // gone is a thing to fix, not a picture that has not loaded.
+        <div style={{ width: "100%", height: "100%", display: "grid",
+                      placeItems: "center", color: "var(--warn)" }}>
+          <Icon name="unlink" size={Math.max(13, Math.round(h * 0.38))} stroke={1.8} />
+        </div>
+      ) : src ? (
         <img src={src} alt="" style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }} />
       ) : (
         <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center",
@@ -167,12 +181,13 @@ function ClipThumb({ seg, w }) {
           borderRadius: 2, lineHeight: 1.3,
         }}>{isTitle ? "TITLE" : "STILL"}</span>
       )}
-      {/* duration badge */}
+      {/* duration badge — or what is actually wrong, which matters more */}
       <span style={{
         position: "absolute", bottom: 4, right: 4, padding: "1px 5px",
-        background: "rgba(0,0,0,0.7)", color: "#fff", fontFamily: "var(--font-mono)",
-        fontSize: 10, fontWeight: 600, borderRadius: 2,
-      }}>{fmtClipDur(seg.durMs)}</span>
+        background: missing ? "var(--warn)" : "rgba(0,0,0,0.7)",
+        color: missing ? "#0e1117" : "#fff", fontFamily: "var(--font-mono)",
+        fontSize: 10, fontWeight: missing ? 700 : 600, borderRadius: 2,
+      }}>{missing ? "MISSING" : fmtClipDur(seg.durMs)}</span>
       {/* overlay dot */}
       {seg.overlays > 0 && (
         <span style={{
@@ -193,7 +208,8 @@ function _fmtSecs(ms) {
   const m = Math.floor(t / 60), s = t % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
-function ClipEditor({ seg, onSave, onRemove, onClose }) {
+function ClipEditor({ seg, onSave, onRemove, onClose,
+                      onReplaceVideo, missing = false }) {
   const durMs = seg.durMs || 0;
   const [audio, setAudio] = bsState(seg.audio || "keep");
   const [startS, setStartS] = bsState(String((seg.trimStartMs ?? 0) / 1000));
@@ -294,6 +310,19 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
           <Button kind="ghost" size="sm" icon="trash-2"
                   onClick={() => { onRemove(seg.id); onClose(); }}
                   style={{ color: "var(--danger)" }}>Remove clip</Button>
+          {/* The single-file case the folder relink cannot reach: one clip
+              renamed, or moved somewhere of its own. Emphasised only while
+              this clip is actually missing -- otherwise it is a rarely-wanted
+              action sitting next to a destructive one. */}
+          {onReplaceVideo && (
+            <Button kind={missing ? "primary" : "ghost"} size="sm" icon="file-symlink"
+                    onClick={() => { onReplaceVideo(seg); onClose(); }}
+                    title={missing
+                      ? `Not found: ${seg.file}`
+                      : "Point this clip at a different file"}>
+              {missing ? "Find this file…" : "Replace video…"}
+            </Button>
+          )}
           <div style={{ flex: 1 }} />
           <Button kind="ghost" size="sm" onClick={onClose}>Cancel</Button>
           <Button kind="primary" size="sm" icon="check" onClick={commit}>Save</Button>
@@ -301,6 +330,13 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
       </div>
     </div>
   );
+}
+
+// Windows disagrees with itself about separators and case, so the lookup key
+// is normalised on both sides -- `D:\x` and `d:/x` are one file.
+function isMissing(missingPaths, file) {
+  if (!missingPaths || !missingPaths.size || !file) return false;
+  return missingPaths.has(String(file).replace(/\\/g, '/').toLowerCase());
 }
 
 // ── Scene row ─────────────────────────────────────────────────────
@@ -312,7 +348,8 @@ function ClipEditor({ seg, onSave, onRemove, onClose }) {
 // The name is editable in place because it is the CHAPTER name in the
 // output, not decoration.
 function SceneRow({ section, seg, idx, chapterStartMs, selected,
-                    onSelect, onRename, onRemove, onEditClip, gaps = [] }) {
+                    onSelect, onRename, onRemove, onEditClip, gaps = [],
+                    missingPaths = null }) {
   const drag = useDraggable({ kind: "section", id: section.id });
   const drop = useDroppable({ accept: "section", id: section.id });
   const [hover, setHover] = bsState(false);
@@ -365,10 +402,15 @@ function SceneRow({ section, seg, idx, chapterStartMs, selected,
             {String(idx + 1).padStart(2, "0")}
           </span>
 
-          <ClipThumb seg={seg} w={ROW.thumb} />
+          <ClipThumb seg={seg} w={ROW.thumb}
+                     missing={isMissing(missingPaths, seg.file)} />
 
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* `minWidth: 0` is load-bearing: a flex child will not shrink
+                below its content, so without it a long scene name pushed the
+                chapter badge out past the row and the next badge drew on top
+                of it -- "ch.01 @ 0:38" and "trimmed" overlapping. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               {editing ? (
                 <input
                   ref={inputRef} value={draftTitle}
@@ -393,6 +435,9 @@ function SceneRow({ section, seg, idx, chapterStartMs, selected,
                     fontSize: ROW.font, fontWeight: 600, color: "var(--text)",
                     cursor: "text", padding: "1px 6px", marginLeft: -6, borderRadius: 4,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    // The one thing in the row that may shrink. Everything
+                    // after it is a fixed-width badge that must stay legible.
+                    minWidth: 0, flexShrink: 1,
                   }}>
                   {section.title || seg.title}
                 </span>
@@ -584,7 +629,8 @@ function TitlePageRow({ joiner, onClick }) {
 }
 
 // ── The scene list ────────────────────────────────────────────────
-function SceneList({ project, selectedIds, onSelect, onEditJoiner, onRenameSection,
+function SceneList({ missingPaths = null,
+                    project, selectedIds, onSelect, onEditJoiner, onRenameSection,
                      onRemoveSection, onEditClip, onAddForgeScene, onEditTitlePage }) {
   // Each scene's chapter start: the scenes before it, plus the joiners
   // between them (a joiner's bridge adds real time to the output).
@@ -628,7 +674,8 @@ function SceneList({ project, selectedIds, onSelect, onEditJoiner, onRenameSecti
             onRename={onRenameSection}
             onRemove={onRemoveSection}
             onEditClip={onEditClip}
-            gaps={channelGapsFor(seg, project)} />
+            gaps={channelGapsFor(seg, project)}
+            missingPaths={missingPaths} />
         </React.Fragment>
       ))}
     </div>
@@ -736,7 +783,7 @@ function BuildTab({ project, selectedIds, onSelect,
                     onAddForgeFolder, onAddForgeScene,
                     newSceneJoiner, onPickNewSceneJoiner, onEditNewSceneJoiner,
                     onRemoveSection, onEditClip,
-                    newSceneJoinerKind }) {
+                    newSceneJoinerKind, missingPaths = null }) {
 
   const scenes = project.sections.filter(s => s.segments.length);
   const totalMs = projectDurationMs(project, FA_DATA.joinerAddedMs);
@@ -781,6 +828,7 @@ function BuildTab({ project, selectedIds, onSelect,
       </div>
 
       <SceneList
+        missingPaths={missingPaths}
         project={project}
         selectedIds={selectedIds}
         onSelect={onSelect}

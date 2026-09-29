@@ -15,11 +15,14 @@ import { FA_DATA } from './data';
 import { loadProject, saveProject, pickFolder, pickFile, pickSavePath,
          detectForgeFolder, probeDuration,
          forgeProject, onForgeProgress, revealPath, validateProject,
-         cancelForge, FORGE_CANCELLED, readJsonFile, writeJsonFile,
+         cancelForge, FORGE_CANCELLED, readJsonFile, writeJsonFile, pathsExist,
          importForgeBundle, extractThumbnail, thumbnailPathFor } from './api/forge';
 import { BRANDING_FILTERS, applyBranding, brandingFileName, describeBranding,
          extractBranding, hasBranding, isBrandingDoc } from './lib/branding';
+import { Button, Icon } from './primitives';
 import { projectDisplayName } from './lib/projectFile';
+import { applyRemap, commonRoot, describeMissing, mediaPathsOf,
+         planRemap } from './lib/missingMedia';
 import { fromForgeProject, toForgeProject, fromForgeBundleSegment,
          projectDurationMs, projectSignature } from './lib/projectAdapter';
 import { parseProgressLine, stageProgress, makeStageTracker } from './lib/forgeProgress';
@@ -141,7 +144,15 @@ function App() {
   const [lastSavedAtMs, setLastSavedAtMs] = useState(null);
   const [ioDialog,      setIoDialog]      = useState(null);
   const [pendingAfterSave, setPendingAfterSave] = useState(null);
+  // Pressed, but the forge has not begun yet. See `startForge`.
+  const [starting,      setStarting]      = useState(false);
   const [ioError,       setIoError]       = useState(null);
+  // Which of the project's files are not on disk. Null until checked;
+  // `{ entries, checked, summary }` after. Separate from `ioError`
+  // because it is a STATE of the project, not an event -- it stays on
+  // screen until it is fixed, where an error banner is dismissed and
+  // forgotten.
+  const [missingMedia,  setMissingMedia]  = useState(null);
   // Something worth saying that is NOT a failure -- cancelling a forge is
   // the first of them. Kept separate from `ioError` rather than given a
   // tone flag beside it: a flag has to be reset by every one of the dozen
@@ -245,6 +256,7 @@ function App() {
   // Clears the canvas to a single empty section — the starting point for
   // building a compilation from scratch (Add folder / Add .forge scene).
   function handleNewProject() {
+    setMissingMedia(null);
     setProject(emptyProject());
     setSavedPath(null);
     setDirty(true);
@@ -443,6 +455,123 @@ function App() {
     }
   }
 
+  // ── Missing media ─────────────────────────────────────────────────
+  //
+  // A project stores absolute paths, so two ordinary things break it: a
+  // folder moves, or the same drive comes up as a different letter on
+  // another machine. Before this, the only sign was a blank thumbnail --
+  // which also means "not extracted yet", "codec unreadable" and "the
+  // bundle is out of date", so it told you nothing.
+  //
+  // One batched `paths_exist` for the whole project: a stat each, no
+  // ffprobe, no round trip per clip.
+  async function checkMedia(vm) {
+    const wanted = mediaPathsOf(vm);
+    if (!wanted.length) { setMissingMedia(null); return null; }
+    let flags;
+    try {
+      flags = await pathsExist(wanted.map((w) => w.path));
+    } catch (e) {
+      // Never let this cost someone the project they just opened.
+      console.warn('[media] existence check failed', e);
+      setMissingMedia(null);
+      return null;
+    }
+    const entries = wanted.filter((_, i) => flags[i] === false);
+    const state = entries.length
+      ? { entries, checked: wanted.length,
+          summary: describeMissing(entries, wanted.length) }
+      : null;
+    setMissingMedia(state);
+    return state;
+  }
+
+  // Point the project at where the files went.
+  //
+  // By ROOT, not file by file. Whatever moved, moved together -- that is
+  // what a folder is -- so the question to ask is "where is this folder
+  // now", once, rather than the same question forty times.
+  async function handleRelinkMedia() {
+    if (!missingMedia?.entries?.length) return;
+    setIoError(null);
+    const oldRoot = commonRoot(missingMedia.entries.map((m) => m.path));
+    if (!oldRoot) {
+      setIoError('These files are in different places, so there is no single '
+               + 'folder to re-point. Replace them one at a time from the clip editor.');
+      return;
+    }
+    const picked = await pickFolder({ startDir: lastFolder('scenes') });
+    if (!picked) return;
+
+    const { mapping, unresolved } = planRemap(missingMedia.entries, oldRoot, picked);
+    if (!mapping.size) {
+      setIoError(`Nothing under ${oldRoot} could be re-pointed at ${picked}.`);
+      return;
+    }
+    // CHECK before committing. A relink that cheerfully rewrites forty paths
+    // onto forty files that are also not there is worse than one that fails.
+    const candidates = [...mapping.values()];
+    let flags;
+    try {
+      flags = await pathsExist(candidates);
+    } catch (e) {
+      setIoError(`Could not check ${picked}: ${e?.message || e}`);
+      return;
+    }
+    const good = new Map();
+    let i = 0;
+    for (const [from, to] of mapping) {
+      if (flags[i]) good.set(from, to);
+      i += 1;
+    }
+    if (!good.size) {
+      setIoError(`No missing file was found in ${picked}. `
+               + 'Pick the folder that now holds them.');
+      return;
+    }
+
+    const next = applyRemap(project, good);
+    setProject(next);
+    markDirty();
+    rememberFolder('scenes', picked);
+    const still = (missingMedia.entries.length - good.size);
+    flashSaved(still
+      ? `Relinked ${good.size} of ${missingMedia.entries.length} — ${still} still missing`
+      : `Relinked ${good.size} file${good.size === 1 ? '' : 's'}`);
+    // Re-check rather than subtract: the rewrite is the only thing that
+    // decides what is found now, and trusting the arithmetic instead is how
+    // a banner ends up disagreeing with the disk.
+    checkMedia(next);
+    hydrateThumbs(next).catch(() => {});
+    void unresolved;
+  }
+
+  // Re-point ONE clip. The folder relink handles whatever moved together;
+  // this is for the file that did something of its own -- in practice, got
+  // renamed, which no amount of path arithmetic can follow.
+  async function handleReplaceVideo(seg) {
+    if (!seg?.id) return;
+    setIoError(null);
+    const picked = await pickFile({
+      title: `Find the video for “${seg.title || baseName(seg.file)}”`,
+      filterName: 'Video',
+      extensions: ['mp4', 'mkv', 'mov', 'm4v', 'webm', 'avi', 'wmv'],
+      startDir: parentFolder(seg.file) || lastFolder('scenes'),
+    });
+    if (!picked) return;
+
+    const next = applyRemap(project, new Map([[seg.file, picked]]));
+    setProject(next);
+    markDirty();
+    rememberFileFolder('scenes', picked);
+    flashSaved(`Pointed at ${baseName(picked)}`);
+    checkMedia(next);
+    // The duration belongs to the NEW file, and the old one's is now a
+    // guess about a file this clip no longer uses.
+    hydrateDurations(next).catch(() => {});
+    hydrateThumbs(next).catch(() => {});
+  }
+
   async function hydrateDurations(vm) {
     const files = new Set();
     for (const sec of vm.sections || []) {
@@ -500,6 +629,11 @@ function App() {
       // durations a moment later, exactly as it does after an import.
       hydrateDurations(vm).catch(e => console.warn('[open] duration probe failed', e));
       hydrateThumbs(vm).catch(e => console.warn('[open] thumbnails failed', e));
+      // Checked on open, not at forge time. `validate()` has always
+      // reported a missing video as a hard error, but only when Forge was
+      // pressed -- so a project could look perfectly fine for an hour of
+      // editing and then refuse at the end.
+      checkMedia(vm).catch(e => console.warn('[open] media check failed', e));
     } catch (e) {
       console.error('[open] failed', e);
       setIoError(`Couldn't open ${path}: ${e?.message || e}`);
@@ -814,6 +948,13 @@ function App() {
     });
   }, [project]);
 
+  // Normalised once per check rather than per row: the canvas re-renders
+  // on every selection change, and this is read for every clip on it.
+  const missingPaths = useMemo(() => new Set(
+    (missingMedia?.entries || []).map(
+      (m) => String(m.path).replace(/\\/g, '/').toLowerCase()),
+  ), [missingMedia]);
+
   const flatSegments = project.sections.flatMap(s => s.segments);
   const sceneCount = project.sections.filter(s => s.segments.length).length;
   const totalMs = projectDurationMs(project, FA_DATA.joinerAddedMs);
@@ -936,10 +1077,17 @@ function App() {
   async function startForge() {
     if (forgingRef.current) return;
     forgingRef.current = true;
+    // `forging` does not go true until `runForge` has saved the project,
+    // validated it through the CLI and probed the first clip -- easily most
+    // of a second, during which the button still said "Forge" and still
+    // looked pressable. The ref above already made a second press harmless;
+    // this makes it look harmless, which is the part the user sees.
+    setStarting(true);
     try {
       await runForge();
     } finally {
       forgingRef.current = false;
+      setStarting(false);
       setCancelling(false);
     }
   }
@@ -1114,6 +1262,7 @@ function App() {
             <DragDropProvider onReorderSection={reorderSection}>
               <BuildTab
                 project={project}
+                missingPaths={missingPaths}
                 selectedIds={selectedIds}
                 onSelect={selectClip}
                 onEditJoiner={(sectionId, anchorRect) => setEditingJoiner({ sectionId, anchorRect })}
@@ -1157,7 +1306,8 @@ function App() {
   } else if (tab === "forge") {
     body = <ForgeTab project={project} totalMs={totalMs} onForge={startForge}
                      onCancelForge={handleCancelForge} cancelling={cancelling}
-                     forging={forging} progress={progress} forgeStage={forgeStage} />;
+                     forging={forging} starting={starting}
+                     progress={progress} forgeStage={forgeStage} />;
     acceptKey = "forge";
     acceptSummary = forging ? "Forging in progress…" : (pipeline.forge.accepted ? "Forged successfully." : "Press Forge to render the combined output.");
     // This bar is not really an accept bar. It is where the long expensive
@@ -1165,9 +1315,9 @@ function App() {
     // "Mark forged" asked the user to assert something the app already knew.
     // The card's own Forge button stays: this bar is always on screen, and
     // the card scrolls away.
-    acceptPrimary = forging
-      ? { label: "Forging…", icon: "hammer", kind: "secondary",
-          disabled: true, reason: null, onClick: () => {} }
+    acceptPrimary = (forging || starting)
+      ? { label: forging ? "Forging…" : "Starting…", icon: "hammer",
+          kind: "secondary", disabled: true, reason: null, onClick: () => {} }
       : markForged.enabled
         ? { label: "Chain to Viewer", icon: "arrow-right", kind: "white",
             onClick: () => setTab("viewer") }
@@ -1184,6 +1334,33 @@ function App() {
                  onOpen={handleOpenClick} onSave={handleSaveClick} onNew={handleNewProject}
                  onHome={goHome} />
       <FATabStrip active={tab} onChange={setTab} pipeline={pipeline} />
+
+      {/* Missing media. Persistent, not dismissible: it describes the state
+          of the project, and it goes away when the files are found. */}
+      {missingMedia?.summary && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12, flexShrink: 0,
+          padding: "9px 18px",
+          background: "rgba(255,181,71,0.08)",
+          borderBottom: "1px solid rgba(255,181,71,0.35)",
+          fontSize: 12.5, color: "var(--text)",
+        }}>
+          <Icon name="unlink" size={15} style={{ color: "var(--warn)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0, lineHeight: 1.45 }}>
+            <span style={{ fontWeight: 600 }}>{missingMedia.summary.title}</span>{" "}
+            <span style={{ color: "var(--text-muted)" }}>
+              {missingMedia.summary.detail}
+            </span>
+          </div>
+          <Button kind="primary" size="sm" icon="folder-search"
+                  onClick={handleRelinkMedia}
+                  title={missingMedia.summary.root
+                    ? `Say where ${missingMedia.summary.root} is now`
+                    : "Find the files"}>
+            Find missing media…
+          </Button>
+        </div>
+      )}
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         {tab === "build" ? body : <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{body}</div>}
@@ -1376,6 +1553,9 @@ function App() {
           seg={editingClip}
           onSave={updateSegment}
           onRemove={removeSegment}
+          onReplaceVideo={handleReplaceVideo}
+          missing={missingPaths.has(
+            String(editingClip.file || '').replace(/\\/g, '/').toLowerCase())}
           onClose={() => setEditingClip(null)} />
       )}
 
