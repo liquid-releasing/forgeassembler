@@ -16,6 +16,28 @@ import { effectiveDurMs, projectChannelCoverage, segmentHasChannel,
 
 const { useState: pbState } = React;
 
+// Whether the band is open, remembered per viewer.
+//
+// localStorage is right for exactly this: a per-viewer convenience that is
+// worthless to anyone else and costs nothing if it comes back empty. Every
+// access is guarded because it throws outright in a private window and in a
+// webview with site data blocked.
+const OPEN_KEY = 'fa.previewBand.open';
+
+function readOpen() {
+  try {
+    return window.localStorage.getItem(OPEN_KEY) !== '0';
+  } catch {
+    return true;   // default OPEN -- the band is the point of the tab
+  }
+}
+
+function writeOpen(open) {
+  try {
+    window.localStorage.setItem(OPEN_KEY, open ? '1' : '0');
+  } catch { /* nothing to do, and nothing depends on it */ }
+}
+
 // The gradient forgeassembler_core/heatmap.py paints into the .heatmap.png
 // the forge writes, in pos-units/sec. Sharing the stops means the strip and
 // the rendered heatmap agree about what "hot" looks like.
@@ -53,6 +75,7 @@ function PreviewBand({ project, totalMs, segCount }) {
   const [summary, setSummary] = pbState(null);
   const [pending, setPending] = pbState(false);
   const [note, setNote] = pbState(null);
+  const [open, setOpen] = pbState(readOpen);
 
   // Recompute when the project settles. Every run lays out and concatenates
   // the whole project, so a debounce keeps a burst of edits (dragging a trim
@@ -110,22 +133,37 @@ function PreviewBand({ project, totalMs, segCount }) {
   return (
     <div style={{
       background: "var(--surface)", borderTop: "1px solid var(--border)",
-      padding: "12px 22px", flexShrink: 0,
-      display: "flex", flexDirection: "column", gap: 10,
+      padding: open ? "12px 22px" : "8px 22px", flexShrink: 0,
+      display: "flex", flexDirection: "column", gap: open ? 10 : 0,
     }}>
+      {/* The whole label is the control, not just the caret: an 11px glyph
+          is a small target, and there is nothing else in the row to hit. */}
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)",
-                       textTransform: "uppercase", letterSpacing: "0.1em" }}>
-          Live preview
-        </span>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        <button onClick={() => { setOpen(o => { writeOpen(!o); return !o; }); }}
+                title={open ? "Collapse the preview" : "Show the preview"}
+                aria-expanded={open}
+                style={{ display: "flex", alignItems: "center", gap: 6,
+                         background: "transparent", border: "none", padding: 0,
+                         cursor: "pointer", font: "inherit", flexShrink: 0,
+                         color: "var(--text-dim)" }}>
+          <Icon name={open ? "chevron-down" : "chevron-right"} size={13} />
+          <span style={{ fontSize: 11.5, fontWeight: 700,
+                         textTransform: "uppercase", letterSpacing: "0.1em" }}>
+            Live preview
+          </span>
+        </button>
+        <span style={{ fontSize: 11, color: "var(--text-muted)",
+                       overflow: "hidden", textOverflow: "ellipsis",
+                       whiteSpace: "nowrap" }}>
           {note
             ? note
             : pending
             ? "Reading the combined funscript…"
-            : summary
-              ? `The joined ${summary.channel} track, velocity-coloured, with peak speed along the bottom — no render.`
-              : "Add clips to see the combined funscript."}
+            : !open
+              ? null
+              : summary
+                ? `The joined ${summary.channel} track, velocity-coloured, with peak speed along the bottom — no render.`
+                : "Add clips to see the combined funscript."}
         </span>
         <div style={{ flex: 1 }} />
         <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -149,113 +187,119 @@ function PreviewBand({ project, totalMs, segCount }) {
         </span>
       </div>
 
-      <div
-        ref={ref}
-        onMouseMove={(e) => {
-          const r = ref.current.getBoundingClientRect();
-          setHover(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)));
-        }}
-        onMouseLeave={() => setHover(null)}
-        style={{
-          position: "relative", height: 84, borderRadius: 6,
-          background: "var(--surface-2)", border: "1px solid var(--border)",
-          overflow: "hidden", cursor: "crosshair",
-        }}>
-        {/* The joined funscript. Position maps to the full 0-100 domain, so a
-            script that never reaches the rails visibly doesn't. */}
-        <svg viewBox="0 0 1 100" preserveAspectRatio="none"
-             style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
-          {[0, 50, 100].map(r => (
-            <line key={r} x1={0} x2={1} y1={100 - r} y2={100 - r}
-                  stroke="var(--text-dim)" strokeWidth={0.3} opacity={0.18} />
-          ))}
-          {strokeRuns.map((run, i) => (
-            <polyline key={i} fill="none" stroke={run.color}
-                      strokeWidth={0.9} vectorEffect="non-scaling-stroke"
-                      strokeLinejoin="round" strokeLinecap="round"
-                      points={run.pts.map(([t, pos]) => `${t},${100 - pos}`).join(' ')} />
-          ))}
-        </svg>
+      {/* Collapsed, the row above is still a full readout: total,
+          actions, avg bpm and peak speed. That is what confirms the
+          combined script loaded, which is the thing you look at the
+          band for once you have seen the shape of it. */}
+      {open && (<>
+        <div
+          ref={ref}
+          onMouseMove={(e) => {
+            const r = ref.current.getBoundingClientRect();
+            setHover(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)));
+          }}
+          onMouseLeave={() => setHover(null)}
+          style={{
+            position: "relative", height: 84, borderRadius: 6,
+            background: "var(--surface-2)", border: "1px solid var(--border)",
+            overflow: "hidden", cursor: "crosshair",
+          }}>
+          {/* The joined funscript. Position maps to the full 0-100 domain, so a
+              script that never reaches the rails visibly doesn't. */}
+          <svg viewBox="0 0 1 100" preserveAspectRatio="none"
+               style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+            {[0, 50, 100].map(r => (
+              <line key={r} x1={0} x2={1} y1={100 - r} y2={100 - r}
+                    stroke="var(--text-dim)" strokeWidth={0.3} opacity={0.18} />
+            ))}
+            {strokeRuns.map((run, i) => (
+              <polyline key={i} fill="none" stroke={run.color}
+                        strokeWidth={0.9} vectorEffect="non-scaling-stroke"
+                        strokeLinejoin="round" strokeLinecap="round"
+                        points={run.pts.map(([t, pos]) => `${t},${100 - pos}`).join(' ')} />
+            ))}
+          </svg>
 
-        {/* Peak speed per bucket, as a slim lane along the bottom — the
-            heatmap this strip used to be, demoted to context. */}
-        <svg viewBox={`0 0 ${Math.max(1, bins.length)} 10`} preserveAspectRatio="none"
-             style={{ position: "absolute", left: 0, right: 0, bottom: 0,
-                       width: "100%", height: 10 }}>
-          {bins.map((b, i) => (
-            <rect key={i} x={i} y={10 - Math.max(0.6, b.v * 10)}
-                  width={1.05} height={Math.max(0.6, b.v * 10)}
-                  fill={speedColor(b.speed)} opacity={0.9} />
-          ))}
-        </svg>
+          {/* Peak speed per bucket, as a slim lane along the bottom — the
+              heatmap this strip used to be, demoted to context. */}
+          <svg viewBox={`0 0 ${Math.max(1, bins.length)} 10`} preserveAspectRatio="none"
+               style={{ position: "absolute", left: 0, right: 0, bottom: 0,
+                         width: "100%", height: 10 }}>
+            {bins.map((b, i) => (
+              <rect key={i} x={i} y={10 - Math.max(0.6, b.v * 10)}
+                    width={1.05} height={Math.max(0.6, b.v * 10)}
+                    fill={speedColor(b.speed)} opacity={0.9} />
+            ))}
+          </svg>
 
-        {/* Section boundary marks */}
-        <SectionBoundaries project={project} totalMs={totalMs} />
+          {/* Section boundary marks */}
+          <SectionBoundaries project={project} totalMs={totalMs} />
 
-        {/* Hover cursor */}
-        {hover != null && (
-          <>
-            <span style={{
-              position: "absolute", top: 0, bottom: 0, left: `${hover * 100}%`,
-              width: 1, background: "var(--text)", opacity: 0.9, pointerEvents: "none",
-            }} />
-            <span style={{
-              position: "absolute", top: -22, left: `${hover * 100}%`,
-              transform: "translateX(-50%)",
-              padding: "1px 6px", background: "var(--bg)",
-              border: "1px solid var(--border)",
-              borderRadius: 3, fontFamily: "var(--font-mono)",
-              fontSize: 10.5, color: "var(--text)", pointerEvents: "none",
-              whiteSpace: "nowrap",
-            }}>
-              {fmtTotal(hover * totalMs)}
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* Channel readout */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>
-          channels in output:
-        </span>
-        {(() => {
-          // The forge writes every channel the clips carry, so count them
-          // the way the engine does. Filtering a fixed 7-item menu by
-          // category listed four groups for a 20-channel compilation and
-          // never mentioned the device or restim-parameter tracks at all.
-          const cov = projectChannelCoverage(project);
-          const groups = cov.groups.filter(g => g.included);
-          const flat = project.sections.flatMap(s => s.segments);
-          const hasEstimAudio = flat.some(s => segmentHasChannel(s, "audio_estim"))
-            && project.channels?.audio_estim !== false;
-          const chip = (key, label, title) => (
-            <span key={key} title={title} style={{
-              display: "inline-flex", alignItems: "center", gap: 4,
-              padding: "1px 7px", fontFamily: "var(--font-mono)",
-              fontSize: 10, fontWeight: 600, letterSpacing: "0.04em",
-              background: "rgba(62,213,152,0.08)", color: "#3ed598",
-              border: "1px solid rgba(62,213,152,0.3)", borderRadius: 3,
-            }}>
-              <Icon name="check" size={9} /> {label}
-            </span>
-          );
-          return (
+          {/* Hover cursor */}
+          {hover != null && (
             <>
-              <span className="mono" style={{ fontSize: 10.5, color: "var(--text)", fontWeight: 600 }}>
-                {cov.detected}
+              <span style={{
+                position: "absolute", top: 0, bottom: 0, left: `${hover * 100}%`,
+                width: 1, background: "var(--text)", opacity: 0.9, pointerEvents: "none",
+              }} />
+              <span style={{
+                position: "absolute", top: -22, left: `${hover * 100}%`,
+                transform: "translateX(-50%)",
+                padding: "1px 6px", background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 3, fontFamily: "var(--font-mono)",
+                fontSize: 10.5, color: "var(--text)", pointerEvents: "none",
+                whiteSpace: "nowrap",
+              }}>
+                {fmtTotal(hover * totalMs)}
               </span>
-              {groups.map(g => chip(
-                g.id,
-                g.channels.length > 1 ? `${g.label} ×${g.channels.length}` : g.label,
-                g.channels.map(c => c.id).join(", ")))}
-              {hasEstimAudio && chip("audio_estim", "Haptic-estim audio",
-                "one WAV per e-stim audio channel")}
             </>
-          );
-        })()}
-        <div style={{ flex: 1 }} />
-      </div>
+          )}
+        </div>
+
+        {/* Channel readout */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)" }}>
+            channels in output:
+          </span>
+          {(() => {
+            // The forge writes every channel the clips carry, so count them
+            // the way the engine does. Filtering a fixed 7-item menu by
+            // category listed four groups for a 20-channel compilation and
+            // never mentioned the device or restim-parameter tracks at all.
+            const cov = projectChannelCoverage(project);
+            const groups = cov.groups.filter(g => g.included);
+            const flat = project.sections.flatMap(s => s.segments);
+            const hasEstimAudio = flat.some(s => segmentHasChannel(s, "audio_estim"))
+              && project.channels?.audio_estim !== false;
+            const chip = (key, label, title) => (
+              <span key={key} title={title} style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "1px 7px", fontFamily: "var(--font-mono)",
+                fontSize: 10, fontWeight: 600, letterSpacing: "0.04em",
+                background: "rgba(62,213,152,0.08)", color: "#3ed598",
+                border: "1px solid rgba(62,213,152,0.3)", borderRadius: 3,
+              }}>
+                <Icon name="check" size={9} /> {label}
+              </span>
+            );
+            return (
+              <>
+                <span className="mono" style={{ fontSize: 10.5, color: "var(--text)", fontWeight: 600 }}>
+                  {cov.detected}
+                </span>
+                {groups.map(g => chip(
+                  g.id,
+                  g.channels.length > 1 ? `${g.label} ×${g.channels.length}` : g.label,
+                  g.channels.map(c => c.id).join(", ")))}
+                {hasEstimAudio && chip("audio_estim", "Haptic-estim audio",
+                  "one WAV per e-stim audio channel")}
+              </>
+            );
+          })()}
+          <div style={{ flex: 1 }} />
+        </div>
+      </>)}
     </div>
   );
 }

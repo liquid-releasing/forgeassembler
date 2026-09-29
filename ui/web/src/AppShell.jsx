@@ -321,11 +321,17 @@ function FATabBody({ children, padded = true, style = {} }) {
   );
 }
 
+// Wraps rather than squeezing. Side by side there is room for both, but this
+// was a plain two-column row with nothing to stop the text column shrinking —
+// so on a laptop "Build the sequence" became a 200px ribbon stacked six lines
+// deep, and the clip list below it was pushed off the screen entirely. Under
+// the flex basis, the controls take their own row and the title gets the full
+// width.
 function FATabHeader({ title, subtitle, eyebrow, right }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-end",
+    <div style={{ display: "flex", alignItems: "flex-end", flexWrap: "wrap",
                   justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
-      <div>
+      <div style={{ flex: "1 1 360px", minWidth: 0 }}>
         {eyebrow && <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)",
                                   textTransform: "uppercase", letterSpacing: "0.1em",
                                   marginBottom: 6 }}>{eyebrow}</div>}
