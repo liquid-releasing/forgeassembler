@@ -1,6 +1,6 @@
 [package]
 name = "forgeassembler"
-version = "0.1.0-alpha"
+version = "0.2.6-alpha"
 description = "ForgeAssembler — Tauri desktop shell"
 authors = ["Liquid Releasing"]
 edition = "2021"

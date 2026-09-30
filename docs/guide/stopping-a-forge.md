@@ -83,12 +83,24 @@ again.
 Open **Task Manager** (Ctrl+Shift+Esc), choose the **Details** tab, and sort
 by name. Look for:
 
-- **`ffmpeg.exe`** — this is the encoder. If it is there and using
-  significant memory or CPU, a render is in progress.
+- **`ffmpeg-win-x86_64-v7.1.exe`** — this is the encoder. If it is there and
+  using significant memory or CPU, a render is in progress.
 - **`forge-cli.exe`** — ForgeAssembler's engine. In a development build this
   appears as `python.exe` instead.
 
-If neither is present, nothing is running and you are safe.
+!!! warning "It is not called `ffmpeg.exe`"
+
+    The encoder ships inside ForgeAssembler rather than coming from your
+    system, and it keeps its full build name. Sorting Task Manager and
+    looking for a plain `ffmpeg.exe` finds nothing **even while a forge is
+    running** — searching for `ffmpeg` as a fragment is what works.
+
+    This is not hypothetical: that exact mistake is how the 5.33 GB file
+    above got destroyed. The check said "nothing running", and something was.
+
+The engine also outlives the encoder between stages — it writes funscripts
+and audio after the video is done — so `forge-cli.exe` on its own still means
+a forge is in progress. Only when **neither** is present are you safe.
 
 ### How to stop one that is already orphaned
 
