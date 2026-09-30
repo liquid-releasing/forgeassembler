@@ -283,6 +283,8 @@ jobs:
 
             macOS and Linux builds are not part of this release yet.
 
+            Questions, bug reports, and feedback welcome in [our Discord](https://discord.gg/Eytatcx8Jm).
+
       - name: Notify forgeassembler-web (best-effort)
         # forgeassembler-web/sync-version.yml listens for this and rewrites
         # latest-version.json, which is where the site's badge comes from.
