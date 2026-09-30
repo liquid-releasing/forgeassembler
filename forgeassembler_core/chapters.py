@@ -37,29 +37,6 @@ class Chapter:
     end_ms: int
 
 
-def _branding_chapter_name(seg) -> str:
-    """What to call the closing branding in the chapter list.
-
-    A bookmark someone CHOSE wins. A bookmark that merely repeats the
-    filename was derived rather than chosen -- importing a bumper fills it
-    in automatically -- and a chapter called `liquidreleasingexit` is worse
-    for a viewer than a plain, predictable "End". Measured on a real project:
-    both branding segments carried exactly that kind of bookmark.
-
-    So the filename is not a fallback here, unlike `Section.chapter_name`.
-    A scene's filename usually describes the scene; a studio bumper's
-    filename is an asset slug.
-    """
-    from pathlib import Path as _Path
-
-    bookmark = (seg.bookmark or "").strip()
-    if not bookmark:
-        return "End"
-    stem = _Path(seg.video).stem if seg.video else ""
-    derived = bookmark.casefold() == stem.casefold()
-    return "End" if derived else bookmark
-
-
 def build_chapters(project: "Project", layout: "Layout") -> list[Chapter]:
     """Return one Chapter per Section in the project, in timeline order.
 
@@ -101,35 +78,22 @@ def build_chapters(project: "Project", layout: "Layout") -> list[Chapter]:
             start = joiner_start[lead.id]
         sec_starts.append((start, sec))
 
-    # The closing branding gets a chapter of its own, unlike the opening.
-    # That asymmetry is the point: nobody skips TO a studio bumper at the
-    # front, but the one at the back is where the credits are, and a viewer
-    # who wants them needs somewhere to jump. It also stops the last scene's
-    # chapter running on through the bumper to the end of the file.
-    outro = project.output.branding_outro
-    outro_start: Optional[int] = None
-    if outro is not None and outro.id in seg_start:
-        outro_start = seg_start[outro.id]
-
+    # NEITHER bumper becomes a chapter.
+    #
+    # This had the closing one getting a chapter of its own, on the argument
+    # that the credits are there and a viewer who wants them needs somewhere
+    # to jump. Seen in a real chapter list it reads as an eleventh scene
+    # called "End", which is not what it is -- so the branding is treated the
+    # same at both ends: the opening bumper sits inside chapter 01, and the
+    # closing one sits inside the last chapter.
     chapters: list[Chapter] = []
     for i, (start, sec) in enumerate(sec_starts):
-        if i + 1 < len(sec_starts):
-            end = sec_starts[i + 1][0]
-        elif outro_start is not None:
-            end = outro_start
-        else:
-            end = layout.total_duration_ms
+        end = (sec_starts[i + 1][0] if i + 1 < len(sec_starts)
+               else layout.total_duration_ms)
         chapters.append(Chapter(
             name=sec.chapter_name(),  # type: ignore[attr-defined]
             start_ms=start,
             end_ms=end,
-        ))
-
-    if outro_start is not None:
-        chapters.append(Chapter(
-            name=_branding_chapter_name(outro),
-            start_ms=outro_start,
-            end_ms=layout.total_duration_ms,
         ))
     return chapters
 

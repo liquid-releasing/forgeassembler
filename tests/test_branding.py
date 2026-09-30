@@ -99,50 +99,39 @@ def test_the_opening_bumper_gets_no_chapter_of_its_own(tmp_path):
     assert [c.name for c in build_chapters(p, layout)] == ["One", "Two"]
 
 
-def test_the_closing_bumper_does_get_one(tmp_path):
-    """The one at the back is where the credits are, so it needs somewhere
-    to jump to."""
+def test_the_closing_bumper_gets_no_chapter_either(tmp_path):
+    """Both ends are treated the same.
+
+    This used to give the closing bumper a chapter of its own, on the
+    argument that the credits are there and a viewer who wants them needs
+    somewhere to jump. Seen in a real chapter list it reads as an eleventh
+    scene called "End", which is not what it is.
+    """
     p = _project(tmp_path)
     p.output.branding_outro = _seg("outro", tmp_path / "outro.mp4")
     layout = lay_out(p, probe=lambda _p: 10_000)
-    assert [c.name for c in build_chapters(p, layout)] == ["One", "Two", "End"]
+    assert [c.name for c in build_chapters(p, layout)] == ["One", "Two"]
 
 
-def test_the_last_scene_stops_where_the_closing_bumper_starts(tmp_path):
-    """Otherwise the final scene's chapter runs on through the bumper to the
-    end of the file, and the credits sit inside it."""
+def test_the_last_chapter_runs_through_the_closing_bumper(tmp_path):
+    """The mirror of chapter 01 covering the opening bumper. Stopping the
+    last chapter at the bumper would leave the tail of the file belonging to
+    no chapter at all."""
     p = _project(tmp_path)
     p.output.branding_outro = _seg("outro", tmp_path / "outro.mp4")
     layout = lay_out(p, probe=lambda _p: 10_000)
     ch = build_chapters(p, layout)
-    assert ch[-2].end_ms == ch[-1].start_ms == 20_000
     assert ch[-1].end_ms == layout.total_duration_ms == 30_000
 
 
-def test_the_closing_chapter_uses_a_bookmark_someone_chose(tmp_path):
+def test_a_named_bumper_still_does_not_become_a_chapter(tmp_path):
+    """A bookmark on the bumper is its name in the Build canvas. It is not a
+    reason to put it in the chapter list."""
     p = _project(tmp_path)
     p.output.branding_outro = _seg("outro", tmp_path / "outro_v3_final.mp4",
                                    bookmark="Liquid Releasing")
     layout = lay_out(p, probe=lambda _p: 10_000)
-    assert build_chapters(p, layout)[-1].name == "Liquid Releasing"
-
-
-def test_a_bookmark_that_is_just_the_filename_is_not_a_name(tmp_path):
-    """Importing a bumper fills the bookmark in from the filename. Measured
-    on a real project: both branding segments read `liquidreleasingexit`.
-    That is worse for a viewer than a plain "End"."""
-    p = _project(tmp_path)
-    p.output.branding_outro = _seg("outro", tmp_path / "liquidreleasingexit.mp4",
-                                   bookmark="liquidreleasingexit")
-    layout = lay_out(p, probe=lambda _p: 10_000)
-    assert build_chapters(p, layout)[-1].name == "End"
-
-
-def test_an_unnamed_bumper_is_called_end(tmp_path):
-    p = _project(tmp_path)
-    p.output.branding_outro = _seg("outro", tmp_path / "outro.mp4")
-    layout = lay_out(p, probe=lambda _p: 10_000)
-    assert build_chapters(p, layout)[-1].name == "End"
+    assert [c.name for c in build_chapters(p, layout)] == ["One", "Two"]
 
 
 def test_chapter_one_starts_after_the_intro(tmp_path):
