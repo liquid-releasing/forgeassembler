@@ -10,31 +10,29 @@
       
       
       
-        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/guide/debug-mode/">
+        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/RELEASING/">
       
       
-        <link rel="prev" href="../channels/">
+        <link rel="prev" href="../ARCHITECTURE/">
       
-      
-        <link rel="next" href="../cli/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Debug Mode - ForgeAssembler</title>
+        <title>Releasing - ForgeAssembler</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -53,7 +51,7 @@
       
     
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -78,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#debug-mode" class="md-skip">
+        <a href="#releasing" class="md-skip">
           Skip to content
         </a>
       
@@ -92,7 +90,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="ForgeAssembler" class="md-header__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
+    <a href=".." title="ForgeAssembler" class="md-header__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -112,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Debug Mode
+              Releasing
             
           </span>
         </div>
@@ -225,7 +223,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../.." class="md-tabs__link">
+      <a href=".." class="md-tabs__link">
         
   
   
@@ -244,7 +242,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../getting-started/" class="md-tabs__link">
+      <a href="../guide/getting-started/" class="md-tabs__link">
         
   
   
@@ -261,13 +259,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../sections-and-segments/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../guide/sections-and-segments/" class="md-tabs__link">
           
   
   
@@ -287,7 +283,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../title-cards/" class="md-tabs__link">
+        <a href="../guide/title-cards/" class="md-tabs__link">
           
   
   
@@ -305,7 +301,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../FEATURES/" class="md-tabs__link">
+      <a href="../FEATURES/" class="md-tabs__link">
         
   
   
@@ -324,13 +320,34 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../ARCHITECTURE/" class="md-tabs__link">
+      <a href="../ARCHITECTURE/" class="md-tabs__link">
         
   
   
     
   
   Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Releasing
 
       </a>
     </li>
@@ -359,7 +376,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="ForgeAssembler" class="md-nav__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
+    <a href=".." title="ForgeAssembler" class="md-nav__button md-logo" aria-label="ForgeAssembler" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -389,7 +406,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -416,7 +433,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/" class="md-nav__link">
+      <a href="../guide/getting-started/" class="md-nav__link">
         
   
   
@@ -440,31 +457,28 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -482,7 +496,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -500,7 +514,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../sections-and-segments/" class="md-nav__link">
+      <a href="../guide/sections-and-segments/" class="md-nav__link">
         
   
   
@@ -528,7 +542,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../overlays/" class="md-nav__link">
+      <a href="../guide/overlays/" class="md-nav__link">
         
   
   
@@ -556,7 +570,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../joiners/" class="md-nav__link">
+      <a href="../guide/joiners/" class="md-nav__link">
         
   
   
@@ -584,7 +598,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../channels/" class="md-nav__link">
+      <a href="../guide/channels/" class="md-nav__link">
         
   
   
@@ -609,44 +623,17 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Debug Mode
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../guide/resolution/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Debug Mode
+    Resolution & Scaling
   
 
     
@@ -655,92 +642,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#turning-it-on" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Turning it on
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-gets-recorded" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What gets recorded
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#marking-a-specific-issue" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Marking a specific issue
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#exporting-the-log" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Exporting the log
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-to-include-in-a-bug-report" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What to include in a bug report
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#when-not-to-use-debug-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When NOT to use debug mode
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -753,7 +654,119 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/" class="md-nav__link">
+      <a href="../guide/rendering-again/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rendering Again
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/missing-media/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    When Media Goes Missing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/stopping-a-forge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stopping a Forge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/gpu-acceleration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Acceleration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/cli/" class="md-nav__link">
         
   
   
@@ -842,7 +855,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../title-cards/" class="md-nav__link">
+      <a href="../guide/title-cards/" class="md-nav__link">
         
   
   
@@ -870,7 +883,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../title-cards/getting_started_white_on_transparent/" class="md-nav__link">
+      <a href="../guide/title-cards/getting_started_white_on_transparent/" class="md-nav__link">
         
   
   
@@ -898,7 +911,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../title-cards/getting_started_black_cutout/" class="md-nav__link">
+      <a href="../guide/title-cards/getting_started_black_cutout/" class="md-nav__link">
         
   
   
@@ -926,7 +939,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../title-cards/scifi_cockpit_example/" class="md-nav__link">
+      <a href="../guide/title-cards/scifi_cockpit_example/" class="md-nav__link">
         
   
   
@@ -961,7 +974,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../FEATURES/" class="md-nav__link">
+      <a href="../FEATURES/" class="md-nav__link">
         
   
   
@@ -988,7 +1001,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ARCHITECTURE/" class="md-nav__link">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
         
   
   
@@ -1004,6 +1017,135 @@
   
 
       </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-release-is-made-of" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a release is made of
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cutting-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cutting one
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-the-smoke-test-is-not-just-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why the smoke test is not just --version
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#promoting-a-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Promoting a build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1035,10 +1177,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#turning-it-on" class="md-nav__link">
+  <a href="#what-a-release-is-made-of" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Turning it on
+        What a release is made of
       
     </span>
   </a>
@@ -1046,10 +1188,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-gets-recorded" class="md-nav__link">
+  <a href="#cutting-one" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What gets recorded
+        Cutting one
       
     </span>
   </a>
@@ -1057,10 +1199,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#marking-a-specific-issue" class="md-nav__link">
+  <a href="#why-the-smoke-test-is-not-just-version" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Marking a specific issue
+        Why the smoke test is not just --version
       
     </span>
   </a>
@@ -1068,10 +1210,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#exporting-the-log" class="md-nav__link">
+  <a href="#promoting-a-build" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Exporting the log
+        Promoting a build
       
     </span>
   </a>
@@ -1079,21 +1221,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-to-include-in-a-bug-report" class="md-nav__link">
+  <a href="#platforms" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What to include in a bug report
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#when-not-to-use-debug-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When NOT to use debug mode
+        Platforms
       
     </span>
   </a>
@@ -1120,83 +1251,104 @@
   
 
 
-<h1 id="debug-mode">Debug Mode<a class="headerlink" href="#debug-mode" title="Permanent link">&para;</a></h1>
-<p>Debug mode turns on lightweight instrumentation that records what
-you did in a session — project loads, forge clicks, forge completions
-or failures — and lets you mark specific moments when something
-looked wrong. The output is a single JSONL file you can attach to a
-bug report.</p>
-<h2 id="turning-it-on">Turning it on<a class="headerlink" href="#turning-it-on" title="Permanent link">&para;</a></h2>
-<p>Scroll to the bottom of the sidebar and tick <strong>🔧 Debug mode</strong>. An
-event panel expands below it.</p>
-<p>The panel shows:</p>
-<ul>
-<li>A running count of events captured this session</li>
-<li>A <strong>⚑ Mark this as an issue</strong> button</li>
-<li>An <strong>Export debug log</strong> button</li>
-</ul>
-<p>Debug mode is a no-op when off, so you can leave it on for a while
-without any performance cost.</p>
-<h2 id="what-gets-recorded">What gets recorded<a class="headerlink" href="#what-gets-recorded" title="Permanent link">&para;</a></h2>
-<p>Only these events — not keystrokes, not project contents, not media:</p>
-<ul>
-<li><code>project_load_json</code> — you loaded a project from a file</li>
-<li><code>new_project_clicked</code> — you started a fresh project</li>
-<li><code>forge_clicked</code> — you pressed Forge, with a hash of the project
-  state plus section count and channel list</li>
-<li><code>forge_funscripts_done</code> / <code>forge_video_done</code> — a pipeline stage
-  completed cleanly</li>
-<li><code>forge_funscripts_failed</code> / <code>forge_video_failed</code> — a pipeline
-  stage raised, with the exception message</li>
-</ul>
-<p>Each event has a timestamp and a simple payload. No file paths get
-stored verbatim — paths are hashed for privacy.</p>
-<h2 id="marking-a-specific-issue">Marking a specific issue<a class="headerlink" href="#marking-a-specific-issue" title="Permanent link">&para;</a></h2>
-<p>When you see something wrong (wrong volume, missing overlay, a UI
-glitch, anything), click <strong>⚑ Mark this as an issue</strong>. You'll be
-prompted for a one-line description.</p>
-<p>The mark becomes its own event in the log next to whatever you just
-did. When you're ready to report, the marks are the bookmarks that
-help us (or you) re-read the session.</p>
-<p>Rule of thumb: one ⚑ per observed problem, in the moment. Don't try
-to retroactively describe; let the nearby events carry the context.</p>
-<h2 id="exporting-the-log">Exporting the log<a class="headerlink" href="#exporting-the-log" title="Permanent link">&para;</a></h2>
-<p>Click <strong>Export debug log</strong>. You get a JSONL file in
-<code>~/.forgeassembler/debug_logs/</code> named with the session start time.
-Copy the file to wherever you're reporting the issue.</p>
-<p>JSONL is one-event-per-line JSON. Each line is human-readable.
-Example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">"t"</span><span class="p">:</span><span class="w"> </span><span class="mf">1713709200.112</span><span class="p">,</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"forge_clicked"</span><span class="p">,</span><span class="w"> </span><span class="nt">"hash"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ab12…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"sections"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">"channels"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"main"</span><span class="p">,</span><span class="w"> </span><span class="s2">"multi_axis"</span><span class="p">,</span><span class="w"> </span><span class="s2">"prostate"</span><span class="p">]}</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="p">{</span><span class="nt">"t"</span><span class="p">:</span><span class="w"> </span><span class="mf">1713709210.882</span><span class="p">,</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mark"</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Section 2 narration too quiet"</span><span class="p">}</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">{</span><span class="nt">"t"</span><span class="p">:</span><span class="w"> </span><span class="mf">1713709222.001</span><span class="p">,</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"forge_video_done"</span><span class="p">,</span><span class="w"> </span><span class="nt">"duration_s"</span><span class="p">:</span><span class="w"> </span><span class="mf">22.1</span><span class="p">}</span>
+<h1 id="releasing">Releasing<a class="headerlink" href="#releasing" title="Permanent link">&para;</a></h1>
+<p>ForgeAssembler ships as a Tauri desktop app with a PyInstaller-frozen Python
+backend inside it. One tag builds and publishes the whole thing.</p>
+<h2 id="what-a-release-is-made-of">What a release is made of<a class="headerlink" href="#what-a-release-is-made-of" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ForgeAssembler.exe            the Tauri shell (Rust + the React UI)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  resources/forge-cli/        cli.py + forgeassembler_core, frozen
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    forge-cli.exe             what the Rust side invokes, once per command
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    _internal/                the Python runtime, numpy, matplotlib, Pillow
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      imageio_ffmpeg/         and ffmpeg itself
 </code></pre></div>
-<h2 id="what-to-include-in-a-bug-report">What to include in a bug report<a class="headerlink" href="#what-to-include-in-a-bug-report" title="Permanent link">&para;</a></h2>
+<p>The app shells out to <code>forge-cli</code> for every operation, so the freeze is not a
+convenience — it <em>is</em> the backend. Nothing else needs installing on the user's
+machine.</p>
+<p><strong>ffmpeg rides inside the freeze</strong>, via imageio-ffmpeg. ForgeAssembler never
+shells <code>ffprobe</code> — <code>forgeassembler_core/probe.py</code> parses ffmpeg's own stderr
+precisely because imageio-ffmpeg ships ffmpeg alone — so unlike the
+FunscriptForge pipeline there is no second binary to source per platform and
+no GPL build to redistribute (imageio-ffmpeg's is LGPL).</p>
+<p>Measured on a local build of <code>forge-cli.spec</code>: <strong>201 MB</strong> for the frozen
+onedir.</p>
+<h2 id="cutting-one">Cutting one<a class="headerlink" href="#cutting-one" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>scripts/bump_version.py<span class="w"> </span><span class="m">0</span>.1.1-alpha<span class="w">    </span><span class="c1"># then commit</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.1.1-alpha<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.1.1-alpha
+</code></pre></div>
+<p><code>bump_version.py</code> writes the version to the four files that must agree and
+handles the one that must not: <code>tauri.conf.json</code> gets the version <strong>stripped</strong>
+of its suffix, because the MSI bundler refuses a non-numeric pre-release
+identifier. <code>--check</code> verifies agreement and runs in CI before the build.</p>
+<p>The tag fires <code>.github/workflows/release.yml</code>, which:</p>
 <ol>
-<li>The debug log JSONL (mandatory)</li>
-<li>A short description of what you expected vs what happened</li>
-<li>The project JSON if you're willing to share it (strip media
-   paths if you're paranoid; they're already hashed in the log)</li>
-<li>OS + app version (see About dialog → Help menu)</li>
+<li>freezes <code>forge-cli</code> and <strong>smoke-tests the frozen binary</strong> (see below);</li>
+<li>runs pytest and vitest — a release does not get to skip the suite;</li>
+<li>checks the version strings agree;</li>
+<li>builds the Tauri bundle with the <code>tauri.release.conf.json</code> overlay, which
+   is what maps <code>resources/forge-cli</code> into the installer;</li>
+<li>publishes <code>.msi</code> + <code>.exe</code> to <strong>forgeassembler-releases</strong> as a
+   <strong>prerelease</strong>, and dispatches <code>release-published</code> at
+   <strong>forgeassembler-web</strong>, whose <code>sync-version.yml</code> rewrites
+   <code>latest-version.json</code> — the site's version badge updates itself.</li>
 </ol>
-<p>File the report on
-<a href="https://github.com/liquid-releasing/forgeassembler/issues">the ForgeAssembler issue tracker</a>
-or drop it in the
-<a href="https://discord.gg/Eytatcx8Jm">Liquid Releasing Discord</a>.</p>
-<h2 id="when-not-to-use-debug-mode">When NOT to use debug mode<a class="headerlink" href="#when-not-to-use-debug-mode" title="Permanent link">&para;</a></h2>
-<p>If you already know the fix is a settings tweak (volume too low,
-wrong position, etc.), just fix it — you don't need to report every
-minor adjustment. Debug mode pays off when:</p>
-<ul>
-<li>Something unexpected happens and you want a second forge to
-  confirm it's reproducible</li>
-<li>You're about to report a crash, missing output, wrong output</li>
-<li>You want to keep a record of exactly what you tested during a
-  long session</li>
-</ul>
-<hr />
-<p>That's the whole user guide. Come back to
-<strong><a href="../getting-started/">Getting Started</a></strong> if you need the
-quick-reference pointers.</p>
+<p><code>workflow_dispatch</code> runs everything except the publish, and stamps the build
+<code>0.1.1-alpha+dev.&lt;sha&gt;</code> in the UI so a test build can never be mistaken for a
+release.</p>
+<h2 id="why-the-smoke-test-is-not-just-version">Why the smoke test is not just <code>--version</code><a class="headerlink" href="#why-the-smoke-test-is-not-just-version" title="Permanent link">&para;</a></h2>
+<p>A PyInstaller freeze fails at <strong>runtime</strong>, in places a version check never
+reaches. FunscriptForge once shipped a build with no <code>yaml</code> module at all: its
+smoke command never touched YAML, so CI was green and Export, Import, Events
+and Polish all died in the user's hands.</p>
+<p>So CI runs a real forge through the frozen binary and asserts the files it
+should have produced:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>What would otherwise ship broken</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>probe</code> on a real 1s clip</td>
+<td>ffmpeg missing from the freeze</td>
+</tr>
+<tr>
+<td><code>forge --no-video</code> writes <code>smoke.forge</code></td>
+<td>the bundle writer, the joiner registry</td>
+</tr>
+<tr>
+<td>…and <code>smoke.heatmap.png</code></td>
+<td>matplotlib's <code>mpl-data</code>, Pillow's plugins</td>
+</tr>
+<tr>
+<td><code>detect</code> / <code>validate</code> / <code>preview</code> / <code>thumbnail</code> / <code>import-forge</code> / <code>encoder</code></td>
+<td>every remaining command the Rust bridge calls</td>
+</tr>
+</tbody>
+</table>
+<p><code>scripts/ci_smoke_project.py</code> builds the two-clip project those run against.
+It deliberately includes an e-stim and an electrode channel, so the
+per-device output folders are exercised rather than one flat name.</p>
+<h2 id="promoting-a-build">Promoting a build<a class="headerlink" href="#promoting-a-build" title="Permanent link">&para;</a></h2>
+<p>Releases publish as prereleases on purpose: GitHub keeps prereleases out of
+<code>releases/latest</code>, and the website's download buttons point at
+<code>releases/latest/download/</code>. A normal release would put new binaries in front
+of every visitor the moment CI finished.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>gh<span class="w"> </span>release<span class="w"> </span>edit<span class="w"> </span>v0.1.1-alpha<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--repo<span class="w"> </span>liquid-releasing/forgeassembler-releases<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--prerelease<span class="o">=</span><span class="nb">false</span><span class="w"> </span>--latest
+</code></pre></div>
+<p>⚠️ <strong>Before promoting the first Tauri build</strong>, fix the download buttons in
+<code>forgeassembler-web/index.html</code>. They still name the retired Streamlit
+artifacts (<code>ForgeAssembler-windows.zip</code>, <code>-macos.zip</code>, <code>-linux.tar.gz</code>); the
+Tauri pipeline produces <code>ForgeAssembler-Setup-windows.msi</code> and <code>-windows.exe</code>
+only. Promote without fixing them and every button 404s.</p>
+<h2 id="platforms">Platforms<a class="headerlink" href="#platforms" title="Permanent link">&para;</a></h2>
+<p><strong>Windows only, for now.</strong> It is the dogfood platform and the only one this
+app has been run on. The macOS and Linux jobs are a straight port of
+FunscriptForge's — same shape, one job each — when there is a reason to want
+them.</p>
 
 
 
@@ -1234,7 +1386,7 @@ quick-reference pointers.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../channels/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Output Channels">
+          <a href="../ARCHITECTURE/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Architecture">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1244,27 +1396,11 @@ quick-reference pointers.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Output Channels
+                Architecture
               </div>
             </div>
           </a>
         
-        
-          
-          <a href="../cli/" class="md-footer__link md-footer__link--next" aria-label="Next: CLI">
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              <div class="md-ellipsis">
-                CLI
-              </div>
-            </div>
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
-            </div>
-          </a>
         
       </nav>
     
@@ -1320,10 +1456,10 @@ quick-reference pointers.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

@@ -337,6 +337,25 @@
   
 
       
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../RELEASING/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Releasing
+
+      </a>
+    </li>
+  
+
+      
     </ul>
   </div>
 </nav>
@@ -615,10 +634,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#splitting-a-clip-at-a-timestamp" class="md-nav__link">
+  <a href="#trimming-a-clip" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ✂ Splitting a clip at a timestamp
+        ✂ Trimming a clip
       
     </span>
   </a>
@@ -747,14 +766,126 @@
   
   
     <li class="md-nav__item">
-      <a href="../debug-mode/" class="md-nav__link">
+      <a href="../resolution/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Debug Mode
+    Resolution & Scaling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rendering-again/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rendering Again
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../missing-media/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    When Media Goes Missing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stopping-a-forge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stopping a Forge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gpu-acceleration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Acceleration
   
 
     
@@ -1030,6 +1161,33 @@
   
 
     
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../RELEASING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
   </ul>
 </nav>
                   </div>
@@ -1112,10 +1270,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#splitting-a-clip-at-a-timestamp" class="md-nav__link">
+  <a href="#trimming-a-clip" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ✂ Splitting a clip at a timestamp
+        ✂ Trimming a clip
       
     </span>
   </a>
@@ -1262,27 +1420,30 @@ bottom of the focused card. All sections expand again.</p>
   single video at a timestamp from the source file (see below).</li>
 <li><strong>Thumbnail + duration + detected funscript channels</strong> — read-only.</li>
 </ul>
-<p>Between two consecutive segments inside a section, a small <strong>🔪 Split
-here</strong> button appears. Click it to split the section into two at
-that boundary — clips below the cut become a new section. Section
-overlays redistribute by their time window: anything entirely in the
-top half stays; anything entirely in the bottom half moves with
-adjusted timing; overlays straddling the boundary split into two.</p>
-<h2 id="splitting-a-clip-at-a-timestamp">✂ Splitting a clip at a timestamp<a class="headerlink" href="#splitting-a-clip-at-a-timestamp" title="Permanent link">&para;</a></h2>
-<p>For long source videos, you can cut INSIDE a single clip at any
-timestamp — no need to pre-split the file with ffmpeg first. The
-<strong>✂ Split clip at time…</strong> expander on each video segment lets you
-enter a timestamp and the clip becomes two pieces.</p>
-<p>The timestamp is <strong>always interpreted as a position in the source
-video file</strong>, not relative to where the piece starts in your
-project. The expander shows the source file's name and length, plus
-the current piece's bounds in source coordinates, so the math stays
-obvious as you slice further:</p>
+<p>Between two consecutive clips inside a section, a small <strong>+</strong> button
+appears. It adds a transition there — and because a joiner lives on a
+section boundary, adding one splits the section into two at that point:
+clips below the cut become a new section, with a chapter marker of their
+own. Section overlays redistribute by their time window: anything
+entirely in the top half stays; anything entirely in the bottom half
+moves with adjusted timing; overlays straddling the boundary split into
+two.</p>
+<h2 id="trimming-a-clip">✂ Trimming a clip<a class="headerlink" href="#trimming-a-clip" title="Permanent link">&para;</a></h2>
+<p>You can cut INSIDE a single clip — no need to pre-split the file with
+ffmpeg first. Click the clip to open the <strong>Inspector</strong>, and on its
+<strong>Source</strong> tab park the playhead and press <strong>Set in</strong> / <strong>Set out</strong>.</p>
+<p>Both are <strong>positions in the source video file</strong>, not offsets from where
+the piece starts in your project, so the math stays obvious however far
+you slice. The scene strip above the player shades the regions you are
+throwing away, and the readout shows the piece's bounds in source
+coordinates:</p>
 <blockquote>
 <p>Source file: <code>bigvideo.mp4</code> (01:00:00.000 long)</p>
 <p>This piece plays <strong>00:30:00.000 → 01:00:00.000</strong> of the source file.</p>
-<p>Split at (timestamp in source file): <code>00:45:00.000</code></p>
 </blockquote>
+<p>Trims are stored as <code>trim_start</code> / <code>trim_end</code> on the segment, so the
+same source file can appear more than once in a project with different
+bounds — which is how you get two pieces out of one long video.</p>
 <p>When you click <strong>Split here (becomes new section)</strong>:</p>
 <ul>
 <li>The clip becomes two pieces. Both reference the same underlying

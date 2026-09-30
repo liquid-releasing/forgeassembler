@@ -16,6 +16,8 @@
         <link rel="prev" href="../FEATURES/">
       
       
+        <link rel="next" href="../RELEASING/">
+      
       
         
       
@@ -335,6 +337,25 @@
   
 
       
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../RELEASING/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Releasing
+
+      </a>
+    </li>
+  
+
+      
     </ul>
   </div>
 </nav>
@@ -607,14 +628,126 @@
   
   
     <li class="md-nav__item">
-      <a href="../guide/debug-mode/" class="md-nav__link">
+      <a href="../guide/resolution/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Debug Mode
+    Resolution & Scaling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/rendering-again/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rendering Again
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/missing-media/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    When Media Goes Missing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/stopping-a-forge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stopping a Forge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/gpu-acceleration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Acceleration
   
 
     
@@ -1082,6 +1215,33 @@
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../RELEASING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1588,56 +1748,84 @@ channel. Joiner gaps in v1 have no actions inserted — the device holds
 the last position from the previous segment until the next segment
 begins.</p>
 <h2 id="codebase-layout">Codebase layout<a class="headerlink" href="#codebase-layout" title="Permanent link">&para;</a></h2>
+<p>The app is a Tauri shell hosting a React UI; every operation the UI
+performs is a Rust command that shells out to <code>cli.py</code> (dev) or the
+bundled <code>forge-cli</code> (release). The Python core does all the work and
+knows nothing about the UI.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>forgeassembler/
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>├── forgeassembler.py              # PyWebView launcher (dual-mode)
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>├── ui.py                           # Streamlit UI, two tabs
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>├── cli.py                          # argparse CLI entry point
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>├── forgeassembler_core/
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>│   ├── __init__.py
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>│   ├── about.py                    # version + credits
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>│   ├── project.py                  # Project model, load/save JSON, validate
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>│   ├── detect.py                   # folder → video + funscripts
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>├── cli.py                          # argparse CLI — the only entry point
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>├── forgeassembler_core/
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>│   ├── __init__.py
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>│   ├── about.py                    # version + credits
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>│   ├── project.py                  # Project model, load/save JSON, validate
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>│   ├── detect.py                   # folder → video + funscripts
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>│   ├── forge_bundle.py             # read a FunscriptForge `.forge` bundle
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>│   ├── probe.py                    # ffprobe duration/streams
 <a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>│   ├── layout.py                   # compute running timeline
 <a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>│   ├── filters.py                  # per-segment filter-chain builders
 <a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>│   │                               #   (scale/pad, colortemperature, overlays)
-<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>│   ├── concat_video.py             # ffmpeg filter_complex orchestration
-<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>│   │                               #   (incl. bug, loudnorm, xfade)
-<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>│   ├── concat_funscript.py         # funscript timestamp shift + concat
-<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>│   ├── joiners/
-<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>│   │   ├── __init__.py
-<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>│   │   ├── base.py                 # Joiner ABC
-<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>│   │   ├── none_joiner.py          # straight cut
-<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>│   │   └── fade_to_black.py        # fade/hold/fade
-<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>│   ├── preview.py                  # single-frame preview rendering
-<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>│   │                               #   (for color-temp tuning)
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>│   ├── fonts.py                    # title-card font resolution
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>│   ├── concat_video.py             # ffmpeg filter_complex orchestration
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>│   │                               #   (incl. bug, loudnorm, encoder choice)
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>│   ├── concat_funscript.py         # funscript timestamp shift + concat
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>│   ├── concat_audio_estim.py       # per-channel estim audio concat
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>│   ├── joiners/
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>│   │   ├── __init__.py
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>│   │   ├── base.py                 # Joiner ABC
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>│   │   ├── none_joiner.py          # straight cut
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>│   │   └── fade_to_black.py        # fade/hold/fade, any colour
 <a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>│   ├── chapters.py                 # mp4 chapter markers
-<a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a>│   ├── heatmap.py                  # funscript heatmap + beatmap previews
-<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>│   └── forge.py                    # top-level forge() orchestrator
-<a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a>├── tests/                          # pytest
-<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a>│   ├── fixtures/                   # tiny test videos + funscripts
-<a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a>│   ├── test_project.py
-<a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a>│   ├── test_detect.py
-<a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a>│   ├── test_layout.py
-<a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>│   ├── test_concat_funscript.py
-<a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a>│   ├── test_filters.py             # filter-chain string builders
-<a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>│   ├── test_concat_video.py        # integration, slow
-<a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a>│   └── test_cli.py
-<a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>├── .streamlit/config.toml
-<a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>├── media/                          # icons, wordmark, LR logo
-<a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>├── ForgeAssembler.spec             # PyInstaller
-<a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a>├── requirements.txt
-<a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a>├── requirements-desktop.txt
-<a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>├── requirements-dev.txt            # pytest, ruff
-<a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>├── .github/workflows/release.yml
-<a id="__codelineno-10-42" name="__codelineno-10-42" href="#__codelineno-10-42"></a>├── README.md
-<a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a>├── LICENSE (MIT)
-<a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a>├── THIRD_PARTY_LICENSES.md
-<a id="__codelineno-10-45" name="__codelineno-10-45" href="#__codelineno-10-45"></a>└── .gitignore
+<a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a>│   └── heatmap.py                  # funscript heatmap + beatmap previews
+<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>├── ui/web/                         # the desktop app
+<a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a>│   ├── package.json                # npm scripts: dev, build, tauri:dev
+<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a>│   ├── index.html
+<a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a>│   ├── src/
+<a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a>│   │   ├── main.jsx  App.jsx  AppShell.jsx
+<a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a>│   │   ├── HomeScreen.jsx          # pre-pipeline launcher (new/open/recents)
+<a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>│   │   ├── BuildTab.jsx            # sections, clips, joiners
+<a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a>│   │   ├── Inspector.jsx           # per-clip source/trim/audio/colour/overlays
+<a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>│   │   ├── PreviewBand.jsx         # the joined funscript
+<a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a>│   │   ├── JoinerEditor.jsx  TitleEditor.jsx  OtherTabs.jsx  ProjectIO.jsx
+<a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>│   │   ├── MediaViewer.jsx  primitives.jsx  dragdrop.jsx
+<a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>│   │   ├── api/forge.js            # Rust command bridge
+<a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>│   │   └── lib/projectAdapter.js   # view-model ⇄ .forgeproject.json
+<a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a>│   └── src-tauri/
+<a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a>│       ├── src/lib.rs  src/commands.rs   # invokes cli.py / forge-cli
+<a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>│       ├── tauri.conf.json  Cargo.toml
+<a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>│       └── capabilities/default.json
+<a id="__codelineno-10-42" name="__codelineno-10-42" href="#__codelineno-10-42"></a>├── tests/                          # pytest — the core, not the UI
+<a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a>│   ├── fixtures/                   # tiny test videos + funscripts
+<a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a>│   ├── test_project.py  test_detect.py  test_layout.py
+<a id="__codelineno-10-45" name="__codelineno-10-45" href="#__codelineno-10-45"></a>│   ├── test_concat_funscript.py  test_concat_audio_estim.py
+<a id="__codelineno-10-46" name="__codelineno-10-46" href="#__codelineno-10-46"></a>│   ├── test_forge_bundle.py  test_joiners.py  test_trim.py
+<a id="__codelineno-10-47" name="__codelineno-10-47" href="#__codelineno-10-47"></a>│   ├── test_filters.py             # filter-chain string builders
+<a id="__codelineno-10-48" name="__codelineno-10-48" href="#__codelineno-10-48"></a>│   ├── test_concat_video.py        # integration, slow
+<a id="__codelineno-10-49" name="__codelineno-10-49" href="#__codelineno-10-49"></a>│   ├── test_chapters.py  test_fonts.py  test_heatmap.py
+<a id="__codelineno-10-50" name="__codelineno-10-50" href="#__codelineno-10-50"></a>│   └── test_cli.py
+<a id="__codelineno-10-51" name="__codelineno-10-51" href="#__codelineno-10-51"></a>├── docs/                           # mkdocs site
+<a id="__codelineno-10-52" name="__codelineno-10-52" href="#__codelineno-10-52"></a>├── media/  branding/               # icons, wordmark, LR logo
+<a id="__codelineno-10-53" name="__codelineno-10-53" href="#__codelineno-10-53"></a>├── forge-cli.spec                  # PyInstaller: cli.py + core + ffmpeg
+<a id="__codelineno-10-54" name="__codelineno-10-54" href="#__codelineno-10-54"></a>│                                   #   -&gt; dist/forge-cli/, the app's backend
+<a id="__codelineno-10-55" name="__codelineno-10-55" href="#__codelineno-10-55"></a>├── scripts/
+<a id="__codelineno-10-56" name="__codelineno-10-56" href="#__codelineno-10-56"></a>│   ├── bump_version.py             # one version across four files
+<a id="__codelineno-10-57" name="__codelineno-10-57" href="#__codelineno-10-57"></a>│   └── ci_smoke_project.py         # what CI forges to prove the freeze works
+<a id="__codelineno-10-58" name="__codelineno-10-58" href="#__codelineno-10-58"></a>├── requirements.txt                # core runtime
+<a id="__codelineno-10-59" name="__codelineno-10-59" href="#__codelineno-10-59"></a>├── requirements-desktop.txt        # PyInstaller, for the forge-cli sidecar
+<a id="__codelineno-10-60" name="__codelineno-10-60" href="#__codelineno-10-60"></a>├── requirements-dev.txt            # pytest, ruff
+<a id="__codelineno-10-61" name="__codelineno-10-61" href="#__codelineno-10-61"></a>├── .github/workflows/
+<a id="__codelineno-10-62" name="__codelineno-10-62" href="#__codelineno-10-62"></a>│   ├── release.yml                 # tag -&gt; freeze, test, bundle, publish
+<a id="__codelineno-10-63" name="__codelineno-10-63" href="#__codelineno-10-63"></a>│   └── docs.yml
+<a id="__codelineno-10-64" name="__codelineno-10-64" href="#__codelineno-10-64"></a>├── README.md
+<a id="__codelineno-10-65" name="__codelineno-10-65" href="#__codelineno-10-65"></a>├── LICENSE (MIT)
+<a id="__codelineno-10-66" name="__codelineno-10-66" href="#__codelineno-10-66"></a>├── THIRD_PARTY_LICENSES.md
+<a id="__codelineno-10-67" name="__codelineno-10-67" href="#__codelineno-10-67"></a>└── .gitignore
 </code></pre></div>
+<p>The UI is tested with vitest, which covers the adapter and the pure
+helpers in <code>src/lib/</code>. It does not render <code>App</code>.</p>
 <h2 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h2>
-<p><code>forgeassembler</code> ships with a CLI for automation and scripted batch
-assembly. Same process entry point; Streamlit launcher only fires when
-called with no CLI args.</p>
+<p><code>cli.py</code> is the entry point for automation and scripted batch assembly,
+and it is also what the desktop app calls for every operation — so
+anything the UI can do is reachable from a shell.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>forgeassembler forge &lt;project.json&gt;            # run a saved project
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>forgeassembler forge &lt;project.json&gt; --no-video          # funscripts only
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>forgeassembler forge &lt;project.json&gt; --no-funscripts     # video only
@@ -1664,8 +1852,10 @@ story we're selling.</p>
   run only on tag pushes in CI.</li>
 <li><strong>CLI tests</strong> (<code>test_cli.py</code>): subprocess the CLI entry point, assert
   exit codes and file outputs.</li>
-<li><strong>No UI tests in v1.</strong> The Streamlit UI is thin over the core and
-  exercised by hand + CLI coverage.</li>
+<li><strong>UI unit tests</strong> (vitest, <code>ui/web/src/lib/*.test.js</code>): the project
+  adapter and the pure helpers, including round-trip fixtures that pin
+  view-model ⇄ <code>.forgeproject.json</code> as lossless. Nothing renders <code>App</code>,
+  so the React tree itself is covered by hand + CLI coverage.</li>
 </ul>
 <h2 id="phase-map">Phase map<a class="headerlink" href="#phase-map" title="Permanent link">&para;</a></h2>
 <h3 id="phase-1-v001-alpha">Phase 1 (v0.0.1-alpha)<a class="headerlink" href="#phase-1-v001-alpha" title="Permanent link">&para;</a></h3>
@@ -1768,6 +1958,22 @@ story we're selling.</p>
             </div>
           </a>
         
+        
+          
+          <a href="../RELEASING/" class="md-footer__link md-footer__link--next" aria-label="Next: Releasing">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Releasing
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
         
       </nav>
     

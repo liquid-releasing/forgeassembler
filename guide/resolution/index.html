@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/guide/channels/">
+        <link rel="canonical" href="https://liquid-releasing.github.io/forgeassembler/guide/resolution/">
       
       
-        <link rel="prev" href="../joiners/">
+        <link rel="prev" href="../channels/">
       
       
-        <link rel="next" href="../resolution/">
+        <link rel="next" href="../rendering-again/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Output Channels - ForgeAssembler</title>
+        <title>Resolution & Scaling - ForgeAssembler</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#output-channels" class="md-skip">
+        <a href="#resolution-and-scaling" class="md-skip">
           Skip to content
         </a>
       
@@ -112,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Output Channels
+              Resolution & Scaling
             
           </span>
         </div>
@@ -600,6 +600,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -619,7 +647,7 @@
   <span class="md-ellipsis">
     
   
-    Output Channels
+    Resolution & Scaling
   
 
     
@@ -637,7 +665,7 @@
   <span class="md-ellipsis">
     
   
-    Output Channels
+    Resolution & Scaling
   
 
     
@@ -663,38 +691,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#one-folder-per-device" class="md-nav__link">
+  <a href="#why-a-resolution-setting-exists-at-all" class="md-nav__link">
     <span class="md-ellipsis">
       
-        One folder per device
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="One folder per device">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#grouping-the-folders" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Grouping the folders
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#channel-groups" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Channel groups
+        Why a resolution setting exists at all
       
     </span>
   </a>
@@ -702,10 +702,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-detection-works" class="md-nav__link">
+  <a href="#the-scaler" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How detection works
+        The scaler
       
     </span>
   </a>
@@ -713,10 +713,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-concatenation-works" class="md-nav__link">
+  <a href="#choosing-a-value" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How concatenation works
+        Choosing a value
       
     </span>
   </a>
@@ -724,49 +724,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#gaps" class="md-nav__link">
+  <a href="#what-about-downscaling" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Gaps
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Gaps">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#a-gap-is-a-difference-not-a-fault" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        A gap is a difference, not a fault
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#closing-a-gap" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Closing a gap
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#haptic-estim-audio-per-channel-wavs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Haptic-estim audio (per-channel WAVs)
+        What about downscaling?
       
     </span>
   </a>
@@ -774,10 +735,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#produce-video-funscripts-audio-without-the-others" class="md-nav__link">
+  <a href="#frame-rate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Produce video / funscripts / audio without the others
+        Frame rate
       
     </span>
   </a>
@@ -785,21 +746,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-forge-scene" class="md-nav__link">
+  <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The .forge scene
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#heatmaps" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Heatmaps
+        See also
       
     </span>
   </a>
@@ -810,34 +760,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../resolution/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Resolution & Scaling
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -1271,38 +1193,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#one-folder-per-device" class="md-nav__link">
+  <a href="#why-a-resolution-setting-exists-at-all" class="md-nav__link">
     <span class="md-ellipsis">
       
-        One folder per device
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="One folder per device">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#grouping-the-folders" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Grouping the folders
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#channel-groups" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Channel groups
+        Why a resolution setting exists at all
       
     </span>
   </a>
@@ -1310,10 +1204,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-detection-works" class="md-nav__link">
+  <a href="#the-scaler" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How detection works
+        The scaler
       
     </span>
   </a>
@@ -1321,10 +1215,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-concatenation-works" class="md-nav__link">
+  <a href="#choosing-a-value" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How concatenation works
+        Choosing a value
       
     </span>
   </a>
@@ -1332,49 +1226,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#gaps" class="md-nav__link">
+  <a href="#what-about-downscaling" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Gaps
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Gaps">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#a-gap-is-a-difference-not-a-fault" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        A gap is a difference, not a fault
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#closing-a-gap" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Closing a gap
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#haptic-estim-audio-per-channel-wavs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Haptic-estim audio (per-channel WAVs)
+        What about downscaling?
       
     </span>
   </a>
@@ -1382,10 +1237,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#produce-video-funscripts-audio-without-the-others" class="md-nav__link">
+  <a href="#frame-rate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Produce video / funscripts / audio without the others
+        Frame rate
       
     </span>
   </a>
@@ -1393,21 +1248,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-forge-scene" class="md-nav__link">
+  <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The .forge scene
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#heatmaps" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Heatmaps
+        See also
       
     </span>
   </a>
@@ -1434,293 +1278,122 @@
   
 
 
-<h1 id="output-channels">Output Channels<a class="headerlink" href="#output-channels" title="Permanent link">&para;</a></h1>
-<p><strong>Every funscript channel your clips carry is forged.</strong> You don't opt in.
-ForgeAssembler takes the union of what the clips actually have and writes one
-combined file per channel.</p>
-<h2 id="one-folder-per-device">One folder per device<a class="headerlink" href="#one-folder-per-device" title="Permanent link">&para;</a></h2>
-<p>A current FunscriptForge scene ships around forty funscripts across nine
-<strong>stations</strong> — one per device it can drive. Three of those stations (E-Stim,
-FOC-Stim and FOC-Stim 4-phase) write channels with the <em>same names</em> —
-<code>alpha</code>, <code>beta</code>, <code>volume</code>, <code>frequency</code>, <code>pulse_frequency</code>, <code>pulse_rise_time</code>
-and the prostate set — clamped differently for each piece of hardware. So a
-channel name alone no longer names a file, and the output cannot be flat.</p>
-<p>A forge therefore writes the universal stroke script at the top level and
-gives every station its own folder, using the same folder names a
-FunscriptForge export uses:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>combined.mp4
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>combined.funscript                      # universal stroke, most players
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>combined.heatmap.png
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>E-Stim/combined.alpha.funscript
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>E-Stim/combined.beta.funscript
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>FOC-Stim/combined.alpha.funscript       # same channel, different clamping
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>FOC-Stim 4-phase/combined.e1.funscript
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>MultiFunPlayer/combined.funscript       # TCode's own L0
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>MultiFunPlayer/combined.surge.funscript
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>Handy/combined.handy.funscript
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>Bass Shaker/combined.shaker.funscript
-</code></pre></div>
-<p>Point restim at the folder for the device you actually own; point
-MultiFunPlayer at <code>MultiFunPlayer/</code>. A heatmap sits beside each funscript.</p>
-<h3 id="grouping-the-folders">Grouping the folders<a class="headerlink" href="#grouping-the-folders" title="Permanent link">&para;</a></h3>
-<p>Eleven device folders and five audio files in one folder bury the three
-artifacts you actually open. <strong>Folder layout</strong> in the Output tab offers a
-second arrangement:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>combined.forge
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>combined.1080p30.mp4
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>combined.funscript                      # universal stroke, still at the top
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>art/combined.heatmap.png
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>sound/combined.mp3
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>sound/combined.stereostim.wav
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>estim/E-Stim/combined.alpha.funscript
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>estim/FOC-Stim/combined.alpha.funscript
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>estim/FOC-Stim 4-phase/combined.e1.funscript
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>haptic/MultiFunPlayer/combined.surge.funscript
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>haptic/Handy/combined.handy.funscript
-</code></pre></div>
-<p>The device folders keep their own names and their own contents — they just
-move one level down, under <code>estim/</code> or <code>haptic/</code>. Every audio file goes to
-<code>sound/</code>, including the e-stim WAVs: they are files you can play, which is
-what that folder means, while <code>estim/</code> holds scripts a device reads.</p>
-<p>Each channel's own heatmap <strong>stays beside its funscript</strong>. Thirty heatmaps in
-one folder tell you nothing about which script each belongs to; next to it,
-the pairing is the filename. Only the top-level one moves, to <code>art/</code>.</p>
-<p>New projects start grouped. A project saved before this setting existed stays
-flat, so re-forging something you already publish from cannot rearrange it —
-switch it over yourself when you want to.</p>
+<h1 id="resolution-and-scaling">Resolution and scaling<a class="headerlink" href="#resolution-and-scaling" title="Permanent link">&para;</a></h1>
+<p>The <strong>Resolution</strong> setting on the Output tab decides the pixel size of the
+combined video. Its real job is to put every clip on <strong>one canvas</strong> so they can
+be joined at all — not to improve them.</p>
 <div class="admonition warning">
-<p class="admonition-title">Switching layout leaves the old files behind</p>
-<p>A forge writes; it does not tidy up. Re-forging a flat output as grouped
-writes the new tree and leaves the old folders where they were, so you get
-both. Delete the old ones, or forge into an empty folder.</p>
+<p class="admonition-title">ForgeAssembler resizes. It does not enhance.</p>
+<p>Choosing 4K on 1080p sources gives you a genuine 3840×2160 file with
+<strong>exactly the detail the source had</strong>, interpolated to fill four times as
+many pixels. There is no super-resolution, no sharpening, and no
+detail synthesis anywhere in ForgeAssembler. If you want real enhancement,
+do it <strong>before</strong> you import — with a tool built for it, such as Topaz Video
+AI — and assemble the enhanced files.</p>
 </div>
-<p>Both layouts are read back by the Viewer, by ForgePlayer and by FunscriptForge
-— regrouping an output does not change a thing any of them shows.</p>
-<p>A funscript that arrives with no station — a loose <code>&lt;stem&gt;.alpha.funscript</code>
-sitting next to a video, where nothing on disk says which device it was
-clamped for — is filed under the station that owns that channel, and it feeds
-every station's copy of it. Two clips, one from a <code>.forge</code> scene and one a
-plain video, still join into one continuous track.</p>
-<h2 id="channel-groups">Channel groups<a class="headerlink" href="#channel-groups" title="Permanent link">&para;</a></h2>
-<p>Some channels fall into named groups:</p>
+<h2 id="why-a-resolution-setting-exists-at-all">Why a resolution setting exists at all<a class="headerlink" href="#why-a-resolution-setting-exists-at-all" title="Permanent link">&para;</a></h2>
+<p>Concatenation needs every clip to share one frame size. A compilation of a
+1920×1080 scene and a 1906×1080 scene cannot be stitched until both are the
+same shape, so each clip is scaled to fit the chosen canvas and padded to fill
+it exactly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>scale=&lt;W&gt;:&lt;H&gt;:force_original_aspect_ratio=decrease:flags=lanczos,
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pad=&lt;W&gt;:&lt;H&gt;:(ow-iw)/2:(oh-ih)/2,
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>setsar=1
+</code></pre></div>
+<p><code>force_original_aspect_ratio=decrease</code> means <strong>aspect ratio is never
+distorted</strong> — a clip is scaled until it fits inside the canvas, then centred,
+and whatever is left over becomes black bars.</p>
+<div class="admonition note">
+<p class="admonition-title">Odd source widths produce thin bars</p>
+<p>A 1906×1080 source on a 1920×1080 canvas scales to 1906×1080 and gains a
+7-pixel black bar on each side. On a 4K canvas the same clip becomes
+3812×2160 with 14-pixel bars. The bars are <strong>baked into the output</strong>. If
+your sources are an unusual width and you want no bars, set the resolution
+to <code>source</code> (below), or crop them before importing.</p>
+</div>
+<h2 id="the-scaler">The scaler<a class="headerlink" href="#the-scaler" title="Permanent link">&para;</a></h2>
+<p>Every resize uses <strong>Lanczos</strong> (<code>flags=lanczos</code>), not ffmpeg's default bicubic.
+Lanczos is sharper in both directions — downscaling a 4K clip to 1080p and
+upscaling a 720p clip to 1080p both come out crisper — and it costs nothing
+measurable next to the encode.</p>
+<p>This applies to the video, to scaled overlay images, and to clip thumbnails.</p>
+<p>It is still a <strong>resampler</strong>. A sharper interpolation is not new detail.</p>
+<h2 id="choosing-a-value">Choosing a value<a class="headerlink" href="#choosing-a-value" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Group</th>
-<th>Channels</th>
-<th>Used by</th>
+<th>Setting</th>
+<th>Canvas</th>
+<th>Use it when</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Main</td>
-<td><code>main</code></td>
-<td>Standard linear devices (Handy, Kiiroo, etc.)</td>
+<td><code>source</code></td>
+<td>Matches the <strong>first video clip</strong> in the project</td>
+<td>All your clips are the same size and you want no resampling at all</td>
 </tr>
 <tr>
-<td>Multi-axis</td>
-<td><code>pitch</code>, <code>roll</code>, <code>surge</code>, <code>sway</code>, <code>twist</code></td>
-<td>SR6 / OSR2 and similar 6DOF rigs</td>
+<td><code>1080p</code></td>
+<td>1920×1080</td>
+<td>The common case</td>
 </tr>
 <tr>
-<td>3-phase estim</td>
-<td><code>alpha</code>, <code>beta</code></td>
-<td>restim 3-phase rigs</td>
+<td><code>1440p</code></td>
+<td>2560×1440</td>
+<td>Sources are genuinely 1440p or larger</td>
 </tr>
 <tr>
-<td>4-phase estim</td>
-<td><code>e1</code>, <code>e2</code>, <code>e3</code>, <code>e4</code></td>
-<td>FOC-Stim 4-phase (per-electrode power)</td>
+<td><code>4k</code></td>
+<td>3840×2160</td>
+<td>Sources are genuinely 4K</td>
 </tr>
 <tr>
-<td>Prostate</td>
-<td><code>alpha-prostate</code>, <code>beta-prostate</code>, <code>volume-prostate</code></td>
-<td>restim prostate variants</td>
+<td><code>uw_1080p</code> / <code>uw_1440p</code></td>
+<td>2560×1080 / 3440×1440</td>
+<td>Ultrawide sources</td>
 </tr>
 <tr>
-<td>Pulse frequency</td>
-<td><code>pulse_frequency</code></td>
-<td>restim pulse control</td>
+<td><code>4_3_hd</code></td>
+<td>1440×1080</td>
+<td>4:3 material</td>
+</tr>
+<tr>
+<td><code>3_4_hd</code> / <code>9_16_hd</code></td>
+<td>1080×1440 / 1080×1920</td>
+<td>Vertical / phone-shaped output</td>
 </tr>
 </tbody>
 </table>
-<p>The rest are <strong>device and parameter tracks</strong> — <code>handy</code>, <code>lovense</code>, <code>ossm</code>,
-<code>vacuglide</code>, <code>shaker</code>, <code>volume</code>, <code>volume-prostate</code>, <code>frequency</code>,
-<code>pulse_rise_time</code>, and anything else a future FunscriptForge release invents.
-They have no group of their own and need none: concatenating <code>volume</code> is the
-same operation as concatenating <code>alpha</code>, so they ride through automatically.</p>
-<p>The <strong>Output channels</strong> card on the Output tab shows what was found, grouped,
-with per-channel coverage. Its switches are <strong>vetoes</strong> — they subtract a whole
-group from the output. There is nothing to turn <em>on</em>, because detection has
-already decided what exists.</p>
-<h2 id="how-detection-works">How detection works<a class="headerlink" href="#how-detection-works" title="Permanent link">&para;</a></h2>
-<p>When you add a clip, ForgeAssembler looks for matching funscript
-files in:</p>
-<ol>
-<li>The same folder as the clip (<code>your_clip.mp4</code> →
-   <code>your_clip.funscript</code>, <code>your_clip.multi_axis.funscript</code>, …)</li>
-<li>Named sub-folders: <code>estim/</code>, <code>multi_axis/</code>, <code>prostate/</code>,
-   <code>audio_estim/</code> — matching the FunscriptForge output layout</li>
-</ol>
-<p>Root-level matches win over sub-folder dupes if the same name appears
-in both places.</p>
-<p>Detected channels show up on each segment card as
-<code>Funscripts: main, multi_axis, e1, e2, e3, prostate, …</code>.</p>
-<h2 id="how-concatenation-works">How concatenation works<a class="headerlink" href="#how-concatenation-works" title="Permanent link">&para;</a></h2>
-<p>For each enabled channel, ForgeAssembler walks every segment in
-playback order and stitches the funscript timelines back-to-back.
-Gaps (fade-to-black bridges) produce silent stretches in the
-funscript.</p>
-<p>If a specific clip is missing a channel you've enabled, the engine
-leaves that gap silent rather than failing — so a project with one
-clip that doesn't have multi-axis still produces a valid
-<code>&lt;project&gt;.multi_axis.funscript</code> with gaps for the missing stretch.</p>
-<h2 id="gaps">Gaps<a class="headerlink" href="#gaps" title="Permanent link">&para;</a></h2>
-<p>Clips in one compilation rarely carry identical channel sets. Where a clip
-lacks a channel its neighbours have, that stretch of the combined script is
-<strong>left blank</strong> — no actions, so a device holds its last position. The channels
-that <em>are</em> present stay in lockstep with the video.</p>
-<p>Nothing is synthesised to fill a gap. The Build tab flags the affected clips
-with a <strong>gaps</strong> badge, and the Inspector's Funscripts tab names exactly which
-channels are missing — so you can see it before you forge rather than during
-playback.</p>
-<h3 id="a-gap-is-a-difference-not-a-fault">A gap is a difference, not a fault<a class="headerlink" href="#a-gap-is-a-difference-not-a-fault" title="Permanent link">&para;</a></h3>
-<p>The badge compares each scene against the <strong>other scenes in this
-compilation</strong>. It does not mean anything is broken, and most gaps need no
-action at all.</p>
-<p>When a scene was created in FunscriptForge, its author chose which devices and
-stations to generate for. Two scenes made months apart, or made for different
-devices, legitimately carry different channel sets — and every one of those
-differences shows up here as a gap.</p>
-<p>What matters is <strong>which</strong> channel is missing:</p>
-<table>
-<thead>
-<tr>
-<th>The gap</th>
-<th>What it usually means</th>
-<th>Worth acting on?</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>A multi-axis channel (<code>surge</code>, <code>sway</code>, <code>roll</code>, <code>pitch</code>, <code>twist</code>)</td>
-<td>The scene was generated with a different multi-axis style. Those axes were never meant to exist for it.</td>
-<td>Rarely. The axes present still play.</td>
-</tr>
-<tr>
-<td>A whole device you use — the FOC-Stim set, say</td>
-<td>That scene will be <strong>silent on that device</strong> for its whole length while the others drive it.</td>
-<td>Yes. This is the one that spoils a session.</td>
-</tr>
-<tr>
-<td>A parameter channel (<code>pulse_rise_time</code>, <code>frequency</code>)</td>
-<td>The scene predates that parameter, or its station did not emit it.</td>
-<td>Sometimes — the device falls back to its own default.</td>
-</tr>
-</tbody>
-</table>
-<p>So read the badge as <em>"this scene is the odd one out, here is how"</em> rather than
-as an error. A compilation where every scene is missing the same thing has no
-gaps at all, and is perfectly fine.</p>
-<h3 id="closing-a-gap">Closing a gap<a class="headerlink" href="#closing-a-gap" title="Permanent link">&para;</a></h3>
-<p>ForgeAssembler does not generate channels — it joins what exists. To fill a
-real gap, open that scene in FunscriptForge and generate the station you want,
-then re-export it. Two things worth knowing first:</p>
+<p><strong>Pick the resolution your sources actually are.</strong> Upscaling costs real time and
+disk for no visible gain:</p>
 <ul>
-<li>If the channel already exists in the scene's project but not in its <code>.forge</code>,
-  the bundle is simply <strong>older than the project</strong>. Re-exporting is enough; no
-  regeneration needed.</li>
-<li>If it does not exist in the project either, it has to be generated, and that
-  is an authoring decision — the multi-axis style, the stations — not something
-  that can be filled in mechanically.</li>
+<li>A 13-minute 1080p compilation forged at <strong>1080p</strong> was 812 MB at 8.2 Mbps.</li>
+<li>The same compilation forged at <strong>4K</strong> was <strong>2.45 GB at 24.5 Mbps</strong> — three
+  times the size, three times the encode, and not one extra pixel of detail.</li>
 </ul>
-<h2 id="haptic-estim-audio-per-channel-wavs">Haptic-estim audio (per-channel WAVs)<a class="headerlink" href="#haptic-estim-audio-per-channel-wavs" title="Permanent link">&para;</a></h2>
-<p>Some haptic toolchains generate audio files alongside the funscripts —
-restim, for example, can render <code>.stereostim.wav</code>, <code>.legacy.wav</code>, and
-<code>.prostate.stereostim.wav</code> from a funscript and a device profile.
-ForgeAssembler concatenates these in lockstep with the video.</p>
-<p>Recent FunscriptForge bundles carry <strong>MP3s</strong> (<code>stim</code>, <code>stim-prostate</code>, <code>beat</code>),
-which come out as <code>&lt;basename&gt;.mp3</code>, <code>&lt;basename&gt;.prostate.mp3</code> and
-<code>&lt;basename&gt;.beat.mp3</code>. Older loose-file layouts use WAVs
-(<code>.stereostim.wav</code>, <code>.legacy.wav</code>, <code>.prostate.stereostim.wav</code>) and keep those
-names. The channel key carries its own extension, so whatever went in comes
-back out under the same suffix.</p>
-<p>When <strong>Audio (haptic estim)</strong> is on in the Produce panel, the engine:</p>
-<ol>
-<li>Collects each segment's haptic audio — from the <code>.forge</code> bundle it was
-   imported from, or from siblings beside the video (immediate folder plus the
-   same channel sub-folders that funscript detection scans).</li>
-<li>For each channel that any segment carries, concatenates the
-   per-segment audio into one combined output WAV named
-   <code>&lt;basename&gt;.stereostim.wav</code>, <code>&lt;basename&gt;.legacy.wav</code>, etc.</li>
-<li>Segments missing a channel get silence-filled at 48 kHz stereo so
-   the combined WAV stays lockstep with the video. This means a
-   project with one segment that has a <code>stereostim.wav</code> and three
-   that don't still produces a valid 48 kHz stereo
-   <code>&lt;basename&gt;.stereostim.wav</code> with silence in the gaps.</li>
-<li>Channels with no audio in any segment are skipped (no useless
-   100%-silent files).</li>
-</ol>
-<p><strong>By design, the engine emits every estim channel any segment carries
-— stereostim, legacy, and prostate — regardless of whether your
-current device needs them.</strong> The downstream player (ForgePlayer, or
-whatever your setup uses) selects the right channel at playback time
-based on the user's hardware profile. Forge time produces all
-artifacts; playback time consumes only what's relevant. This keeps
-forged outputs portable across devices without re-rendering.</p>
-<p>Per-segment trim windows (Split clip at time…) propagate to the
-audio inputs the same way they do to video — <code>-ss &lt;trim_start&gt;</code> and
-<code>-t &lt;effective_duration&gt;</code>.</p>
-<h2 id="produce-video-funscripts-audio-without-the-others">Produce video / funscripts / audio without the others<a class="headerlink" href="#produce-video-funscripts-audio-without-the-others" title="Permanent link">&para;</a></h2>
-<p>In the <strong>Produce</strong> panel of the <strong>Output</strong> tab:</p>
+<p><code>source</code> skips the guesswork: ForgeAssembler probes the first video clip and
+uses its dimensions as the canvas. Clips that already match are scaled by a
+factor of exactly 1 — the cheapest, cleanest path. Note that <code>source</code> needs at
+least one video clip to probe; a project of nothing but title cards has nothing
+to measure.</p>
+<h2 id="what-about-downscaling">What about downscaling?<a class="headerlink" href="#what-about-downscaling" title="Permanent link">&para;</a></h2>
+<p>Downscaling is the case where the resolution setting genuinely helps. Taking 4K
+sources to a 1080p output is a real quality operation — Lanczos downsampling
+averages four pixels into one and the result is sharper and cleaner than the
+source viewed at that size. Mixed-resolution projects are normalised the same
+way, so a 4K clip and a 1080p clip end up visually consistent.</p>
+<h2 id="frame-rate">Frame rate<a class="headerlink" href="#frame-rate" title="Permanent link">&para;</a></h2>
+<p>Frame rate is separate and works the same way: <code>source</code> takes the first video
+clip's rate, or you can force 24 / 30 / 60. Forcing a rate <strong>resamples</strong> the
+timing — it does not interpolate new frames, so raising the number does not make
+motion smoother.</p>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Video (MP4)</strong> — on by default</li>
-<li><strong>Funscripts</strong> — on by default</li>
-<li><strong>Audio (haptic estim)</strong> — on by default</li>
+<li><a href="../gpu-acceleration/">GPU acceleration</a> — which encoder does the work, and how
+  much faster it is</li>
+<li><a href="../channels/">Output channels</a> — what gets written alongside the video</li>
 </ul>
-<p>Each toggle is independent. You can turn off Video to render only
-the funscript bundle (faster — no ffmpeg encoding). You can turn off
-Funscripts and Audio to render only the long video. At least one of
-the three must be on.</p>
-<h2 id="the-forge-scene">The <code>.forge</code> scene<a class="headerlink" href="#the-forge-scene" title="Permanent link">&para;</a></h2>
-<p>A forge also writes <code>&lt;basename&gt;.forge</code> — the same bundle format
-FunscriptForge exports, carrying:</p>
-<ul>
-<li><code>motion.funscript</code> and every station's channels, at their station paths</li>
-<li>the joined haptic audio, under <code>audio/</code></li>
-<li><strong>this compilation's</strong> chapters: one per section, the same boundaries the
-  MP4's markers and every funscript carry</li>
-<li>the <strong>joined analysis</strong> — beats and the audio waveform, shifted onto the
-  compilation's timeline from the scenes that supplied them. This is what
-  lets a two-hour compilation open with a waveform immediately instead of
-  being decoded first</li>
-<li>a hero frame and one thumbnail per chapter</li>
-<li>a <code>manifest.ffmeta</code> that says it was made by ForgeAssembler and lists which
-  scenes went into it</li>
-</ul>
-<p>This is the file that keeps a compilation inside the forge family: <strong>reopen it
-in FunscriptForge</strong> to keep editing, or <strong>play it in ForgePlayer</strong> as one
-scene. Without it a compilation is only an MP4 and a pile of funscripts.</p>
-<p>The bundle does <strong>not</strong> carry the combined video by default — a compilation is
-measured in gigabytes. The manifest records the video's name, size and a hash
-of its first megabyte, which is how a consumer finds it again on disk. Turn on
-<em>…with the video inside it</em> in <strong>Produce</strong> when you want one self-contained
-file to hand to someone who does not have the footage.</p>
-<p>Turn the whole thing off with the <strong>.forge scene</strong> switch, or <code>--no-forge-bundle</code>
-on the CLI.</p>
-<h2 id="heatmaps">Heatmaps<a class="headerlink" href="#heatmaps" title="Permanent link">&para;</a></h2>
-<p>Every funscript written gets a companion <code>.heatmap.png</code> beside it, in the
-same folder — <code>combined.heatmap.png</code> at the top, <code>E-Stim/combined.alpha.heatmap.png</code>
-next to that station's alpha, and so on. They come with the <strong>funscripts</strong>,
-not the video, so a funscripts-only forge still produces them.</p>
-<p>In the grouped layout the per-channel heatmaps stay exactly where they are,
-beside their funscripts; only the top-level one moves to <code>art/</code>.</p>
-<p>Each is a density map of that channel across the whole combined output — a
-quick read of pacing: dense stretches, quiet stretches, spikes, and the blank
-regions where a clip didn't carry the channel.</p>
-<hr />
-<p>Next: <strong><a href="../resolution/">Resolution &amp; scaling</a></strong> — what the output
-resolution setting does to your footage, and what it cannot do.</p>
 
 
 
@@ -1758,7 +1431,7 @@ resolution setting does to your footage, and what it cannot do.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../joiners/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Joiners">
+          <a href="../channels/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Output Channels">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1768,20 +1441,20 @@ resolution setting does to your footage, and what it cannot do.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Joiners
+                Output Channels
               </div>
             </div>
           </a>
         
         
           
-          <a href="../resolution/" class="md-footer__link md-footer__link--next" aria-label="Next: Resolution &amp; Scaling">
+          <a href="../rendering-again/" class="md-footer__link md-footer__link--next" aria-label="Next: Rendering Again">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Resolution & Scaling
+                Rendering Again
               </div>
             </div>
             <div class="md-footer__button md-icon">
